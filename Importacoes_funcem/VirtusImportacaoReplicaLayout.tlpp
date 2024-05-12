@@ -1,0 +1,1043 @@
+#Include 'totvs.ch'
+#Include "topconn.ch"
+#Include "FWBrowse.ch"
+
+/*/{Protheus.doc} VirtusImportacaoReplicaLayout
+Funcao para acrescentar ou excluir itens dos contratos
+de acordo com a situação atual do cadastro de planos
+@type function
+@version 1.0
+@author Raphael Martins 
+@since 29/06/2020
+/*/
+User Function VirtusImportacaoReplicaLayout()
+
+	Local oDlg          := NIL
+	Local oPanelBkg     := NIL
+	Local oStepWiz      := NIL
+	Local oPnlPlano     := NIL
+	Local oBrwPlano     := NIL
+	Local oPnlPrd       := NIL
+	Local oBrwPrd       := NIL
+	Local cRelProc      := ""
+
+	Private nHdlLog       := 0
+
+	//crio dialog que ira receber o Wizard
+	DEFINE DIALOG oDlg TITLE 'Assistente de Replicação de Layout de Importação - Plataforma Virtus' PIXEL STYLE nOR(  WS_VISIBLE ,  WS_POPUP )
+
+	oDlg:nWidth := 800
+	oDlg:nHeight := 620
+
+	//crio panel do wizard
+	oPanelBkg:= TPanel():New(0,0,"",oDlg,,,,,,300,300)
+
+	oPanelBkg:Align := CONTROL_ALIGN_ALLCLIENT
+
+	//instacio o objeto do wizard
+	oStepWiz:= FWWizardControl():New(oPanelBkg)//Instancia a classe FWWizard
+	oStepWiz:ActiveUISteps()
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 1 do wizard - Instrucoes Iniciais
+	///////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("1")
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Instrucoes Iniciais")
+
+	//Defino o bloco de construção
+	oNewPag:SetConstruction({|Panel|Pag1Intrucoes(Panel)})
+
+	//Defino o bloco ao clicar no botão Próxim
+	oNewPag:SetNextAction({||.T.})
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 2 do wizard - Planos Cadastrados
+	///////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("2")
+	oNewPag:SetStepDescription("Layouts Cadastrados")
+	oNewPag:SetConstruction({|oPnlPlano| FwLayouts(oPnlPlano,@oBrwPlano,"QUH8")})
+	oNewPag:SetNextAction({|| lRet := ValProxTela("QUH8",oBrwPrd) })
+	oNewPag:SetCancelAction({||lRet := .F.,oDlg:End()})
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 3 do wizard - Servicos do Plano
+	///////////////////////////////////////////////////////
+	oNewPag := oStepWiz:AddStep("3")
+	oNewPag:SetStepDescription("Filial de Destino")
+	oNewPag:SetConstruction({|oPnlPrd| FwLayouts(oPnlPrd,@oBrwPrd,"QFIL")})
+	oNewPag:SetNextAction({|| lRet := ValProxTela("QFIL",oBrwPrd) })
+	oNewPag:SetCancelAction({||lRet := .F.,oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 5 do wizard - Relatorio do Processamento
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("4", {|Panel|RelImport(Panel,@cRelProc)})
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Log do Processo")
+
+	oNewPag:SetNextAction({|| VldArqRel(@nHdlLog,cRelProc) })
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 6 do wizard - Processamento da Atualizacao
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("5", {|Panel| TelaResult(Panel,nHdlLog,cRelProc) })
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Resultado")
+
+	oNewPag:SetNextAction({||oDlg:End(),.T.})
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||.F.})
+
+	oNewPag:SetCancelWhen({||.F.})
+
+	oNewPag:SetPrevAction({||.F.})
+
+	oStepWiz:Activate()
+
+	ACTIVATE DIALOG oDlg CENTER
+
+	oStepWiz:Destroy()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaPartSup
+Cria parte superior do panel do
+wizard com a logo e texto explicativo
+@author Raphael Martins
+@since 30/11/2018
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+Static Function CriaPartSup(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oSay3 		:= NIL
+	Local oLgTotvs		:= NIL
+	Local oGroup1		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+
+//carrego a imagem do repositorio 
+	@ 003, 003 REPOSITORY oLgTotvs SIZE 90, 90 OF oPanel PIXEL NOBORDER
+	oLgTotvs:LoadBmp("APLOGO.JPG")
+
+	@ 005 , 055 SAY oSay1 PROMPT "Atenção!" SIZE 060, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 020 , 055 SAY oSay2 PROMPT "Siga atentamente os passos da rotina." SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 030 , 055 SAY oSay3 PROMPT "Atualização de Layouts - Plataforma Virtus" SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 040 , 020 GROUP oGroup1 TO 042 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} Pag1Intrucoes
+Instrucoes Iniciais do Wizard de Atualizacao
+@author Raphael Martins
+@since 29/06/2020
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+Static Function Pag1Intrucoes(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local cPulaLinha	:= Chr(13) + Chr(10)
+	Local cTexto1		:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Bem Vindo..." SIZE 200, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 += "Esta rotina tem como objetivo ajuda-lo no processo de replica de Layouts de Importação."                            + cPulaLinha
+	cTexto1 += "Essa atualização consiste em copiar os Layouts de uma filial para outra."		+ cPulaLinha
+
+	@ 065 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+
+Return(Nil)
+
+/*/{Protheus.doc} FwLayouts
+description
+@type function
+@version 
+@author Raphael Martins 
+@since 30/06/2020
+@param oPanel, object, Panel onde sera criado a grid
+@param oBrowse, object, Browse que sera criado
+@param cAlias, character, Alias que sera criado
+@return return_type, sem retorno
+/*/
+Static Function FwLayouts(oPanel,oBrowse,cAlias)
+
+	Local oBtnPanel := TPanel():New(0,0,"",oPanel,,,,,,40,40)
+
+	oBtnPanel:Align := CONTROL_ALIGN_ALLCLIENT
+
+	//Cria tabela temporaria que vai conter os dADOS
+	CriaTabTemp(cAlias)
+
+	// Define o Browse
+	oBrowse := FWBrowse():New(oBtnPanel)
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias(cAlias)
+	oBrowse:DisableReport()
+
+	//##################################################################
+	//					        DADOS DO LAYOUT
+	//##################################################################
+
+
+	if cAlias == "QUH8"
+
+		// Cria uma coluna de marca/desmarca
+		oColumn := oBrowse:AddMarkColumns({||If( QUH8->UH8_OK == 'T','LBOK','LBNO')},{|oBrowse| MarkBrowse( oBrowse,cAlias,"UH8_OK" ) },{|oBrowse|/* Função de HEADERCLICK*/})
+
+		ADD COLUMN oColumn DATA { || UH8_CODIGO } TITLE Alltrim(GetSx3Cache("UH8_CODIGO","X3_TITULO")) SIZE TamSx3("UH8_CODIGO")[1]   OF oBrowse
+		ADD COLUMN oColumn DATA { || UH8_DESCRI } TITLE Alltrim(GetSx3Cache("UH8_DESCRI","X3_TITULO")) SIZE TamSx3("UH8_DESCRI")[1]   OF oBrowse
+
+
+	elseif cAlias == "QFIL"
+
+		oColumn := oBrowse:AddMarkColumns({||If( QFIL->FIL_OK == 'T','LBOK','LBNO')},{|oBrowse| MarkBrowse( oBrowse,cAlias,"FIL_OK" ) },{|oBrowse|/* Função de HEADERCLICK*/})
+
+		ADD COLUMN oColumn DATA { || FIL_FILIAL } TITLE "Filial"    SIZE TamSx3("UH8_FILIAL")[1]    OF oBrowse
+		ADD COLUMN oColumn DATA { || FIL_DESCRI } TITLE "Descrição" SIZE 60                         OF oBrowse
+
+	endif
+
+	oBrowse:SetSeek()
+	oBrowse:Activate()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaTabTemp
+Cria tabela temporaria com os planos
+@type function
+@version 
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias que sera carregado
+@return return_type, sem retorno
+/*/
+Static Function CriaTabTemp(cAlias)
+
+	Local oTable 	:= Nil
+	Local aCampos	:= {}
+	Local cIndice1	:= ""
+	Local cIndice2	:= ""
+	Local cIndice3  := ""
+
+	if cAlias == "QUH8"
+
+		aCampos:= {	{"UH8_OK"		,"C",001,0},;
+			{"UH8_CODIGO"	,"C",TamSX3("UH8_CODIGO")[1],0},;
+			{"UH8_DESCRI" 	,"C",TamSX3("UH8_DESCRI")[1],0} }
+
+		cIndice1 := "UH8_CODIGO"
+		cIndice2 := "UH8_OK"
+		cIndice3 := "UH8_DESCRI"
+
+	elseif cAlias == "QFIL"
+
+		aCampos:= {	{"FIL_OK"		,"C",001,0},;
+			{"FIL_FILIAL"	,"C",TamSX3("UH8_FILIAL")[1],0},;
+			{"FIL_DESCRI"	,"C",40,0}}
+
+		cIndice1 := "FIL_FILIAL"
+		cIndice2 := "FIL_OK"
+		cIndice3 := "FIL_DESCRI"
+
+	endif
+
+	//Valida se ja existe a tabela criada
+	if Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	endif
+
+	oTable:= FWTemporaryTable():New(cAlias)
+
+	//Inserindo campos no alias temporario
+	oTable:SetFields(aCampos)
+
+	//---------------------
+	//Criação dos índices
+	//---------------------
+	oTable:AddIndex("01", { cIndice1	} )
+	oTable:AddIndex("02", { cIndice2	} )
+
+	//---------------------------------------------------------------
+	//tabela criado no espaço temporário do DB
+	//---------------------------------------------------------------
+	oTable:Create()
+	//------------------------------------
+
+	//Carrega dados na tebela temporaria
+	GetTabTemp(cAlias)
+
+Return(Nil)
+
+/*/{Protheus.doc} GetTabTemp
+description
+@type function
+@version 1.0
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias que sera carregado
+@return return_type, sem retorno
+/*/
+Static Function GetTabTemp(cAlias)
+
+	Local aFiliais	As Array
+	Local nFilial	As Numeric
+
+	//Pega dados do Plano
+	If cAlias == "QUH8"
+
+		cQry := " SELECT "
+		cQry += " 	UH8.UH8_CODIGO CODIGO, "
+		cQry += " 	UH8.UH8_DESCRI DESCRICAO "
+		cQry += " FROM " + RetSQLName("UH8") + " UH8 "
+		cQry += " WHERE UH8.D_E_L_E_T_ = ' ' "
+		cQry += " 	AND UH8.UH8_FILIAL = '"+ xFilial("UH8") + "' "
+		cQry += " ORDER BY UH8_CODIGO "
+
+		cQry := ChangeQuery(cQry)
+
+		if Select("TRBUH8") > 0
+			TRBUH8->(DbCloseArea())
+		endif
+
+		MPSysOpenQuery(cQry, "TRBUH8")
+
+		While TRBUH8->(!EOF())
+
+			Reclock("QUH8",.T.)
+
+			QUH8->UH8_OK 		:= " "
+			QUH8->UH8_CODIGO	:= TRBUH8->CODIGO
+			QUH8->UH8_DESCRI	:= TRBUH8->DESCRICAO
+
+			QUH8->(MsUnLock())
+
+			TRBUH8->(DbSkip())
+		EndDo
+
+	else
+
+		// pego os dados das filiais
+		aFiliais		:= FWLoadSM0()
+
+		For nFilial := 1 To Len(aFiliais)
+
+			// nao coloco a filial para ser selecionada
+			If AllTrim(aFiliais[nFilial, 2]) <> AllTrim(cFilAnt)
+
+				Reclock("QFIL",.T.)
+
+				QFIL->FIL_OK 		:= " "
+				QFIL->FIL_FILIAL	:= aFiliais[nFilial, 2]
+				QFIL->FIL_DESCRI	:= aFiliais[nFilial, 7]
+
+				QFIL->(MsUnLock())
+
+			EndIf
+
+		Next nFilial
+
+	endif
+
+Return(Nil)
+
+/*/{Protheus.doc} MarkBrowse
+description
+@type function
+@version 
+@author Raphael Martins Garcia
+@since 30/06/2020
+@param oBrowse, object, Browse do objeto Grid
+@param cAlias, character, Alias que esta sendo marcado
+@param cCampo, character, Campo clicacdo
+@return return_type, return_description
+/*/
+Static Function MarkBrowse(oBrowse,cAlias,cCampo)
+
+	Local lRet 	    := .T.
+	Local nPosAtu   := oBrowse:At()
+	Local aArea	    := (cAlias)->(GetArea())
+	Local cMark     := ""
+
+	(cAlias)->(DbSetOrder(2))
+
+	//Posiciona na linha que estava
+	oBrowse:GoTo(nPosAtu)
+
+	if cAlias == "QFIL"
+
+		//Valido se tem algum item ja marcado
+		if (cAlias)->(MsSeek("T"))
+
+			//Desmarco item
+			Reclock(cAlias,.F.)
+			(cAlias)->&(cCampo) := ' '
+			(cAlias)->(MsUnLock())
+
+		endif
+
+	endif
+
+	//Posiciona na linha que estava
+	oBrowse:GoTo(nPosAtu)
+
+	if (cAlias)->&(cCampo) == "T"
+		cMark := ""
+	else
+		cMark := "T"
+	endif
+
+	//Marca item
+	Reclock(cAlias,.F.)
+	(cAlias)->&(cCampo) := cMark
+	(cAlias)->(MsUnLock())
+	(cAlias)->(DbSetOrder(1))
+
+	oBrowse:Refresh()
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} ValProxTela
+description
+@type function
+@version 
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias Selecionado
+@param oGrid, object, oGrid da Tela atual
+@return return_type, return_description
+/*/
+Static Function ValProxTela(cAlias,oGrid)
+
+	Local lRet 	   := .T.
+	Local aArea	   := (cAlias)->(GetArea())
+
+	(cAlias)->(DbSetOrder(2))
+
+	//Valido se tem algum item ja marcado
+	if !(cAlias)->(MsSeek("T"))
+
+		Aviso("Atenção","É necessário marcar um item pra prosseguir!",{"Ok"})
+		lRet := .F.
+
+	endif
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} RelImport
+Funcao para montar panel de selecao
+do arquivo de log a ser gerado da atualizacao
+@author Raphael Martins
+@since 02/07/2020
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+Static Function RelImport(oPanel,cRelProc)
+
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oArqRel		:= NIL
+	Local oBtnRel		:= NIL
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cTexto1		:= ""
+	Local cImgArq		:= "icone_file.png"
+	Local cImgFileHover	:= "icone_file_foco.png"
+	Local cCSSBtnFile	:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe o local do relatório de Atualizacao" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := " Após a importação dos layouts o sistema irá gerar um relatório constando todas os layouts replicados.	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Relatório de Atualizacao:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 020 GROUP oGroup1 TO 109 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 115 , 020 SAY oSay3 PROMPT "Diretório:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 115 , 070 MSGET oArqRel VAR cRelProc  SIZE 200,010 PIXEL  Font oFnt16 OF oPanel PICTURE "@!"
+
+	oBtnRel	:= TButton():New(114,275,"" ,oPanel,{|| cRelProc := tFileDialog( '*.txt' , 'Selecione o local', , "c:\", .F., GETF_RETDIRECTORY) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnRel:SetCss(cCSSBtnFile)
+
+Return()
+
+/*/{Protheus.doc} VldArqRel
+Funcao para validar o arquivo digitado para
+geracao do relatorio
+@author Raphael Martins
+@since 30/11/2018
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+
+Static Function VldArqRel(nHdlLog,cRelProc)
+
+	Local lRet 		:= .T.
+
+	if !Empty(cRelProc)
+
+		// gero o nome do arquivo a ser gerado
+		cRelProc := cRelProc + Iif(GetRemoteType() == 2,"/","\") + "layout_replica_" + DToS(dDatabase) + StrTran(Time(),":","")
+
+	else // gero o arquivo de log na temp, caso nao for preenchhido
+
+		cRelProc := Iif( SubStr(GetTempPath() ,Len(GetTempPath() )) == Iif(GetRemoteType() == 2,"/","\"), GetTempPath() , GetTempPath() + Iif(GetRemoteType() == 2,"/","\") )
+		cRelProc += "layout_replica_" + DToS(dDatabase) + StrTran(Time(),":","")
+
+	endif
+
+	//crio arquivo de relatorio do processamento da atualizacao
+	nHdlLog := MsfCreate(cRelProc + ".log",0)
+
+	if nHdlLog < 0
+
+		lRet := .F.
+		Help(,,'Help',,"Não foi possivel criar o arquivo de relatorio do processamento, favor o diretorio selecionado!",1,0)
+
+	endif
+
+Return(lRet)
+
+/*/{Protheus.doc} TelaResult
+Funcao para montar tela de resultado final
+da atualizacao 
+@author Raphael Martins
+@since 02/07/2020
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/										
+Static Function TelaResult(oPanel,nHdlLog,cRelProc)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oGroup1		:= NIL
+	Local oProcessados	:= NIL
+	Local oSucesso		:= NIL
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cTexto1		:= ""
+	Local nRowsProces	:= 0
+
+//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	FWMsgRun(,{|oSay| ProcAtualizacao(oSay,@nRowsProces,nHdlLog)},'Aguarde...','Processando a replicação dos layouts.')
+
+	@ 045 , 020 SAY oSay4 PROMPT "Processo de Atualizacao finalizado" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := "Processo de Atualizacao finalizado, abaixo segue os dados processados!	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Resultado da Importação:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 107 , 020 SAY oSay3 PROMPT "Layous Processados:" SIZE 080, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 100 MSGET oProcessados VAR nRowsProces  SIZE 080,010 READONLY PIXEL  Font oFnt16 OF oPanel PICTURE "@E 9999999"
+
+	@ 140 , 020 BUTTON oBtnImp PROMPT "Visualizar Log" SIZE 070, 015 OF oPanel PIXEL ACTION (ShellExecute("Open", cRelProc + ".log", " ", "C:\", 1 ))
+
+Return()
+
+/*/{Protheus.doc} ProcAtualizacao
+Processa atualizacao
+@type function
+@version 1.0
+@author Raphael Martins
+@since 02/07/2020
+@param oSay, object, Objeto do FWMsgRun
+@param nProcessados, numeric, Contador de Contratos Atualizados
+@param nHdlLog, numeric, Arquivo de Log da Atualizacao
+/*/
+Static Function ProcAtualizacao(oSay,nProcessados,nHdlLog)
+
+	Local aArea         := GetArea()
+	Local aDadosLayout	:= {}
+	Local cPulaLinha    := Chr(13) + Chr(10)
+
+	//verifico se arquivo de log existe
+	if nHdlLog > 0
+
+		fWrite(nHdlLog , "######### REPLICANDO LAYOUTS DE IMPORTACAO #############")
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Data Inicio: " + DTOC( Date() ) )
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Hora Inicio: " + Time() )
+		fWrite(nHdlLog , cPulaLinha )
+
+	endif
+
+	QUH8->(DbGotop())
+	While QUH8->(!Eof())
+
+		// layou selecionado
+		If !Empty(QUH8->UH8_OK)
+
+			if nHdlLog > 0
+
+				fWrite(nHdlLog , cPulaLinha )
+				fWrite(nHdlLog , "Copiando o layout: " + AllTrim(QUH8->UH8_CODIGO) + "-" + AllTrim(QUH8->UH8_DESCRI) + " ..." )
+				fWrite(nHdlLog , cPulaLinha )
+
+			endif
+
+			oSay:cCaption := ("Copiando o layout: " + AllTrim(QUH8->UH8_CODIGO) + "-" + AllTrim(QUH8->UH8_DESCRI) + " ...")
+			ProcessMessages()
+
+			// pego os dados do Layout para ser copiado
+			aDadosLayout := DadosLayout(QUH8->UH8_CODIGO)
+
+			QFIL->(DbGotop())
+			While QFIL->(!Eof())
+
+				//valido se o item esta marcado
+				if !Empty(QFIL->FIL_OK) .And. AllTrim(QFIL->FIL_FILIAL) <> AllTrim(cFilAnt)
+					lContinua := MigraLayout(QFIL->FIL_FILIAL, aDadosLayout)
+				endif
+
+				QFIL->(DbSkip())
+
+			EndDo
+
+			if nHdlLog > 0
+
+				fWrite(nHdlLog , cPulaLinha )
+				fWrite(nHdlLog , " >> Layout: " + QUH8->UH8_CODIGO + " processado com sucesso! " )
+				fWrite(nHdlLog , cPulaLinha )
+
+			endif
+
+			nProcessados++
+
+		EndIf
+
+		QUH8->(DBSkip())
+	Enddo
+
+	//verifico se arquivo de log existe
+	if nHdlLog > 0
+		fClose(nHdlLog) // fecho o arquivo de log
+	endif
+
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function DadosLayout(cCodigoLayout)
+
+	Local aAux 		As Array
+	Local aDados	As Array
+	Local aItem		As Array
+	Local aDadosUH9	As Array
+	Local aRetorno	As Array
+	Local cQuery 	As Character
+	Local nDados	As Numeric
+	Local nItemUH9	As Numeric
+
+	Default cCodigoLayout	:= ""
+
+	// atribui valor as variaveis
+	aAux		:= {}
+	aDados		:= {}
+	aItem		:= {}
+	aDadosUH9	:= {}
+	aRetorno	:= {}
+
+	If !Empty(cCodigoLayout)
+
+		cQuery := " SELECT "
+		cQuery += " 	UH8.UH8_CODIGO CODIGO, "
+		cQuery += " 	UH8.UH8_DESCRI DESCRICAO "
+		cQuery += " FROM " + RetSQLName("UH8") + " UH8 "
+		cQuery += " WHERE UH8.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND UH8.UH8_FILIAL = '"+ xFilial("UH8") + "' "
+		cQuery += " 	AND UH8.UH8_CODIGO = '"+ cCodigoLayout + "' "
+		cQuery += " ORDER BY UH8_CODIGO "
+
+		cQuery := ChangeQuery(cQuery)
+
+		if Select("TRBUH8") > 0
+			TRBUH8->(DbCloseArea())
+		endif
+
+		MPSysOpenQuery(cQuery, "TRBUH8")
+
+		If TRBUH8->(!Eof())
+
+			aAux := {}
+			Aadd(aAux, CopiaDados(TRBUH8->CODIGO, "UH8"))
+
+			// pego os dados da UH9
+			aDados := CopiaDados(TRBUH8->CODIGO, "UH9")
+
+			// percorro os dados da UH9 e trato os de-para
+			For nDados := 1 To Len(aDados)
+
+				aItem := aDados[nDados]
+
+				nItemUH9 := aScan( aItem, { |x| AllTrim( x[1] ) == "UH9_ITEM"   } )
+				Aadd( aDadosUH9, { aItem, CopiaDados(TRBUH8->CODIGO, "UI0", aItem[nItemUH9][2])})
+
+			Next nDados
+
+			Aadd(aAux, aDadosUH9)
+
+			// pego os dados para retorno
+			Aadd(aRetorno, aAux)
+
+		EndIf
+
+	EndIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} CopiaDados
+description
+@type function
+@version  
+@author g.sampaio
+@since 02/08/2023
+@param cLayoutOrigem, character, param_description
+@param cTabela, character, param_description
+@return variant, return_description
+/*/
+Static Function CopiaDados(cLayoutOrigem, cTabela, cItemUH9)
+
+	Local aArea 	:= GetArea()
+	Local aAux 		:= {}
+	Local aRetorno	:= {}
+	Local cQuery	:= ""
+
+	Default cLayoutOrigem	:= ""
+	Default cTabela			:= ""
+	Default cItemUH9		:= ""
+
+	If !Empty(cTabela)
+
+		cQuery  := " SELECT LAYOUT.R_E_C_N_O_ AS RECTAB FROM " + RetSqlName(cTabela) + " LAYOUT "
+		cQuery	+= " WHERE LAYOUT.D_E_L_E_T_ = ' ' "
+		cQuery  += " AND LAYOUT."+cTabela+"_FILIAL = '" + xFilial(cTabela) + "' "
+		cQuery	+= " AND LAYOUT."+cTabela+"_CODIGO = '" + cLayoutOrigem + "' "
+
+		If cTabela == "UI0"
+			cQuery	+= " AND LAYOUT.UI0_ITEMPA = '" + cItemUH9 + "' "
+		EndIf
+
+		cQuery	:= ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TABFIL")
+
+		While TABFIL->(!Eof())
+
+			(cTabela)->(DbGoTo(TABFIL->RECTAB))
+
+			// verifico se encontro a estrutura da SX3
+			If EstruSX3(cTabela)
+				While TRB->(!Eof())
+
+					// verifico se o contexto do campo e real
+					If TRB->CONTEXT <> "V"
+
+						// alimento o array com a estrutura
+						aAdd(aAux, { TRB->CAMPO, &(""+cTabela+"->" + TRB->CAMPO + "" )  })
+
+					EndIf
+
+					TRB->(DbSkip())
+				EndDo
+			EndIf
+
+			aAdd(aRetorno, aAux)
+			aAux := {}
+
+			TABFIL->(DbSkip())
+		EndDo
+
+	EndIf
+
+	RestArea(aArea)
+
+Return(aRetorno)
+
+/*/{Protheus.doc} EstruSX3
+description
+@type function
+@version  
+@author g.sampaio
+@since 02/08/2023
+@param cTabela, character, param_description
+@return variant, return_description
+/*/
+Static Function EstruSX3(cTabela)
+
+	Local cQry 			:= ""
+	Local cAliasTemp	:= "TRB"
+
+	Default cTabela 	:= ""
+
+	cQry += " SELECT "
+	cQry += " 	X3_CAMPO 	AS CAMPO, "
+	cQry += " 	X3_CONTEXT 	AS CONTEXT, "
+	cQry += " 	X3_TIPO 	AS TIPO "
+	cQry += " FROM " + RetSqlName("SX3") + " TBL "
+	cQry += " WHERE TBL.D_E_L_E_T_ = ' ' "
+
+	if !Empty(AllTrim(cTabela))
+		cQry += " AND X3_ARQUIVO = '"+AllTrim(cTabela)+"'"
+	endif
+
+	cQry += " ORDER BY X3_ORDEM "
+
+	if Select(cAliasTemp) > 0
+		(cAliasTemp)->(DbCloseArea())
+	endif
+
+	MPSysOpenQuery( cQry, cAliasTemp)
+
+	DbSelectArea(cAliasTemp)
+	(cAliasTemp)->(DbGoTop())
+
+Return((cAliasTemp)->(!Eof()))
+
+Static Function MigraLayout(cCodigoFilial As Character, aDadosLayout As Array)
+
+	Local aArea			As Array
+	Local aAreaUH8		As Array
+	Local aAreaUH9		As Array
+	Local aAreaUI0		As Array
+	Local aUH8			As Array
+	Local aUH9			As Array
+	Local aUI0			As Array
+	Local aCampos		As Array
+	Local aCamposUI0	As Array
+	Local cFilBkp		As Character
+	Local cCodigoLayout	As Character
+	Local cPulaLinha	As Character
+	Local lRetorno 		As Logical
+	Local nCampos		As Numeric
+	Local nCamposUI0	As Numeric
+	Local nUH8			As Numeric
+	Local nUH9 			As Numeric
+	Local nUI0			As Numeric
+
+	Default cCodigoFilial	:= ""
+	Default aDadosLayout	:= {}
+
+	// aitrbui valor as variaveis
+	aArea	 		:= GetArea()
+	aAreaUH8		:= UH8->(GetArea())
+	aAreaUH9		:= UH9->(GetArea())
+	aAreaUI0		:= UI0->(GetArea())
+	cFilBkp	 		:= cFilAnt
+	cCodigoLayout	:= ""
+	lRetorno 		:= .T.
+	cPulaLinha    	:= Chr(13) + Chr(10)
+
+	// entrou na filial que vai migrar
+	cFilAnt	:= cCodigoFilial
+
+	if nHdlLog > 0
+
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " Filial de destino " + cFilAnt + " ..." )
+		fWrite(nHdlLog , cPulaLinha )
+
+	endif
+
+	// pego o codigo do layout
+	cCodigoLayout := NextCodigo()
+
+	aUH8 := aDadosLayout[1][1]
+	aUH9 := aDadosLayout[1][2]
+
+	BEGIN TRANSACTION
+
+		If UH8->(Reclock("UH8", .T.))
+
+			// UH8 - copio o cabecalho da copia do layout
+			For nUH8 := 1 To Len(aUH8)
+
+				aCampos := aUH8[nUH8]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UH8_FILIAL"
+						UH8->UH8_FILIAL := xFilial("UH8")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UH8_CODIGO"
+						UH8->UH8_CODIGO := cCodigoLayout
+					Else
+						UH8->&(aCampos[nCampos][1]) := AllTrim(aCampos[nCampos][2])
+					EndIf
+
+				Next nCampos
+
+			Next nUH8
+
+			UH8->(MsUnLock())
+
+		EndIf
+
+		// UH9 - copio o cabecalho da copia do layout
+		For nUH9 := 1 To Len(aUH9)
+
+			If UH9->(Reclock("UH9", .T.))
+
+				aCampos := aUH9[nUH9][1]
+				aUI0	:= aUH9[nUH9][2]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UH9_FILIAL"
+						UH9->UH9_FILIAL := xFilial("UH9")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UH9_CODIGO"
+						UH9->UH9_CODIGO := cCodigoLayout
+					Else
+						UH9->&(aCampos[nCampos][1]) := AllTrim(aCampos[nCampos][2])
+					EndIf
+
+				Next nCampos
+
+				// transfiro o depara
+				If Len(aUI0) > 0
+
+					For nUI0 := 1 To Len(aUI0)
+
+						If UI0->(Reclock("UI0", .T.))
+
+							aCamposUI0 := aUI0[nUI0]
+
+							For nCamposUI0 := 1 To Len(aCamposUI0)
+
+								If AllTrim(aCamposUI0[nCamposUI0][1]) == "UI0_FILIAL"
+									UI0->UI0_FILIAL := xFilial("UI0")
+								ElseIf AllTrim(aCamposUI0[nCamposUI0][1]) == "UI0_CODIGO"
+									UI0->UI0_CODIGO := cCodigoLayout
+								ElseIf AllTrim(aCamposUI0[nCamposUI0][1]) == "UI0_ITEMPA"
+									UI0->UI0_ITEMPA := UH9->UH9_ITEM
+								Else
+									UI0->&(aCamposUI0[nCamposUI0][1]) := AllTrim(aCamposUI0[nCamposUI0][2])
+								EndIf
+
+							Next nCamposUI0
+
+							UI0->(MsUnLock())
+
+						EndIf
+
+					Next nUI0
+
+				EndIf
+
+				UH9->(MsUnLock())
+
+			EndIf
+
+		Next nUH9
+
+	END TRANSACTION
+
+	// restauro o valor da filial
+	cFilAnt := cFilBkp
+
+	RestArea(aAreaUI0)
+	RestArea(aAreaUH9)
+	RestArea(aAreaUH8)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+Static Function NextCodigo()
+
+	Local cQuery	As Character
+	Local cRetorno	As Character
+
+	cQuery := " SELECT "
+	cQuery += " 	MAX(UH8.UH8_CODIGO) AS MAX_CODIGO "
+	cQuery += " FROM " + RetSQLName("UH8") + " UH8 "
+	cQuery += " WHERE UH8.UH8_FILIAL = '"+ xFilial("UH8") + "' "
+
+	cQuery	:= ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBMAX")
+
+	If TRBMAX->(!Eof())
+		If !Empty(TRBMAX->MAX_CODIGO)
+			cRetorno := Soma1(TRBMAX->MAX_CODIGO)
+		Else
+			cRetorno := StrZero(1, TamSX3("UH8_CODIGO")[1])
+		EndIf
+	Else
+		cRetorno := StrZero(1, TamSX3("UH8_CODIGO")[1])
+	EndIf
+
+	UH8->(DbSetOrder(1))
+	If UH8->(MsSeek(xFilial("UH8")+cRetorno))
+		While UH8->(MsSeek(xFilial("UH8")+cRetorno))
+			cRetorno := Soma1(Alltrim(cRetorno))
+		EndDo
+	EndIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode("UH8"+xFilial("UH8")+cRetorno)
+		// gero um novo nosso numero
+		cRetorno := Soma1(Alltrim(cRetorno))
+	EndDo
+
+Return(cRetorno)
