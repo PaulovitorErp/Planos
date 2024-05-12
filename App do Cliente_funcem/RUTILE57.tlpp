@@ -1,0 +1,675 @@
+#include "protheus.ch"
+#include "topconn.ch"
+#include "tbiconn.ch"
+#include "fileio.ch"
+
+/*/{Protheus.doc} RUTILE57
+JOB para processamento de Carga Diferencial - APP Cliente
+@author danilo
+@since 21/01/2022
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function RUTILE57(xParam1, xParam2)
+
+	Local cMessage	:= ""
+	Local aParam    := {}
+	Local nUF2      := 0
+	Local nU00      := 0
+
+	if valtype(xParam1) == "A"
+		aParam := aClone(xParam1)
+	elseif valtype(xParam1) == "C" .AND. valtype(xParam2) == "C"
+		aParam := {xParam1, xParam2}
+	elseif IsBlind()
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " PARAMETROS DE EMPRESA E FILIAL INVALIDOS ", 0, 0, {})
+		Return
+	else //execucao via interface
+		aParam := {cEmpAnt, cFilAnt}
+	endif
+
+	// mensagens no console log
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " INICIO DO PROCESSO DE CARGA DIFERENCIAL - APP CLIENTE", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " DATA: " + DTOC( Date() ) + " HORA: " + Time() + " ", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " EMPRESA: " + Alltrim(aParam[1]) + " FILIAL: " + Alltrim(aParam[2]) + " ", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+
+	//Valido se a execução é via Job
+	If IsBlind() //Type("cEmpAnt")== "U"
+		//prepara a conexao com empresa
+		RpcSetType(3)
+		RpcClearEnv()  //-- Limpa ambiente
+		RpcSetEnv(aParam[01], aParam[02])
+	Else
+		if !MsgYesNo("Confirma a execução do JOB de carga diferencial APP Cliente?", "Atenção")
+			Return
+		endif
+	EndIf
+
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	DbSelectArea("SA1")
+	if SA1->(FieldPos("A1_MSEXP")) <= 0
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO A1_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+		Return
+	endif
+
+	if nU00 > 0
+
+		DbSelectArea("U00")
+		if U00->(FieldPos("U00_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO U00_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+
+
+		DbSelectArea("U02")
+		if U02->(FieldPos("U02_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO U02_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+		DbSelectArea("UJV")
+		if UJV->(FieldPos("UJV_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO UJV_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+		DbSelectArea("U19")
+		if U19->(FieldPos("U19_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO U19_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+
+	endif
+
+	if nUF2 > 0
+		DbSelectArea("UF2")
+		if UF2->(FieldPos("UF2_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO UF2_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+		DbSelectArea("UF4")
+		if UF4->(FieldPos("UF4_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO UF4_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+		DbSelectArea("UF5")
+		if UF5->(FieldPos("UF5_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO UF5_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+		DbSelectArea("UJ0")
+		if UJ0->(FieldPos("UJ0_MSEXP")) <= 0
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO UJ0_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+			Return
+		endif
+
+	endif
+
+	DbSelectArea("SE1")
+	if SE1->(FieldPos("E1_MSEXP")) <= 0
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", "RUTILE57: PROCESSAMENTO ABORTADO! CAMPO E1_MSEXP NAO EXISTE NA TABELA", 0, 0, {})
+		Return
+	endif
+
+	//-- Bloqueia rotina para apenas uma execução por vez
+	//-- Criação de semáforo no servidor de licenças
+	//-- LockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> lCreated
+	If !LockByName("RUTILE57", .F., .T.)
+		If IsBlind()
+			cMessage := "[RUTILE57]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde..."
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, 0, {})
+		Else
+			MsgAlert("[RUTILE57]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde...")
+		EndIf
+
+		Return
+	EndIf
+
+	//-- Comando para o TopConnect alterar mensagem do Monitor --//
+	FWMonitorMsg("RUTILE57: JOB CARGA DIFERENCIAL APP CLIENTE ")
+
+	If IsBlind()
+		ExecCarga()
+	Else
+		MsAguarde({|| ExecCarga() },"Aguarde","Processando envio",.F.)
+	EndIf
+
+	//-- Libera rotina para nova execução
+	//-- Excluir semáforo
+	//-- UnLockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> Nil
+	UnLockByName("RUTILE57", .F., .T.)
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " FIM DO PROCESSO DE CARGA DIFERENCIAL - APP CLIENTE", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+
+Return()
+
+//Função que faz a chamada da execução dos envios
+Static Function ExecCarga()
+	AtCadastral()
+	AtTitulos()
+Return
+
+//Função que faz a busca dos clientes que serão atualizados
+Static Function AtCadastral()
+
+	Local cQry 		:= ""
+	Local lContinua := .F.
+	Local oVirtusCargaClientes	As Object
+	Local oSX2			        As Object
+	Local nUF2			        As Numeric
+	Local nU00			        As Numeric
+
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	cQry := " SELECT DISTINCT SA1.A1_CGC, SA1.A1_COD, SA1.A1_LOJA "
+
+	cQry += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+
+	if nU00 > 0
+
+		//contratos cemiterio
+		cQry += " LEFT JOIN " +RetSQLName("U00") + " U00 (NOLOCK) ON "
+		cQry += "     U00.D_E_L_E_T_ = ' ' "
+		cQry += "     AND U00.U00_CLIENT = SA1.A1_COD "
+		cQry += "     AND U00.U00_LOJA = SA1.A1_LOJA "
+		cQry += "     AND U00.U00_STATUS IN ('A','S') "
+
+		// transferencia titular contratos cemiterio
+		cQry += " LEFT JOIN " +RetSQLName("U19") + " U19 (NOLOCK) ON "
+		cQry += "     U19.D_E_L_E_T_ = ' ' "
+		cQry += "     AND U19.U19_CLIANT = SA1.A1_COD "
+		cQry += "     AND U19.U19_LOJANT = SA1.A1_LOJA "
+		cQry += "     AND U19.U19_MSEXP = ' ' "
+
+	endif
+
+	if nUF2 > 0
+
+		//contratos funeraria
+		cQry += " LEFT JOIN " +RetSQLName("UF2") + " UF2 (NOLOCK) ON "
+		cQry += "     UF2.D_E_L_E_T_ = ' ' "
+		cQry += "     AND UF2.UF2_CLIENT = SA1.A1_COD "
+		cQry += "     AND UF2.UF2_LOJA = SA1.A1_LOJA "
+		cQry += "     AND UF2.UF2_STATUS IN ('A','S') "
+
+		// transferencia titular contratos funeraria
+		cQry += " LEFT JOIN " +RetSQLName("UF5") + " UF5 (NOLOCK) ON "
+		cQry += "     UF5.D_E_L_E_T_ = ' ' "
+		cQry += "     AND UF5.UF5_CLIANT = SA1.A1_COD "
+		cQry += "     AND UF5.UF5_LOJANT = SA1.A1_LOJA "
+		cQry += "     AND UF5.UF5_MSEXP = ' ' "
+
+
+	endif
+
+	cQry += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQry += " AND SA1.A1_CGC <> ' ' "
+	cQry += " AND SA1.A1_XDTNASC <> ' ' " // Somente clientes com data de nascimento
+
+	If ExistBlock("PUT57CWQRY")
+		cQry += ExecBlock("PUT57CWQRY", .F., .F., {nU00, nUF2})
+	EndIf
+
+	//filtro clientes que tenha algum contrato ou que deixou de ser titular de algum contrato
+	cQry += " AND ( "
+
+	if nU00 > 0
+
+		cQry += "     U00.U00_CODIGO <> ' ' "
+		cQry += "     OR "
+		cQry += "     U19.U19_CODIGO <> ' ' "
+
+	endif
+
+	if nU00 > 0 .And. nUF2 > 0
+
+		cQry += "     OR "
+
+	endif
+
+	if nUF2 > 0
+		cQry += "     UF2.UF2_CODIGO <> ' ' "
+		cQry += "     OR "
+		cQry += "     UF5.UF5_CODIGO <> ' ' "
+
+	endif
+
+	cQry += " ) "
+
+	//condições para ver registros pendentes nas tabela envolvidas
+	cQry += " AND ( "
+	cQry += "     SA1.A1_MSEXP = ' ' " //cliente
+
+	if nU00 > 0
+
+		cQry += "     OR "
+		cQry += "     U00.U00_MSEXP = ' ' " // contrato cemiterio
+		cQry += "     OR "
+		cQry += "     U19.U19_MSEXP = ' ' " //troca titular cemiterio
+		cQry += "     OR ( "
+		cQry += "         U00.U00_CODIGO <> ' ' "
+		cQry += "         AND ( "
+		cQry += "         EXISTS ( " //beneficiarios de contrato cemiterio
+		cQry += "             SELECT U02_CODIGO FROM " +RetSQLName("U02") + " U02 (NOLOCK) "
+		cQry += "             WHERE U02.D_E_L_E_T_ = ' ' "
+		cQry += "             AND U02.U02_FILIAL = U00.U00_MSFIL "
+		cQry += "             AND U02.U02_CODIGO = U00.U00_CODIGO "
+		cQry += "             AND U02.U02_CPF <> '' "
+		cQry += "             AND U02.U02_NOME <> '' "
+		cQry += "             AND U02.U02_DTNASC <> '' "
+		cQry += "             AND U02.U02_CPF <> SA1.A1_CGC " // Não é o titular
+		cQry += "             AND U02.U02_MSEXP = ' ' "
+		cQry += "         ) "
+		cQry += "         OR "
+		cQry += "         EXISTS ( " //serviços prestados de contrato cemiterio
+		cQry += "             SELECT UJV_CODIGO FROM " +RetSQLName("UJV") + " UJV (NOLOCK) "
+		cQry += "             WHERE UJV.D_E_L_E_T_ = ' ' "
+		cQry += "             AND UJV.UJV_FILIAL = U00.U00_MSFIL "
+		cQry += "             AND UJV.UJV_CONTRA = U00.U00_CODIGO "
+		cQry += "             AND UJV.UJV_MSEXP = ' ' "
+		cQry += "         ) "
+		cQry += "         ) "
+		cQry += "     ) "
+	endif
+
+	if nUF2 > 0
+		cQry += "     OR "
+		cQry += "     UF2.UF2_MSEXP = ' ' " //contrato funeraria
+		cQry += "     OR "
+		cQry += "     UF5.UF5_MSEXP = ' ' " //troca titular funeraria
+		cQry += "     OR ( "
+		cQry += "         UF2.UF2_CODIGO <> ' ' "
+		cQry += "         AND ( "
+		cQry += "         EXISTS ( " //beneficiarios de contrato funeraria
+		cQry += "             SELECT UF4_CODIGO FROM " +RetSQLName("UF4") + " UF4 (NOLOCK) "
+		cQry += "             WHERE UF4.D_E_L_E_T_ = ' ' "
+		cQry += "             AND UF4.UF4_FILIAL = UF2.UF2_FILIAL "
+		cQry += "             AND UF4.UF4_CODIGO = UF2.UF2_CODIGO "
+		cQry += "             AND UF4.UF4_CPF <> '' "
+		cQry += "             AND UF4.UF4_NOME <> '' "
+		cQry += "             AND UF4.UF4_DTNASC <> '' "
+		cQry += "             AND UF4.UF4_TIPO <> '3' " // Não é o titular
+		cQry += "             AND UF4.UF4_MSEXP = ' ' "
+		cQry += "         ) "
+		cQry += "         OR "
+		cQry += "         EXISTS ( " //serviços prestados de contrato funeraria
+		cQry += "             SELECT UJ0_CODIGO FROM " +RetSQLName("UJ0") + " UJ0 (NOLOCK) "
+		cQry += "             WHERE UJ0.D_E_L_E_T_ = ' ' "
+		cQry += "             AND UJ0.UJ0_FILIAL = UF2.UF2_MSFIL "
+		cQry += "             AND UJ0.UJ0_CONTRA = UF2.UF2_CODIGO "
+		cQry += "             AND UJ0.UJ0_MSEXP = ' ' "
+		cQry += "         ) "
+		cQry += "         ) "
+		cQry += "     ) "
+
+	endif
+
+	cQry += " ) "
+
+	cQry += " ORDER BY A1_CGC "
+
+	if Select("QRYCARGA") > 0
+		QRYCARGA->(DbCloseArea())
+	endif
+
+	MemoWrite("c:\totvs\diferencial.txt",cQry)
+
+	// atualizo o log de console
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "QRYCARGA: "+cQry, 0, , {})
+
+	cQry := ChangeQuery(cQry)
+
+	TcQuery cQry NEW Alias "QRYCARGA"
+
+	While QRYCARGA->(!Eof())
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "ENVIANDO DADOS DO CLIENTE "+QRYCARGA->A1_CGC+" ", 0, 0, {})
+
+		oVirtusCargaClientes := VirtusCargaClientes():New()
+
+		lContinua := oVirtusCargaClientes:ProcessaClientes(QRYCARGA->A1_CGC)
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "RETORNO DO ENVIO DO CLIENTE "+QRYCARGA->A1_CGC+": "+iif(lContinua,"SUCESSO","FALHA!"), 0, 0, {})
+
+		if lContinua
+			if !GrvCadMsExp(QRYCARGA->A1_COD, QRYCARGA->A1_LOJA)
+				FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "NAO FOI POSSIVEL GRAVAR _MSEXP NAS TABELAS ", 0, 0, {})
+			endif
+		endif
+
+		FreeObj( oVirtusCargaClientes )
+
+		QRYCARGA->(DbSkip())
+	EndDo
+
+	if Select("QRYCARGA") > 0
+		QRYCARGA->(DbCloseArea())
+	endif
+Return
+
+Static Function AtTitulos()
+
+	Local cQry 		:= ""
+	Local lContinua := .F.
+	Local oVirtusCargaTitulos	As Object
+	Local oSX2			        As Object
+	Local nUF2			        As Numeric
+	Local nU00			        As Numeric
+
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	cQry := " SELECT DISTINCT A1_CGC, A1_COD, A1_LOJA FROM ( "
+
+	if nU00 > 0
+
+		cQry += " SELECT DISTINCT SA1.A1_CGC, SA1.A1_COD, SA1.A1_LOJA "
+		cQry += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+
+		cQry += " INNER JOIN " +RetSQLName("U00") + " U00 (NOLOCK) ON "
+		cQry += "     U00.D_E_L_E_T_ = ' ' "
+		cQry += "     AND U00.U00_CLIENT = SA1.A1_COD "
+		cQry += "     AND U00.U00_LOJA = SA1.A1_LOJA "
+		cQry += "     AND U00.U00_STATUS IN ('A','S') "
+
+		cQry += " INNER JOIN " +RetSQLName("SE1") + " SE1 (NOLOCK) ON "
+		cQry += "     SE1.D_E_L_E_T_ = ' ' "
+		cQry += "     AND SE1.E1_FILIAL = U00.U00_MSFIL "
+		cQry += "     AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+		cQry += "     AND SE1.E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB') "
+		cQry += "     AND SE1.E1_VALOR > 0 "
+		cQry += "     AND SE1.E1_MSEXP = ' ' "
+
+		cQry += " WHERE SA1.D_E_L_E_T_ = ' ' "
+		cQry += " AND SA1.A1_CGC <> ' ' "
+		cQry += " AND SA1.A1_XDTNASC <> ' ' "
+
+		If ExistBlock("PUT57TWQRY")
+			cQry += ExecBlock("PUT57TWQRY", .F., .F., {.T., .F.})
+		EndIf
+
+	endif
+
+	if nU00 > 0 .And. nUF2 > 0
+		cQry += " UNION ALL "
+	endif
+
+	if nUF2 > 0
+		cQry += " SELECT DISTINCT SA1.A1_CGC, SA1.A1_COD, SA1.A1_LOJA "
+		cQry += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+
+		cQry += " INNER JOIN " +RetSQLName("UF2") + " UF2 (NOLOCK) ON"
+		cQry += "     UF2.D_E_L_E_T_ = ' ' "
+		cQry += "     AND UF2.UF2_CLIENT = SA1.A1_COD "
+		cQry += "     AND UF2.UF2_LOJA = SA1.A1_LOJA "
+		cQry += "     AND UF2.UF2_STATUS IN ('A','S') "
+
+		cQry += " INNER JOIN " +RetSQLName("SE1") + " SE1 (NOLOCK) ON "
+		cQry += "     SE1.D_E_L_E_T_ = ' ' "
+		cQry += "     AND SE1.E1_FILIAL = UF2.UF2_MSFIL "
+		cQry += "     AND SE1.E1_XCTRFUN = UF2.UF2_CODIGO "
+		cQry += "     AND SE1.E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB') "
+		cQry += "     AND SE1.E1_VALOR > 0 "
+		cQry += "     AND SE1.E1_MSEXP = ' ' "
+
+		cQry += " WHERE SA1.D_E_L_E_T_ = ' ' "
+		cQry += " AND SA1.A1_CGC <> ' ' "
+		cQry += " AND SA1.A1_XDTNASC <> ' ' "
+
+		If ExistBlock("PUT57TWQRY")
+			cQry += ExecBlock("PUT57TWQRY", .F., .F., {.F., .T.})
+		EndIf
+
+	endif
+
+	cQry += " ) CARGATITULOS "
+
+	cQry += " ORDER BY A1_CGC "
+
+	if Select("QRYCARGA") > 0
+		QRYCARGA->(DbCloseArea())
+	endif
+
+	// atualizo o log de console
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "QRYCARGA: "+cQry, 0, 0, {})
+
+	cQry := ChangeQuery(cQry)
+
+	TcQuery cQry NEW Alias "QRYCARGA"
+
+	While QRYCARGA->(!Eof())
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "ENVIANDO TITULOS DO CLIENTE "+QRYCARGA->A1_CGC+" ", 0, 0, {})
+
+		oVirtusCargaTitulos := VirtusCargaTitulos():New()
+		lContinua := oVirtusCargaTitulos:ProcessaTitulos(QRYCARGA->A1_CGC)
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "RETORNO DO ENVIO DO CLIENTE "+QRYCARGA->A1_CGC+": "+iif(lContinua,"SUCESSO","FALHA!"), 0, 0, {})
+
+		if lContinua
+			if !GrvTitMsExp(QRYCARGA->A1_COD, QRYCARGA->A1_LOJA)
+				FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "NAO FOI POSSIVEL GRAVAR _MSEXP NAS TABELAS ", 0, 0, {})
+			endif
+		endif
+
+		FreeObj( oVirtusCargaTitulos )
+
+		QRYCARGA->(DbSkip())
+	EndDo
+
+	if Select("QRYCARGA") > 0
+		QRYCARGA->(DbCloseArea())
+	endif
+
+Return
+
+Static Function GrvCadMsExp(cCodCli, cLojCli)
+
+	Local lRet          := .T.
+	Local cQuery		:= ""
+	Local nStatus		:= 0
+	Local oSX2			:= NIL
+	Local nUF2			:= 0
+	Local nU00			:= 0
+
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	//cliente
+	cQuery := "UPDATE " + RetSqlName("SA1")
+	cQuery += " SET A1_MSEXP = '" + DtoS(Date()) + "' "
+	cQuery += "WHERE A1_COD = '"+cCodCli+"' "
+	cQuery += "AND A1_LOJA = '"+cLojCli+"'"
+	nStatus := TCSQLEXEC(cQuery)
+	If nStatus < 0
+		lRet := .F.
+	Else
+		// atualizo o cache do alias
+		TCRefresh("SA1")
+	EndIf
+
+	if nU00 > 0
+
+		//contrato cemiterio
+		cQuery := "UPDATE " + RetSqlName("U00")
+		cQuery += " SET U00_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE U00_CLIENT = '"+cCodCli+"' "
+		cQuery += "AND U00_LOJA = '"+cLojCli+"'"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+		//troca titular contrato cemiterio
+		cQuery := "UPDATE " + RetSqlName("U19")
+		cQuery += " SET U19_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE U19_CLIANT = '"+cCodCli+"' "
+		cQuery += "AND U19_LOJANT = '"+cLojCli+"'"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+		//beneficiarios contrato cemiterio
+		cQuery := "UPDATE " + RetSqlName("U02") + " "
+		cQuery += "SET U02_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(U02_FILIAL, U02_CODIGO) IN ("
+		cQuery += " SELECT CONCAT(U00_MSFIL, U00_CODIGO) FROM " +RetSQLName("U00")
+		cQuery += " WHERE U00_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND U00_LOJA = '"+cLojCli+"'"
+		cQuery += " AND U00_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+		//serviços contrato cemiterio
+		cQuery := "UPDATE " + RetSqlName("UJV") + " "
+		cQuery += "SET UJV_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(UJV_FILIAL, UJV_CONTRA) IN ("
+		cQuery += " SELECT CONCAT(U00_MSFIL, U00_CODIGO) FROM " +RetSQLName("U00")
+		cQuery += " WHERE U00_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND U00_LOJA = '"+cLojCli+"'"
+		cQuery += " AND U00_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+
+	endif
+
+	if nUF2 > 0
+
+		//contrato funeraria
+		cQuery := "UPDATE " + RetSqlName("UF2")
+		cQuery += " SET UF2_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE UF2_CLIENT = '"+cCodCli+"' "
+		cQuery += "AND UF2_LOJA = '"+cLojCli+"'"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+		//troca titular contrato funeraria
+		cQuery := "UPDATE " + RetSqlName("UF5")
+		cQuery += " SET UF5_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE UF5_CLIANT = '"+cCodCli+"' "
+		cQuery += "AND UF5_LOJANT = '"+cLojCli+"'"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		Else
+			// atualizo o cache do alias
+			TCRefresh("U00")
+		EndIf
+
+		//beneficiarios contrato funeraria
+		cQuery := "UPDATE " + RetSqlName("UF4") + " "
+		cQuery += "SET UF4_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(UF4_FILIAL, UF4_CODIGO) IN ("
+		cQuery += " SELECT CONCAT(UF2_FILIAL, UF2_CODIGO) FROM " +RetSQLName("UF2")
+		cQuery += " WHERE UF2_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND UF2_LOJA = '"+cLojCli+"'"
+		cQuery += " AND UF2_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+
+		EndIf
+
+		//serviços contrato funeraria
+		cQuery := "UPDATE " + RetSqlName("UJ0") + " "
+		cQuery += "SET UJ0_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(UJ0_FILIAL, UJ0_CONTRA) IN ("
+		cQuery += " SELECT CONCAT(UF2_MSFIL, UF2_CODIGO) FROM " +RetSQLName("UF2")
+		cQuery += " WHERE UF2_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND UF2_LOJA = '"+cLojCli+"'"
+		cQuery += " AND UF2_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		EndIf
+
+	endif
+
+Return nStatus >= 0
+
+
+Static Function GrvTitMsExp(cCodCli, cLojCli)
+
+	Local lRet          := .T.
+	Local cQuery		:= ""
+	Local nStatus		:= 0
+	Local oSX2			:= NIL
+	Local nUF2			:= 0
+	Local nU00			:= 0
+
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	if nU00 > 0
+		//serviços contrato cemiterio
+		cQuery := "UPDATE " + RetSqlName("SE1") + " "
+		cQuery += "SET E1_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(E1_FILIAL, E1_XCONTRA) IN ("
+		cQuery += " SELECT CONCAT(U00_MSFIL, U00_CODIGO) FROM " +RetSQLName("U00")
+		cQuery += " WHERE U00_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND U00_LOJA = '"+cLojCli+"'"
+		cQuery += " AND U00_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		EndIf
+
+	endif
+
+	if nUF2
+
+		//titulos contrato funeraria
+		cQuery := "UPDATE " + RetSqlName("SE1") + " "
+		cQuery += "SET E1_MSEXP = '" + DtoS(Date()) + "' "
+		cQuery += "WHERE CONCAT(E1_FILIAL, E1_XCTRFUN) IN ("
+		cQuery += " SELECT CONCAT(UF2_MSFIL, UF2_CODIGO) FROM " +RetSQLName("UF2")
+		cQuery += " WHERE UF2_CLIENT = '"+cCodCli+"'"
+		cQuery += " AND UF2_LOJA = '"+cLojCli+"'"
+		cQuery += " AND UF2_STATUS IN ('A','S')"
+		cQuery += ")"
+		nStatus := TCSQLEXEC(cQuery)
+		If nStatus < 0
+			lRet := .F.
+		EndIf
+
+	endif
+
+Return nStatus >= 0

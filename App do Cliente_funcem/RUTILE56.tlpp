@@ -1,0 +1,388 @@
+#Include 'totvs.ch'
+#Include "topconn.ch"
+#Include "tbiconn.ch"
+
+#Define CRLF chr(13)+chr(10)
+
+Static lStartProcess := .F.
+Static lIsInProcess := .F.
+
+/*/{Protheus.doc} RUTILE56
+Tela para a carga completa no App do Cliente
+@type function
+@version 1.0
+@author danilo
+@since 20/04/2022
+/*/
+User Function RUTILE56
+
+    //variáveis da tela
+	Local aCoors := FWGetDialogSize(oMainWnd)  
+	Local oLayer := FWLayer():new()
+	Local oPnlTela, oPnlTitle, oPnlCfg, oPnlLog
+    Local oFontTit := TFont():New('Arial',,22,.T.,.T.)
+    Local bAtuQtdReg :=  {|| iif(cCtrQtdReg <> cTipo+STRZERO(nQtdRegPg,4)+cCGCCliente+cStatus+DTOS(dDataIni)+DTOS(dDataFim), (cCtrQtdReg := cTipo+STRZERO(nQtdRegPg,4)+cCGCCliente+cStatus+DTOS(dDataIni)+DTOS(dDataFim), MsAguarde({|| AtuQtdReg() },"Aguarde...","Buscando registros....",.T.) ),) }
+    Local oTimerProc
+
+    Private oVirtusCargaClientes 
+    Private oVirtusCargaTitulos 
+
+    Private oDlgCarga
+    Private cCadastro := "Carga Completa - APP CLIENTE VIRTUS"
+    Private cCGCCliente := Space(14)
+    Private aTipo := {"C=Cadastros","F=Financeiro"}
+    Private cTipo := "C"
+    Private aStatus := {" ","A=Ativo","S=Suspenso"}
+    Private cStatus := " "
+    Private dDataIni:= STOD("")
+    Private dDataFim:= STOD("")
+    Private nQtdCliente := 0000
+    Private nPaginas := 0
+    Private nPgInicio := 1
+    Private nPgFim := 1
+    Private nQtdProcess := 0
+    Private oGetLog
+    Private cGetLog := ""
+    Private nQtdRegPg := 100
+    Private cCtrQtdReg := ""
+    Private cSayProgress := ""
+    Private lShowJSON := .F.
+
+    //começa montagem do DLG
+	DEFINE MSDIALOG oDlgCarga TITLE cCadastro FROM aCoors[1], aCoors[2] To aCoors[3], aCoors[4] PIXEL OF GetWndDefault() STYLE nOr(WS_VISIBLE, WS_POPUP)
+    oDlgCarga:lEscClose := .F.
+
+    oPnlTitle := tPanel():New(00,00,,oDlgCarga,,,,,,020,020)
+	oPnlTitle:Align := CONTROL_ALIGN_TOP
+
+    TSay():New( 05,05,{|| cCadastro }, oPnlTitle,,oFontTit,,,,.T.,/*nCorGrid*/,,200,16 )
+    oBtnClose := TBtnBmp2():New( 05, oDlgCarga:nWidth-30 ,20,30,'FWSKIN_DELETE_ICO',,,,{|| oDlgCarga:End() },oPnlTitle,,,.T. )
+
+    oPnlTela := tPanel():New(00,00,,oDlgCarga,,,,,,100,100)
+	oPnlTela:Align := CONTROL_ALIGN_ALLCLIENT
+
+    oLayer:init(oPnlTela,.F.)
+    oLayer:addCollumn('Col01',40,.F.)
+    oLayer:addCollumn('Col02',60,.F.)
+    oLayer:addWindow('Col01','C1_Win01','Configurações',100,.F.,.F.,{||  },,{||  })
+    oLayer:addWindow('Col02','C2_Win01','Log de Processamento',100,.F.,.F.,{||  },,{||  })
+    oPnlCfg := oLayer:getWinPanel('Col01','C1_Win01')
+	oPnlLog := oLayer:getWinPanel('Col02','C2_Win01')
+
+    TSay():New( 010, 010,{|| "Tipo Processo" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,50,9 )
+	oTipo := TComboBox():New( 020, 010, {|u| If(PCount()>0,cTipo:=u,cTipo)}, aTipo , 80, 016, oPnlCfg, Nil,bAtuQtdReg/*bChange*/,/*bValid*/,,,.T.,,Nil,Nil,{|| !lStartProcess } )
+
+    TSay():New( 010, 110,{|| "Qtd.Reg.p/Pagina:" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,100,9 )
+	oQtdRegPg := TGet():New( 020, 110, {|u| iif( PCount()==0,nQtdRegPg,nQtdRegPg:= u) },oPnlCfg,080,13,"9999",bAtuQtdReg/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess},.F.,.F.,/*bChange*/,.F.,.F.,,"",,,,.T.,.F.)
+
+    TSay():New( 040, 010,{|| "CPF/CNPJ Cliente" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,100,9 )
+	oCgcCliente := TGet():New( 050, 010, {|u| iif( PCount()==0,cCGCCliente,cCGCCliente:= u) },oPnlCfg,080,13,,bAtuQtdReg/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess },.F.,.F.,/*bChange*/,.F.,.F.,,"A1_CGC",,,,.T.,.F.)
+	
+    TSay():New( 040, 110,{|| "Status Contrato" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,50,9 )
+	oStatus := TComboBox():New( 050, 110, {|u| If(PCount()>0,cStatus:=u,cStatus)}, aStatus , 80, 016, oPnlCfg, Nil,bAtuQtdReg/*bChange*/,/*bValid*/,,,.T.,,Nil,Nil,{|| !lStartProcess } )
+
+    TSay():New( 070, 010,{|| "Data Cadastro De" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,50,9 )
+	oDataIni := TGet():New( 080, 010, {|u| iif( PCount()==0,dDataIni,dDataIni:= u) },oPnlCfg,80,13,,bAtuQtdReg/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess},.F.,.F.,/*bChange*/,.F.,.F.,,"A1_DTCAD",,,,.T.,.F.)
+
+	TSay():New( 070, 110,{|| "Data Cadastro Até" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,50,9 )
+	oDataFim := TGet():New( 080, 110, {|u| iif( PCount()==0,dDataFim,dDataFim:= u) },oPnlCfg,80,13,,bAtuQtdReg/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess},.F.,.F.,/*bChange*/,.F.,.F.,,"A1_DTCAD",,,,.T.,.F.)
+
+    TSay():New( 100, 000,{|| Repl("_",oPnlCfg:nWidth/2) }, oPnlCfg,,,,,,.T.,CLR_HGRAY,,oPnlCfg:nWidth/2,9 )
+
+    TSay():New( 120, 010,{|| "Qtd. Clientes: " }, oPnlCfg,,,,,,.T.,CLR_BLACK,,60,9 )
+    oQtdCliente := TSay():New( 118, 050,{|u| If(PCount()>0,nQtdCliente:=u,nQtdCliente)}, oPnlCfg,,oFontTit,,,,.T.,CLR_BLUE,,80,9 )
+
+    TSay():New( 120, 110,{|| "Qtd. Páginas: " }, oPnlCfg,,,,,,.T.,CLR_BLACK,,60,9 )
+    oPaginas := TSay():New( 118, 150,{|u| If(PCount()>0,nPaginas:=u,nPaginas)}, oPnlCfg,,oFontTit,,,,.T.,CLR_BLUE,,80,9 )
+
+    TSay():New( 140, 010,{|| "Iniciar da Pag.:" }, oPnlCfg,,,,,,.T.,CLR_BLACK,,100,9 )
+	oPgInicio := TGet():New( 150, 010, {|u| iif( PCount()==0,nPgInicio,nPgInicio:= u) },oPnlCfg,045,13,"9999",/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess},.F.,.F.,/*bChange*/,.F.,.F.,,"",,,,.T.,.F.)
+
+    TSay():New( 140, 060,{|| "até Pag." }, oPnlCfg,,,,,,.T.,CLR_BLACK,,100,9 )
+	oPgFim := TGet():New( 150, 060, {|u| iif( PCount()==0,nPgFim,nPgFim:= u) },oPnlCfg,045,13,"9999",/*bValid*/,,,,.F.,,.T.,,.F.,{|| !lStartProcess},.F.,.F.,/*bChange*/,.F.,.F.,,"",,,,.T.,.F.)
+	
+    oBtnProc := TButton():New( 150, 110, "PROCESSAR", oPnlCfg, {|| IniProc() }, 80, 013,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+    TSay():New( 170, 000,{|| Repl("_",oPnlCfg:nWidth/2) }, oPnlCfg,,,,,,.T.,CLR_HGRAY,,oPnlCfg:nWidth/2,9 )
+
+    oSayProgress := TSay():New( 205, 010,{|u|if(Pcount()>0, cSayProgress:=u,cSayProgress)}, oPnlCfg,,oFontTit,,,,.T.,CLR_BLACK,,250,9 )
+
+    oPnlBtLog := tPanel():New(00,00,,oPnlLog,,,,,,012,012)
+    oShowJson := TCheckBox():New(01,080,'Mostrar JSON no log processamento',{|u| iif( PCount()==0,lShowJSON,lShowJSON:= u) },oPnlBtLog,100,10,,,,,,,,.T.,,,)
+    //oShowJson:Align := CONTROL_ALIGN_BOTTOM
+    oBtnLimpa := TButton():New( 001,005, "Limpar Log", oPnlBtLog, {|| cGetLog:= "", oGetLog:Refresh() }, 060, 010,,,.F.,.T.,.F.,,.F.,,,.F. )
+    oPnlBtLog:Align := CONTROL_ALIGN_BOTTOM
+
+    oGetLog := TMultiget():Create(oPnlLog,{|u|if(Pcount()>0, cGetLog:=u,cGetLog)},047,007,169,047,,.T.,,,,.T.,,,,,,.T.)
+    oGetLog:Align := CONTROL_ALIGN_ALLCLIENT
+    oGetLog:EnableVScroll( .F. )
+
+    oTimerProc := TTimer():New(300, {|| TimerProc() }, oDlgCarga )
+    oTimerProc:Activate()
+
+    oDlgCarga:bInit := bAtuQtdReg
+
+	oDlgCarga:lCentered := .T.
+	oDlgCarga:Activate()
+
+Return
+
+//-----------------------------------------------------
+// Função que Habilita/Desabilita objetos tela
+//-----------------------------------------------------
+Static Function SetObjEnable(lEnable)
+
+    Default lEnable := .T.
+
+    if lEnable
+        oBtnProc:enable()
+        oBtnLimpa:enable()
+        oBtnClose:enable()
+    else
+        oBtnProc:disable()
+        oBtnLimpa:disable()
+        oBtnClose:disable()
+    endif
+
+    oTipo:refresh()
+    oCgcCliente:refresh()
+    oStatus:refresh()
+    oDataIni:refresh()
+    oDataFim:refresh()
+    oPgInicio:refresh()
+
+Return
+
+//-----------------------------------------------------
+// Função que Atualiza a quantidade de registros e páginas
+//-----------------------------------------------------
+Static Function AtuQtdReg()
+
+    if cTipo == "C"
+        if oVirtusCargaClientes == Nil
+            oVirtusCargaClientes := VirtusCargaClientes():New()
+        endif
+
+        nQtdCliente := oVirtusCargaClientes:TotalClientes(cCGCCliente,;
+            iif(empty(cStatus),"A,S",cStatus),;
+            dDataIni,;
+            dDataFim,;
+            .F.;
+        )
+
+        nPaginas := Ceiling( nQtdCliente / nQtdRegPg )
+        nPgFim := nPaginas
+        
+        oQtdCliente:Refresh()
+        oPaginas:Refresh()
+        oPgFim:Refresh()
+
+    elseif cTipo == "F"
+
+        if oVirtusCargaTitulos == Nil
+            oVirtusCargaTitulos := VirtusCargaTitulos():New()
+        endif
+
+        nQtdCliente := oVirtusCargaTitulos:TotalTitulos(cCGCCliente,;
+            iif(empty(cStatus),"A,S",cStatus),;
+            dDataIni,;
+            dDataFim,;
+            .F.;
+        )
+
+        nPaginas := Ceiling( nQtdCliente / nQtdRegPg )
+        nPgFim := nPaginas
+        
+        oQtdCliente:Refresh()
+        oPaginas:Refresh()
+        oPgFim:Refresh()
+
+    endif
+
+Return .T.
+
+//-----------------------------------------------------
+// Função que configura inicio do processamento
+//-----------------------------------------------------
+Static Function IniProc()
+
+    if nPgInicio < 1 .OR. nPgInicio > nPaginas .OR. nPgFim > nPaginas .OR. nPgInicio > nPgFim
+        oGetLog:AppendText( "Campos [Iniciar da Pag.] ou [até Pag.] preenchidos incorretamente!" + CRLF)
+        lStartProcess := .F.
+        Return
+    endif
+
+    SetObjEnable(.F.)
+    oGetLog:AppendText( time() + " Inicio do processamento "+iif(cTipo=="C","Cadastros","Financeiro")+"..." + CRLF)
+
+    If cTipo == "C"
+        oGetLog:AppendText( time() + " Iniciando busca dos dados ..." + CRLF)
+        //montando a paginação internamente na classe oVirtusCargaClientes
+        oVirtusCargaClientes:TotalClientes(cCGCCliente,;
+            iif(empty(cStatus),"A,S",cStatus),;
+            dDataIni,;
+            dDataFim,;
+            .T.;
+        )
+    Elseif cTipo == "F"
+        oGetLog:AppendText( time() + " Iniciando busca dos dados ..." + CRLF)
+        //montando a paginação internamente na classe oVirtusCargaTitulos
+        oVirtusCargaTitulos:TotalTitulos(cCGCCliente,;
+            iif(empty(cStatus),"A,S",cStatus),;
+            dDataIni,;
+            dDataFim,;
+            .T.;
+        )
+    Endif
+
+    lStartProcess := .T.
+    nQtdProcess := nPgInicio
+
+Return
+
+//-----------------------------------------------------
+// Função que gerencia chamada das páginas, pelo timer
+//-----------------------------------------------------
+Static Function TimerProc()
+
+    if !lStartProcess .OR. lIsInProcess
+        Return
+    endif
+    
+    lIsInProcess := .T.
+
+    ProcCarga(nQtdProcess)
+
+    if nQtdProcess == nPgFim//nPaginas
+        oGetLog:AppendText( time() + " Fim do processamento!" + CRLF)
+        cSayProgress := "Processo Finalizado! " + cValToChar(nQtdProcess) + "/" + cValToChar(nPgFim) +  " ("+cValToChar( Round(nQtdProcess/nPgFim*100,2) )+"%)" 
+        oSayProgress:CtrlRefresh()
+        lIsInProcess := .F.
+        lStartProcess := .F.
+        SetObjEnable()
+        oDlgCarga:Refresh()
+        oTipo:SetFocus()
+    else
+        nQtdProcess++
+        lIsInProcess := .F.
+    endif
+
+Return
+
+//-------------------------------------------------
+// Chama o processamento de uma página da Carga
+//-------------------------------------------------
+Static Function ProcCarga(nX)
+    
+    If cTipo == "C"
+        EnviaDadosAPICad(nX)
+    Elseif cTipo == "F"
+        EnviaDadosAPIFin(nX)
+    Endif
+    
+    cSayProgress := "Enviando Carga.... " + cValToChar(nQtdProcess) + "/" + cValToChar(nPgFim) +  " ("+cValToChar( Round(nQtdProcess/nPgFim*100,2) )+"%)" 
+    oSayProgress:CtrlRefresh()
+
+Return
+
+//-------------------------------------------------
+// Envia dados cadastrais para API do APP Cliente
+//-------------------------------------------------
+Static Function EnviaDadosAPICad(nSkip)
+
+    Local cToken			:= SuperGetMV("MV_XTOKAPP",.F., "")
+	Local cHost             := SuperGetMV("MV_XLNKAPI", .F., "https://api.plataformavirtus.com.br/v1")
+	Local cPath             := "/customer/protheus/load"
+	Local aHeadStr          := {}
+	Local oRestClient       := Nil
+	Local oCargaClientes    := JsonObject():New()
+    Local cResult := ""
+
+	AADD(aHeadStr,"Content-Type:application/json")
+	AADD(aHeadStr,"Authorization: Bearer " + cToken)
+
+    oGetLog:AppendText( time() + " Montando JSON página "+ CValToChar(nSkip) +" ..." + CRLF)
+
+    oCargaClientes["clientes"] := oVirtusCargaClientes:CargaClientes(;
+        cCGCCliente,;
+        iif(empty(cStatus),"A,S",cStatus),;
+        dDataIni,;
+        dDataFim,;
+        (nSkip-1)*nQtdRegPg,;
+        nQtdRegPg)
+
+	If Len(oCargaClientes["clientes"]) > 0
+
+        oGetLog:AppendText( time() + " Enviando página "+ CValToChar(nSkip) +" ..." + CRLF)
+        if lShowJSON
+            oGetLog:AppendText( oCargaClientes:toJSON() + CRLF)
+        endif
+       
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oCargaClientes:toJSON() )
+
+		oRestClient:Post(aHeadStr)
+        cResult := oRestClient:GetResult()
+
+        if "customers_saved" $ cResult
+            oGetLog:AppendText( time() + " Pagina "+ CValToChar(nSkip) +" processada com sucesso!" + CRLF )
+        else
+            oGetLog:AppendText( time() + " FALHA! Retorno: " + cResult + CRLF )
+        endif
+
+	EndIf
+
+Return
+
+//-------------------------------------------------
+// Envia dados financeiros para API do APP Cliente
+//-------------------------------------------------
+Static Function EnviaDadosAPIFin(nSkip)
+
+    Local cToken			:= SuperGetMV("MV_XTOKAPP",.F., "")
+	Local cHost             := SuperGetMV("MV_XLNKAPI", .F., "https://api.plataformavirtus.com.br/v1")
+	Local cPath             := "/charges/protheus/create"
+	Local aHeadStr          := {}
+    Local oCargaTitulos     := JsonObject():New()
+    Local cResult           := ""
+
+	AADD(aHeadStr,"Content-Type:application/json")
+	AADD(aHeadStr,"Authorization: Bearer " + cToken)
+
+    oGetLog:AppendText( time() + " Montando JSON página "+ CValToChar(nSkip) +" ..." + CRLF)
+
+    oCargaTitulos["clientes"] := oVirtusCargaTitulos:CargaTitulos(;
+        cCGCCliente,;
+        iif(empty(cStatus),"A,S",cStatus),;
+        dDataIni,;
+        dDataFim,;
+        (nSkip-1)*nQtdRegPg,;
+        nQtdRegPg ;
+    )
+
+	If Len(oCargaTitulos["clientes"]) > 0
+
+        oGetLog:AppendText( time() + " Enviando página "+ CValToChar(nSkip) +" ..." + CRLF)
+        if lShowJSON
+            oGetLog:AppendText( oCargaTitulos:toJSON() + CRLF)
+        endif
+
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oCargaTitulos:toJSON() )
+
+		oRestClient:Post(aHeadStr)
+        cResult := oRestClient:GetResult()
+
+        if "charges_saved" $ cResult
+            oGetLog:AppendText( time() + " Pagina "+ CValToChar(nSkip) +" processada com sucesso!" + CRLF )
+        else
+            oGetLog:AppendText( time() + " FALHA! Retorno: " + cResult + CRLF )
+        endif
+
+	EndIf
+
+    FreeObj(oCargaTitulos)
+
+Return

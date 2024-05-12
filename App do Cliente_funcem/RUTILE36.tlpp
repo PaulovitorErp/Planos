@@ -1,0 +1,798 @@
+using namespace tlpp.regex //classe RegEx (https://tdn.totvs.com/display/tec/Classe+RegEx)
+
+#Include 'totvs.ch'
+#Include "topconn.ch"
+#Include "tbiconn.ch"
+
+//Expressão Regular
+//jquense/yup (validação de e-mail)
+//-> https://github.com/jquense/yup/search?q=email#:~:text=8%20Apr%202021-,src/string.ts,-19
+Static cPattern := "^([a-z0-9]){1,}([a-z0-9._-]){1,}([a-z0-9]){1,}([@]){1}([a-z]){2,}([.]){1}([a-z]){2,}([.]?){1}([a-z]?){2,}([.]?){1}([a-z]?){2,}$"
+
+/*/{Protheus.doc} RUTILE36
+Programa para a carga de clientes no App do Cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/06/2021
+/*/
+User Function RUTILE36
+Return(Nil)
+
+/*/{Protheus.doc} VirtusCargaClientes
+Classe para a carga de Clientes
+@type class
+@version 1.0 
+@author g.sampaio
+@since 28/06/2021
+/*/
+	Class VirtusCargaClientes
+
+		Public Data aClientes as Array
+		Public Data aDataRet as array
+
+		Public Method New() Constructor
+		Public Method TotalClientes()   // metodo para retornar o total de clientes
+		Public Method CargaClientes()
+
+		// metodos de envio
+		Public Method ProcessaClientes()
+		Public Method ClientesPendentes()
+		Public Method EnviarCliente()	// post
+
+	EndClass
+
+/*/{Protheus.doc} VirtusCargaClientes::New
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/06/2021
+@return variant, return_description
+/*/
+Method New() Class VirtusCargaClientes
+
+	Self:aClientes := {}
+	Self:aDataRet := {}
+
+Return(Self)
+
+/*/{Protheus.doc} VirtusCargaClientes::totalClientes
+Metodo para retornar o total de clientes
+com contratos de cemiterio, funeraria ou os dois
+@type method
+@version 1.0
+@author g.sampaio
+@since 28/06/2021
+@param cCgcCliente, character, cpf/cnpj do cliente
+@param cStatus, character, status do cliente
+@param dDataCadIni, date, data de cadastro inicial
+@param dDataCadFim, date, data de cadastro final
+/*/
+Method TotalClientes(cCgcCliente, cStatus, dDataCadIni, dDataCadFim, lArrCli) Class VirtusCargaClientes
+
+	Local cQuery 		As Character
+	Local cAliasExec	As Character
+	Local nCount		As Numeric
+	Local oSX2			As Object
+	Local nUF2			As Numeric
+	Local nU00			As Numeric
+
+	Default cCgcCliente := ""
+	Default cStatus     := "A,S"
+	Default dDataCadIni := Stod("")
+	Default dDataCadFim := Stod("")
+	Default lArrCli 	:= .F. //monta array de clientes?
+
+	// atribuo valor a variavel
+	cQuery		:= ""
+	cAliasExec	:= ""
+	nCount 		:= 0
+	oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	// query para retornar o total de clientes com titulos
+	if lArrCli
+		Self:aClientes := {}
+		cQuery := " SELECT DISTINCT SA1.A1_CGC "
+	else
+		cQuery := " SELECT COUNT(DISTINCT SA1.A1_CGC) TOTAL_CLIENTES "
+	endif
+	cQuery += " FROM " + RetSQLName("SA1") + " SA1 (NOLOCK) "
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_CGC <> ' '  "
+	cQuery += " AND SA1.A1_XDTNASC <> ' ' " // Somente clientes com data de nascimento
+
+	//Filtra por cliente
+	If !Empty(cCgcCliente)
+		cQuery += "	AND  SA1.A1_CGC ='"+ Alltrim(cCgcCliente) + "' "
+	EndIf
+
+	// data de cadastro inicial ou final
+	if !Empty(dDataCadIni) .Or. !Empty(dDataCadFim)
+		cQuery += " AND SA1.A1_DTCAD BETWEEN '" + Dtos(dDataCadIni) + "' AND '" + Dtos(dDataCadFim) + "'"
+	endIf
+
+	//vinculados a um contrato
+	cQuery += " AND EXISTS ( "
+
+	//verifico se a tabela existe
+	if nU00 > 0
+
+		cQuery += " 	SELECT U00.U00_CODIGO COD FROM " + RetSQLName("U00") + " U00 (NOLOCK) "
+		cQuery += " 	WHERE U00.D_E_L_E_T_ = ' '  "
+		cQuery += " 	AND U00.U00_CLIENT = SA1.A1_COD  "
+		cQuery += " 	AND U00.U00_LOJA = SA1.A1_LOJA  "
+
+		//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+		if !Empty(cStatus)
+			cQuery += "	AND U00.U00_STATUS IN ('" + StrTran(cStatus,",","','" ) + "')"
+		endIf
+
+		If ExistBlock("PUT36TWQRY")
+			cQry += ExecBlock("PUT36TWQRY", .F., .F., {.T., .F., "U00" })
+		EndIf
+
+	endif
+
+	if nU00 > 0 .And. nUF2 > 0
+		cQuery += " 	UNION "
+	endif
+
+	if nUF2 > 0
+
+		cQuery += " 	SELECT UF2.UF2_CODIGO COD FROM " + RetSQLName("UF2") + " UF2 (NOLOCK) "
+		cQuery += " 	WHERE UF2.D_E_L_E_T_ = ' '  "
+		cQuery += " 	AND UF2.UF2_CLIENT = SA1.A1_COD  "
+		cQuery += " 	AND UF2.UF2_LOJA = SA1.A1_LOJA  "
+
+		//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+		if !Empty(cStatus)
+			cQuery += "	AND UF2.UF2_STATUS IN ('" + StrTran(cStatus,",","','" ) + "')"
+		endIf
+
+		If ExistBlock("PUT36TWQRY")
+			cQry += ExecBlock("PUT36TWQRY", .F., .F., {.F., .T., "UF2" })
+		EndIf
+
+	endif
+
+	cQuery += " ) " //fim EXISTS principal
+
+	if lArrCli
+		cQuery += " ORDER BY A1_CGC "
+	endif
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	cAliasExec := FwExecCachedQuery():OpenQuery( cQuery , /**/,  /**/, /**/, "300", "120" )
+
+	If (cAliasExec)->( !Eof() )
+
+		if lArrCli
+			// adiciono os dados de clientes no array
+			(cAliasExec)->(dbEval({|| nCount++, aAdd(Self:aClientes, (cAliasExec)->A1_CGC )}))
+		else
+			nCount := (cAliasExec)->TOTAL_CLIENTES
+		endif
+
+	EndIf
+
+	If Select(cAliasExec) > 0
+		(cAliasExec)->(DBCloseArea())
+	EndIf
+
+Return nCount
+
+/*/{Protheus.doc} VirtusCargaClientes::cargaClientes
+Metodo para a carga de clientes paginada
+@type method
+@version1.0 
+@author g.sampaio
+@since 30/06/2021
+@param cCgcCliente, character, cpf/cnpj do cliente
+@param cStatus, character, status do cotntrato
+@param dDataCadIni, date, data incial de cadastro do cliente
+@param dDataCadFim, date, data final de cadastro do cliente
+@param nSkip, numeric, salta a clientes
+@param nLimit, numeric, limite de clientes
+/*/
+Method CargaClientes(cCgcCliente, cStatus, dDataCadIni, dDataCadFim, nSkip, nLimit) Class VirtusCargaClientes
+
+	Local aArea					As Array
+	Local aAreaUF0				As Array
+	Local aAreaU05				As Array
+	Local nPosCtr				As Numeric
+	Local cQuery    			As Character
+	Local cCNPJFilial			As Character
+	Local cAliasExec			As Character
+	Local cCGCAtual				As Character
+	Local cCGCNovo				As Character
+	Local cContratoNovo			As Character
+	Local cContratoAtual		As Character
+	Local oModCargaClientes		As Object
+	Local aDadosSM0				As Array
+	Local oAuxBenef				As Object
+	Local cEmail				As Character
+
+	Default cCgcCliente	:= ""
+	Default cStatus		:= ""
+	Default dDataCadIni	:= Stod("")
+	Default dDataCadFim	:= Stod("")
+	Default nSkip		:= 0
+	Default nLimit		:= 20
+
+	// atribui valor a variavel
+	Self:aDataRet := {}
+	nPosCtr := 0
+	cQuery 				:= ""
+	cCNPJFilial			:= ""
+	cAliasExec			:= ""
+	cCGCNovo			:= ""
+	cCGCAtual			:= Space(14)
+	cContratoAtual		:= ""
+	cContratoNovo		:= ""
+	oModCargaClientes	:= Nil
+	aDadosSM0 := FWLoadSM0() // carrego os dados da SM0
+
+	// query para carga de clientes
+	cQuery := QueryCargaCliente(cCgcCliente, cStatus, dDataCadIni, dDataCadFim, nSkip, nLimit, Self:aClientes)
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	cAliasExec := FwExecCachedQuery():OpenQuery( cQuery , /**/,  /**/, /**/, "300", "120" )
+
+	DBSelectArea("U05")
+	DBSelectArea("UF0")
+
+	If (cAliasExec)->( !Eof() )
+
+		While (cAliasExec)->(!Eof())
+
+			cCGCNovo 		:= (cAliasExec)->CGC
+			cContratoNovo 	:= (cAliasExec)->CONTRATO
+
+			// verifico se o cliente e diferente
+			If cCGCNovo <> cCGCAtual
+
+				if oModCargaClientes <> Nil
+					aadd(Self:aDataRet, oModCargaClientes:toJsonObject())
+				endif
+
+				oModCargaClientes := ModCargaClientes():New()
+				nPosCtr := 0
+				cEmail := Lower(NoAcento(AllTrim((cAliasExec)->EMAIL)))
+
+				oModCargaClientes:cgc_cliente		:= AllTrim((cAliasExec)->CGC)
+				oModCargaClientes:nome				:= AllTrim((cAliasExec)->NOME)
+				oModCargaClientes:cep				:= AllTrim((cAliasExec)->CEP)
+				oModCargaClientes:estado			:= AllTrim((cAliasExec)->ESTADO)
+				oModCargaClientes:municipio			:= AllTrim((cAliasExec)->MUNICIPIO)
+				oModCargaClientes:bairro			:= iif(empty((cAliasExec)->BAIRRO), "NAO INFORMADO", AllTrim((cAliasExec)->BAIRRO))
+				oModCargaClientes:endereco			:= AllTrim((cAliasExec)->ENDERECO)
+				oModCargaClientes:complemento		:= AllTrim((cAliasExec)->COMPLEMENTO)
+				oModCargaClientes:pto_referencia 	:= AllTrim((cAliasExec)->PTO_REFERENCIA)
+				oModCargaClientes:ddd				:= AllTrim((cAliasExec)->DDD)
+				oModCargaClientes:telefone			:= AllTrim((cAliasExec)->DDD) + AllTrim((cAliasExec)->TELEFONE)
+
+				If !Empty((cAliasExec)->DDD_CEL)
+					oModCargaClientes:ddd_celular		:= AllTrim((cAliasExec)->DDD_CEL)
+				Else
+					oModCargaClientes:ddd_celular		:= AllTrim((cAliasExec)->DDD)
+				EndIf
+
+				If !Empty((cAliasExec)->DDD_CEL) .And. !Empty((cAliasExec)->CELULAR)
+					oModCargaClientes:celular			:= AllTrim((cAliasExec)->DDD_CEL) + AllTrim((cAliasExec)->CELULAR)
+				Else
+					oModCargaClientes:celular			:= AllTrim((cAliasExec)->DDD) + AllTrim((cAliasExec)->TELEFONE)
+				EndIf
+
+				oModCargaClientes:email				:= iif(IsEmail(cEmail) .and. Regex():Matches(cPattern,cEmail), cEmail, "")
+				oModCargaClientes:codigo_cliente	:= AllTrim((cAliasExec)->CODIGO)+AllTrim((cAliasExec)->LOJA)
+				oModCargaClientes:nascimento		:= U_DataJson(AllTrim((cAliasExec)->NASCIMENTO))
+				oModCargaClientes:status			:= iif(AllTrim((cAliasExec)->STATUSCLI)=="2", "A", "I")
+				oModCargaClientes:sexo				:= AllTrim((cAliasExec)->SEXO)
+				//oModCargaClientes:cnpj            := {}
+				//oModCargaClientes:contratos       := {}
+
+			endIf
+
+			If cContratoNovo <> cContratoAtual
+
+				aadd(oModCargaClientes:contratos, oModCargaClientes:toJsonContratos() )
+				nPosCtr++
+
+				// retorno  o array de CNPJ
+				cCNPJFilial := U_UTIL36RetCNPJ(@oModCargaClientes:cnpj, aDadosSM0, (cAliasExec)->FILIAL)
+
+				oModCargaClientes:contratos[nPosCtr]["cnpj"]				:= Alltrim(cCNPJFilial)
+				oModCargaClientes:contratos[nPosCtr]["codigo"]				:= Alltrim((cAliasExec)->CONTRATO)
+				oModCargaClientes:contratos[nPosCtr]["produto"]				:= Alltrim((cAliasExec)->PLANOCTR) + "-" + Alltrim((cAliasExec)->DESCRIPLANO)
+				if AllTrim((cAliasExec)->TIPO_CTR) == 'CEMITERIO'
+					if empty((cAliasExec)->TERMOSPLANO) .AND. U05->(FieldPos("U05_TERMOS")) > 0
+						oModCargaClientes:contratos[nPosCtr]["termos_id"]		:= Alltrim(Posicione("U05",1,(cAliasExec)->FILIAL+(cAliasExec)->PLANOCTR,"U05_TERMOS"))
+					else
+						oModCargaClientes:contratos[nPosCtr]["termos_id"]		:= Alltrim((cAliasExec)->TERMOSPLANO)
+					endif
+				elseif AllTrim((cAliasExec)->TIPO_CTR) == 'PLANO'
+					if empty((cAliasExec)->TERMOSPLANO) .AND. UF0->(FieldPos("UF0_TERMOS")) > 0
+						oModCargaClientes:contratos[nPosCtr]["termos_id"]		:= Alltrim(Posicione("UF0",1,(cAliasExec)->FILIAL+(cAliasExec)->PLANOCTR,"UF0_TERMOS"))
+					else
+						oModCargaClientes:contratos[nPosCtr]["termos_id"]		:= Alltrim((cAliasExec)->TERMOSPLANO)
+					endif
+				else
+					oModCargaClientes:contratos[nPosCtr]["termos_id"]		:= ""
+				endif
+				oModCargaClientes:contratos[nPosCtr]["tipo"]				:= Alltrim((cAliasExec)->TIPO_CTR)
+				oModCargaClientes:contratos[nPosCtr]["status"]				:= Iif((cAliasExec)->STATUSCTR $ "A|S", "A", "I")
+				oModCargaClientes:contratos[nPosCtr]["forma_pagamento"]		:= Alltrim((cAliasExec)->FORMAPAGTO)
+				oModCargaClientes:contratos[nPosCtr]["data_ativacao"]		:= U_DataJson((cAliasExec)->DATATIV)
+				oModCargaClientes:contratos[nPosCtr]["data_ultservico"]		:= U_DataJson((cAliasExec)->ULTSERVICO)
+				oModCargaClientes:contratos[nPosCtr]["qtdpar"]				:= (cAliasExec)->QTDPAR
+				oModCargaClientes:contratos[nPosCtr]["valor"]				:= (cAliasExec)->VALORCTR
+				//oModCargaClientes:contratos[nPosCtr]["beneficiarios"]		:= {}
+
+			endIf
+
+			//obrigatorio nome, data nascimento e cpf benef
+			if !Empty((cAliasExec)->NOME_BENEF) .AND. !empty((cAliasExec)->DTNASC_BENEF) .AND. !empty((cAliasExec)->CPF_BENEF)
+
+				oAuxBenef := oModCargaClientes:toJsonBeneficiarios()
+
+				oAuxBenef["nome"]			:= Alltrim((cAliasExec)->NOME_BENEF)
+				oAuxBenef["nascimento"]		:= U_DataJson((cAliasExec)->DTNASC_BENEF)
+				oAuxBenef["cpf"]			:= Alltrim((cAliasExec)->CPF_BENEF)
+				oAuxBenef["tipo"]			:= Alltrim(U_DescTipoBenef((cAliasExec)->TIPO_CTR, (cAliasExec)->TIPO_BENEF ))
+				oAuxBenef["parentesco"]		:= Alltrim(U_DescParentesco((cAliasExec)->PARENTESCO))
+				oAuxBenef["telefone"]		:= Alltrim((cAliasExec)->TELEFONE_BENEF)
+				oAuxBenef["carencia"]		:= U_DataJson("")
+				oAuxBenef["sexo"]			:= Alltrim((cAliasExec)->SEXO_BENEF)
+				oAuxBenef["inclusao"]		:= U_DataJson((cAliasExec)->DTINC_BENEF)
+				oAuxBenef["falecimento"]	:= U_DataJson((cAliasExec)->FALEC_BENEF)
+
+				aadd(oModCargaClientes:contratos[nPosCtr]["beneficiarios"], oAuxBenef )
+
+			endIf
+
+			cContratoAtual 	:= AllTrim((cAliasExec)->CONTRATO)
+			cCGCAtual 		:= AllTrim((cAliasExec)->CGC)
+
+			(cAliasExec)->(DBSkip())
+
+			// verifico se é final de arquivo
+			if (cAliasExec)->(Eof())
+				if oModCargaClientes <> Nil
+					aadd(Self:aDataRet, oModCargaClientes:toJsonObject())
+				endif
+			endIf
+
+		EndDo
+
+	EndIf
+
+	// fecho o alias
+	U05->(DBCloseArea())
+	UF0->(DBCloseArea())
+
+	If Select(cAliasExec) > 0
+		(cAliasExec)->(DBCloseArea())
+	EndIf
+
+	RestArea(aAreaUF0)
+	RestArea(aAreaU05)
+	RestArea(aArea)
+
+Return(Self:aDataRet)
+
+/*/{Protheus.doc} VirtusCargaClientes::ProcessaClientes
+Metodo para processar os clientes
+@type method
+@version 1.0
+@author g.sampaio
+@since 02/10/2021
+@param cCGC, character, CGC do cliente
+/*/
+Method ProcessaClientes(cCGC) Class VirtusCargaClientes
+
+	Local lContinua 			As Logical
+
+	Default cCGC                := ""
+
+	if empty(cCGC)
+		Return .F. //se nao mandou CGC, aborto envio
+	endif
+
+	// crio os dados do cliente
+	lContinua 	:=  Self:ClientesPendentes(cCGC)
+
+	If lContinua
+
+		// executo o metodo para enviar os dados do para a API de Cliente
+		lContinua := Self:EnviarCliente(cCGC)
+
+	endIf
+
+Return lContinua
+
+/*/{Protheus.doc} VirtusCargaClientes::ClientesPendentes
+Metodo para buscar os clientes pendentes
+@type method
+@version 1.0 
+@author g.sampaio
+@since 30/09/2021
+@param cCgcCliente, character, CGC do cliente 
+@return logical, retorno se existem registro pendentes do cliente
+/*/
+Method ClientesPendentes(cCgcCliente) Class VirtusCargaClientes
+
+	Local lRetorno := .T.
+
+	if !empty(cCgcCliente)
+		Self:aClientes := { cCgcCliente }
+	endif
+
+	//faço a busca dos dados a seren enviados
+	Self:CargaClientes(cCgcCliente, /*cStatus*/, /*dDataCadIni*/, /*dDataCadFim*/, /*nSkip*/, /*nLimit*/)
+
+	lRetorno := !empty(Self:aDataRet)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusCargaClientes::EnviarCliente
+Metodo para o processamento dos clientes
+@type method
+@version 1.0 
+@author g.sampaio
+@since 30/09/2021
+@param cCGC, character, cgc do cliente
+/*/
+Method EnviarCliente(cCGC) Class VirtusCargaClientes
+
+	Local lRet					:= .T.
+	Local cToken				:= SuperGetMV("MV_XTOKAPP",.F., "")
+	Local cHost             	:= SuperGetMV("MV_XLNKAPI", .F., "https://api.plataformavirtus.com.br/v1")
+	//Local cPathCliente      	:= "/customer/protheus/create"
+	Local cPathCliente          := "/customer/protheus/load"
+	Local aHeadStr          	:= {}
+	Local oRestCliente      	:= Nil
+	Local oCargaClientes    	:= JsonObject():New()
+	Local cResult         		:= ""
+
+	oCargaClientes["clientes"] := Self:aDataRet
+
+	AADD(aHeadStr,"Content-Type:application/json")
+	AADD(aHeadStr,"Authorization: Bearer " + cToken)
+
+	oRestCliente := FWRest():New(cHost)
+	oRestCliente:SetPath(cPathCliente)
+	oRestCliente:SetPostParams( oCargaClientes:toJSON() )
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) ENVIO CADASTRO: " + CRLF + oCargaClientes:toJSON(), 0, 0, {})
+
+	oRestCliente:Post(aHeadStr)
+	cResult := oRestCliente:GetResult()
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(DEPOIS) ENVIO CADASTRO: "+ CRLF + cResult, 0, 0, {})
+
+	lRet := "customers_saved" $ cResult
+
+Return lRet
+
+/*/{Protheus.doc} U_UTIL36RetCNPJ
+Retornoa o CNPJ da Filial
+@type function
+@version 1.0
+@author g.sampaio
+@since 21/07/2021
+@param aCNPJEmp, array, cnpj das filiais de contratos do cliente
+@param aDadosSM0, array, dados da SM0 carregados
+@param cCodFilial, character, codigo da filial do contrato
+@return character, retorna o cnpj da filial
+/*/
+User Function UTIL36RetCNPJ(aCNPJEmp, aDadosSM0, cCodFilial)
+
+	Local cRetorno	:= ""
+	Local nPos		:= 0
+	Local nPosCNPJ	:= 0
+
+	Default aCNPJEmp	:= {}
+	Default aDadosSM0	:= {}
+	Default cCodFilial	:= ""
+
+	// verifico
+	nPos := AScan( aDadosSM0, {|x| AllTrim(x[2]) == AllTrim(cCodFilial)} )
+
+	// verifico se encontrou a filial
+	if nPos > 0
+
+		// verifico se ja existe o cnpj
+		nPosCNPJ := AScan( aCNPJEmp, {|x| AllTrim(x) == AllTrim(aDadosSM0[nPos, 18])} )
+
+		// caso nao existir o cnpj, adiciono ele no array
+		if nPosCNPJ == 0
+			aAdd( aCNPJEmp, aDadosSM0[nPos, 18])
+		endIf
+
+		// pego o CNPJ como retorno da funcao
+		cRetorno	:= aDadosSM0[nPos, 18]
+
+	endIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} QueryCargaCliente
+Funcao para montar a query de carga do cliente
+@type function
+@version 1.0 
+@author g.sampaio
+@since 04/10/2021
+@param cCgcCliente, character, cgc do cliente
+@param cStatus, character, status do cliente
+@param dDataCadIni, date, data de cadastro inicial
+@param dDataCadFim, date, data de cadastro final
+@param nSkip, numeric, salta os registros da paginacao
+@param nLimit, numeric, limite de registros da paginacao
+@param nTipo, numeric, tipo 1=Carga de CLiente;2=Envio de Alteracoes
+@return character, query para buscar os dados de cliente
+/*/
+Static Function QueryCargaCliente(cCgcCliente, cStatus, dDataCadIni, dDataCadFim, nSkip, nLimit, aClientes)
+
+	Local nX 		As Numeric
+	Local cRetorno	As Character
+	Local cInCgc	As Character
+	Local nRankIni	As Numeric
+	Local nRankFim	As Numeric
+
+	Default cCgcCliente := ""
+	Default cStatus     := "A,S"
+	Default dDataCadIni := Stod("")
+	Default dDataCadFim := Stod("")
+	Default nSkip		:= 0
+	Default nLimit		:= 20
+	Default aClientes	:= {}
+
+	Local oSX2			As Object
+	Local nUF2			As Numeric
+	Local nU00			As Numeric
+
+	Default cCgcCliente := ""
+	Default cStatus     := "A,S"
+	Default dDataCadIni := Stod("")
+	Default dDataCadFim := Stod("")
+	Default lArrCli 	:= .F. //monta array de clientes?
+
+	// atribuo valor a variavel
+	cQuery		:= ""
+	cAliasExec	:= ""
+	nCount 		:= 0
+	oSX2		:= UGetSxFile():New()
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+	// atribuo valor as variaveis
+	cRetorno	:= ""
+	cInCgc 		:= ""
+	nRankIni 	:= (nSkip + 1)
+	nRankFim 	:= (nSkip + nLimit)
+
+	//monto expressao IN de CGCs
+	for nX := nRankIni to Min(nRankFim, len(aClientes))
+		if !empty(cInCgc)
+			cInCgc += ","
+		endif
+		cInCgc += "'"+aClientes[nX]+"'"
+	next nx
+
+	cRetorno := " SELECT * FROM ("
+
+	if nU00 > 0
+		cRetorno += " SELECT "
+		cRetorno += " CLIENTES.A1_COD CODIGO, "
+		cRetorno += " CLIENTES.A1_LOJA LOJA, "
+		cRetorno += " CLIENTES.A1_CGC CGC, "
+		cRetorno += " CLIENTES.A1_NOME NOME, "
+		cRetorno += " CLIENTES.A1_XDDDCEL DDD_CEL,
+		cRetorno += " CLIENTES.A1_XCEL CELULAR, "
+		cRetorno += " CLIENTES.A1_DDD DDD, "
+		cRetorno += " CLIENTES.A1_TEL TELEFONE, "
+		cRetorno += " CLIENTES.A1_EST ESTADO, "
+		cRetorno += " CLIENTES.A1_COD_MUN CODMUN, "
+		cRetorno += " CLIENTES.A1_MUN MUNICIPIO, "
+		cRetorno += " CLIENTES.A1_CEP CEP, "
+		cRetorno += " CLIENTES.A1_END ENDERECO, "
+		cRetorno += " CLIENTES.A1_BAIRRO BAIRRO, "
+		cRetorno += " CLIENTES.A1_COMPLEM COMPLEMENTO, "
+		cRetorno += " CLIENTES.A1_XREFERE PTO_REFERENCIA, "
+		cRetorno += " CLIENTES.A1_EMAIL EMAIL, "
+		cRetorno += " CLIENTES.A1_XSEXO SEXO, "
+		cRetorno += " CLIENTES.A1_XDTNASC NASCIMENTO, "
+		cRetorno += " CLIENTES.A1_MSBLQL STATUSCLI, "
+		cRetorno += " 'CEMITERIO' TIPO_CTR, "
+		cRetorno += " CEMITERIO.U00_MSFIL FILIAL, "
+		cRetorno += " CEMITERIO.U00_CODIGO CONTRATO, "
+		cRetorno += " CEMITERIO.U00_STATUS STATUSCTR, "
+		cRetorno += " CEMITERIO.U00_PLANO PLANOCTR, "
+		cRetorno += " CEMITERIO.U00_DESCPL DESCRIPLANO, "
+		if U00->(FieldPos("U00_TERMOS"))>0
+			cRetorno += " CEMITERIO.U00_TERMOS TERMOSPLANO, "
+		else
+			cRetorno += " '' TERMOSPLANO, "
+		endif
+		cRetorno += " CEMITERIO.U00_DTATIV DATATIV, "
+		cRetorno += " CEMITERIO.U00_QTDPAR QTDPAR, "
+		cRetorno += " CEMITERIO.U00_VALOR VALOR, "
+		cRetorno += " CEMITERIO.U00_FORPG FORMAPAGTO, "
+		cRetorno += " ISNULL((SELECT MAX(UJV.UJV_DATA) FROM " + RetSqlName("UJV") + " (NOLOCK) UJV "
+		cRetorno += " WHERE UJV.D_E_L_E_T_ = ' ' "
+		cRetorno += " AND UJV.UJV_FILIAL = CEMITERIO.U00_MSFIL "
+		cRetorno += " AND UJV.UJV_CONTRA = CEMITERIO.U00_CODIGO),'') ULTSERVICO,"
+		cRetorno += " CEMITERIO.U00_VALOR VALORCTR,"
+		cRetorno += " ISNULL(AUTORIZADO.U02_NOME,'') NOME_BENEF, "
+		cRetorno += " ISNULL(AUTORIZADO.U02_DTNASC,'') DTNASC_BENEF, "
+		cRetorno += " ISNULL(AUTORIZADO.U02_CPF,'') CPF_BENEF, "
+		cRetorno += " 'AU' TIPO_BENEF, "
+		cRetorno += " ISNULL(AUTORIZADO.U02_GRAUPA,'') PARENTESCO, "
+		cRetorno += " ISNULL(AUTORIZADO.U02_SEXO,'') SEXO_BENEF, "
+		cRetorno += " '' DTINC_BENEF, "
+		cRetorno += " '' FALEC_BENEF, "
+		cRetorno += " ISNULL(AUTORIZADO.U02_CELULA,'') TELEFONE_BENEF "
+
+		cRetorno += " FROM " + RetSqlName("SA1") + " (NOLOCK) CLIENTES "
+
+		cRetorno += " INNER JOIN " + RetSqlName("U00") + " (NOLOCK) CEMITERIO ON CEMITERIO.D_E_L_E_T_ = ' ' "
+		cRetorno += " AND CEMITERIO.U00_CLIENT = CLIENTES.A1_COD "
+		cRetorno += " AND CEMITERIO.U00_LOJA = CLIENTES.A1_LOJA "
+		//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+		if !Empty(cStatus)
+			cRetorno += "		AND CEMITERIO.U00_STATUS IN ('" + StrTran(cStatus,",","','" ) + "')"
+		endIf
+
+		cRetorno += " LEFT JOIN " + RetSqlName("U02") + " (NOLOCK) AUTORIZADO ON AUTORIZADO.D_E_L_E_T_ = ' ' "
+		cRetorno += " AND AUTORIZADO.U02_FILIAL = CEMITERIO.U00_MSFIL "
+		cRetorno += " AND AUTORIZADO.U02_CODIGO = CEMITERIO.U00_CODIGO "
+		//obrigatorio nome, data nascimento e cpf benef
+		cRetorno += " AND AUTORIZADO.U02_CPF <> '' "
+		cRetorno += " AND AUTORIZADO.U02_NOME <> '' "
+		cRetorno += " AND AUTORIZADO.U02_DTNASC <> '' "
+		cRetorno += " AND AUTORIZADO.U02_CPF <> CLIENTES.A1_CGC " // Não é o titular
+		//cRetorno += " AND AUTORIZADO.U02_STATUS NOT IN ('2','3') "
+		//cRetorno += " AND AUTORIZADO.U02_ITEM <> '01' " // Não é o titular
+
+		cRetorno += " WHERE CLIENTES.D_E_L_E_T_ = ' ' "
+
+		//Filtra por cliente
+		if !empty(cInCgc)
+			cRetorno += " AND CLIENTES.A1_CGC IN ("+cInCgc+") "
+		else
+			If !Empty(cCgcCliente)
+				cRetorno += " AND  CLIENTES.A1_CGC = '"+ Alltrim(cCgcCliente) + "' "
+			else
+				cRetorno += " AND CLIENTES.A1_CGC <> ' ' "
+			EndIf
+		endif
+
+		cRetorno += " AND CLIENTES.A1_XDTNASC <> ' ' " // Somente clientes com data de nascimento
+
+		// data de cadastro inicial ou final
+		if !Empty(dDataCadIni) .Or. !Empty(dDataCadFim)
+			cRetorno += " AND CLIENTES.A1_DTCAD BETWEEN '" + Dtos(dDataCadIni) + "' AND '" + Dtos(dDataCadFim) + "' "
+		endIf
+
+		If ExistBlock("PUT36CWQRY")
+			cQry += ExecBlock("PUT36CWQRY", .F., .F., {.T., .F., "CEMITERIO", "CLIENTES"})
+		EndIf
+
+	endif
+
+	if nUF2 > 0 .And. nU00 > 0
+		cRetorno += " UNION ALL "
+	endif
+
+	if nUF2 > 0
+		cRetorno += " SELECT "
+		cRetorno += " CLIENTES.A1_COD CODIGO, "
+		cRetorno += " CLIENTES.A1_LOJA LOJA, "
+		cRetorno += " CLIENTES.A1_CGC CGC, "
+		cRetorno += " CLIENTES.A1_NOME NOME, "
+		cRetorno += " CLIENTES.A1_XDDDCEL DDD_CEL, "
+		cRetorno += " CLIENTES.A1_XCEL CELULAR, "
+		cRetorno += " CLIENTES.A1_DDD DDD, "
+		cRetorno += " CLIENTES.A1_TEL TELEFONE, "
+		cRetorno += " CLIENTES.A1_EST ESTADO, "
+		cRetorno += " CLIENTES.A1_COD_MUN CODMUN, "
+		cRetorno += " CLIENTES.A1_MUN MUNICIPIO, "
+		cRetorno += " CLIENTES.A1_CEP CEP, "
+		cRetorno += " CLIENTES.A1_END ENDERECO, "
+		cRetorno += " CLIENTES.A1_BAIRRO BAIRRO, "
+		cRetorno += " CLIENTES.A1_COMPLEM COMPLEMENTO, "
+		cRetorno += " CLIENTES.A1_XREFERE PTO_REFERENCIA, "
+		cRetorno += " CLIENTES.A1_EMAIL EMAIL, "
+		cRetorno += " CLIENTES.A1_XSEXO SEXO, "
+		cRetorno += " CLIENTES.A1_XDTNASC NASCIMENTO, "
+		cRetorno += " CLIENTES.A1_MSBLQL STATUSCLI, "
+		cRetorno += " 'PLANO' TIPO_CTR, "
+		cRetorno += " FUNERARIA.UF2_MSFIL FILIAL, "
+		cRetorno += " FUNERARIA.UF2_CODIGO CONTRATO, "
+		cRetorno += " FUNERARIA.UF2_STATUS STATUSCTR, "
+		cRetorno += " FUNERARIA.UF2_PLANO PLANOCTR, "
+		cRetorno += " PLANO.UF0_DESCRI DESCRIPLANO, "
+		if UF2->(FieldPos("UF2_TERMOS"))>0
+			cRetorno += " FUNERARIA.UF2_TERMOS TERMOSPLANO, "
+		else
+			cRetorno += " '' TERMOSPLANO, "
+		endif
+		cRetorno += " FUNERARIA.UF2_DTATIV DATATIV, "
+		cRetorno += " FUNERARIA.UF2_QTPARC QTDPAR, "
+		cRetorno += " FUNERARIA.UF2_VALOR VALOR, "
+		cRetorno += " FUNERARIA.UF2_FORPG FORMAPAGTO, "
+		cRetorno += " ISNULL( (SELECT MAX(UJ0.UJ0_DTCADA) FROM " + RetSqlName("UJ0") + " (NOLOCK) UJ0 "
+		cRetorno += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+		cRetorno += " AND UJ0.UJ0_FILIAL = FUNERARIA.UF2_MSFIL "
+		cRetorno += " AND UJ0.UJ0_CONTRA = FUNERARIA.UF2_CODIGO),'') ULTSERVICO, "
+		cRetorno += " FUNERARIA.UF2_VALOR VALORCTR, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_NOME,'') NOME_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_DTNASC,'') DTNASC_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_CPF,'') CPF_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_TIPO,'') TIPO_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_GRAU,'') PARENTESCO, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_SEXO,'') SEXO_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_DTINC,'') DTINC_BENEF, "
+		cRetorno += " ISNULL(BENEFICIARIOS.UF4_FALECI,'') FALEC_BENEF, "
+		cRetorno += " '' TELEFONE_BENEF "
+
+		cRetorno += " FROM " + RetSqlName("SA1") + " (NOLOCK) CLIENTES "
+
+		cRetorno += " INNER JOIN " + RetSqlName("UF2") + " (NOLOCK) FUNERARIA ON FUNERARIA.D_E_L_E_T_ = ' '"
+		cRetorno += " AND FUNERARIA.UF2_CLIENT = CLIENTES.A1_COD "
+		cRetorno += " AND FUNERARIA.UF2_LOJA = CLIENTES.A1_LOJA "
+		//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+		if !Empty(cStatus)
+			cRetorno += "		AND FUNERARIA.UF2_STATUS IN ('" + StrTran(cStatus,",","','" ) + "')"
+		endIf
+
+		cRetorno += " INNER JOIN " + RetSqlName("UF0") + " (NOLOCK) PLANO ON PLANO.D_E_L_E_T_ = ' '"
+		cRetorno += " AND PLANO.UF0_FILIAL = '" + xFilial("UF0") + "' "
+		cRetorno += " AND FUNERARIA.UF2_FILIAL = '" + xFilial("UF2") + "' "
+		cRetorno += " AND PLANO.UF0_CODIGO = FUNERARIA.UF2_PLANO "
+
+		cRetorno += " LEFT JOIN " + RetSqlName("UF4") + " (NOLOCK) BENEFICIARIOS ON BENEFICIARIOS.D_E_L_E_T_ = ' '"
+		cRetorno += " AND BENEFICIARIOS.UF4_FILIAL = FUNERARIA.UF2_FILIAL "
+		cRetorno += " AND BENEFICIARIOS.UF4_CODIGO = FUNERARIA.UF2_CODIGO "
+		//obrigatorio nome, data nascimento e cpf benef
+		cRetorno += " AND BENEFICIARIOS.UF4_CPF <> '' "
+		cRetorno += " AND BENEFICIARIOS.UF4_NOME <> '' "
+		cRetorno += " AND BENEFICIARIOS.UF4_DTNASC <> '' "
+		cRetorno += " AND BENEFICIARIOS.UF4_TIPO <> '3' " // Não é o titular
+
+		cRetorno += " WHERE CLIENTES.D_E_L_E_T_ = ' ' "
+		//Filtra por cliente
+		if !empty(cInCgc)
+			cRetorno += " AND CLIENTES.A1_CGC IN ("+cInCgc+") "
+		else
+			If !Empty(cCgcCliente)
+				cRetorno += " AND  CLIENTES.A1_CGC = '"+ Alltrim(cCgcCliente) + "' "
+			else
+				cRetorno += " AND CLIENTES.A1_CGC <> ' ' "
+			EndIf
+		endif
+		cRetorno += " AND CLIENTES.A1_XDTNASC <> ' ' " // Somente clientes com data de nascimento
+
+		// data de cadastro inicial ou final
+		if !Empty(dDataCadIni) .Or. !Empty(dDataCadFim)
+			cRetorno += " AND CLIENTES.A1_DTCAD BETWEEN '" + Dtos(dDataCadIni) + "' AND '" + Dtos(dDataCadFim) + "'"
+		endIf
+
+		If ExistBlock("PUT36CWQRY")
+			cQry += ExecBlock("PUT36CWQRY", .F., .F., {.F., .T., "FUNERARIA", "CLIENTES"})
+		EndIf
+
+	endif
+
+	cRetorno += " ) CARGACLIENTES "
+
+	cRetorno += " ORDER BY CGC, TIPO_CTR, FILIAL, CONTRATO "
+
+Return(cRetorno)

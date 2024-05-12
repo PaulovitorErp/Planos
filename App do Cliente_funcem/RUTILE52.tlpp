@@ -1,0 +1,359 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RUTILE52
+Classe para integracao de dados da 
+alteracoes do cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/09/2021
+/*/
+User Function RUTILE52()
+Return(Nil)
+
+Class VirtusAlteraCliente
+
+	Public Data aAlteracoes As Array
+	Public Data oBkpCliente	As Object
+	Public Data oNewCliente	As Object
+
+	Public Method New() Constructor
+	Public Method GravarAlteracoes()
+	Public Method GetRegsEdit()
+
+EndClass
+
+Method New() Class VirtusAlteraCliente
+
+	Self:aAlteracoes 	:= {}
+	Self:oBkpCliente	:= JsonObject():New()
+	Self:oNewCliente	:= JsonObject():New()
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAlteraCliente::GravarAlteracoes
+Metodo para gravar
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/09/2021
+@param cCGCCliente, character, cgc do cliente
+@param cAlteracoesJson, character, JSON com alteracoes
+@return object, response de retorno
+/*/
+Method GravarAlteracoes(oDadosAlteracoes) Class VirtusAlteraCliente
+
+	Local lErrorlog	:= .T.
+	Local nX := 0
+	Local aRegAlt 
+	Local lContinua := .T.
+	Local cMsgReturn := ""
+	Local oResponse 
+
+	oResponse       := JsonObject():New()
+
+	DbSelectArea("SA1")
+	DbSelectArea("U02")
+	DbSelectArea("UF4")
+
+	aRegAlt := Self:GetRegsEdit(oDadosAlteracoes["cgc_cliente"])
+
+	if !empty(aRegAlt)
+		BEGIN TRANSACTION
+
+			For nX := 1 to len(aRegAlt)
+
+				if aRegAlt[nX][1] == "SA1"
+					
+					SA1->(DbGoTo(aRegAlt[nX][2]))
+					if RecLock("SA1", .F.)
+							
+						if AttIsMemberOf(oDadosAlteracoes, "nome")
+							SA1->A1_NOME	:= UPPER(oDadosAlteracoes["nome"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "telefone")
+							//tratametno para caso venha ddd com zero
+							nZeroDDD := iif(Left(oDadosAlteracoes["telefone"],1)=='0',1,0)
+							SA1->A1_DDD	:= Left(oDadosAlteracoes["telefone"],2+nZeroDDD)
+							SA1->A1_TEL	:= SubStr(oDadosAlteracoes["telefone"],3+nZeroDDD)
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "celular")
+							//tratametno para caso venha ddd com zero
+							nZeroDDD := iif(Left(oDadosAlteracoes["celular"],1)=='0',1,0)
+							SA1->A1_XDDDCEL	:= Left(oDadosAlteracoes["celular"],2+nZeroDDD)
+							SA1->A1_XCEL	:= SubStr(oDadosAlteracoes["celular"],3+nZeroDDD)
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "cep")
+							SA1->A1_CEP		:= oDadosAlteracoes["cep"]
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "endereco")
+							SA1->A1_END		:= UPPER(oDadosAlteracoes["endereco"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "bairro")
+							SA1->A1_BAIRRO	:= UPPER(oDadosAlteracoes["bairro"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "complemento")
+							SA1->A1_COMPLEM	:= UPPER(oDadosAlteracoes["complemento"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "pto_referencia")
+							SA1->A1_XREFERE	:= UPPER(oDadosAlteracoes["pto_referencia"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "estado")
+							SA1->A1_EST		:= UPPER(oDadosAlteracoes["estado"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "municipio")
+							SA1->A1_MUN		:= UPPER(oDadosAlteracoes["municipio"])
+							cCodMun := Posicione("CC2",4,xFilial("CC2")+SA1->A1_EST+Alltrim(SA1->A1_MUN),"CC2_CODMUN")
+							if !empty(cCodMun)
+								SA1->A1_COD_MUN	:= cCodMun
+							endif
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "email")
+							SA1->A1_EMAIL	:= oDadosAlteracoes["email"]
+						endif
+
+						if SA1->(FieldPos("A1_MSEXP")) > 0 .AND. !empty(SA1->A1_MSEXP)
+							SA1->A1_MSEXP := DTOS(Date())
+						endif
+
+						SA1->(MsUnlock())
+					else
+						lContinua := .F.
+						cMsgReturn := "Nao foi possível fazer o lock do cliente no banco de dados!"
+						EXIT
+					endif
+
+				elseif aRegAlt[nX][1] == "U00"
+
+					U00->(DbGoTo(aRegAlt[nX][2]))
+					if RecLock("U00", .F.)
+
+						if AttIsMemberOf(oDadosAlteracoes, "nome")
+							U00->U00_NOMCLI		:=  UPPER(oDadosAlteracoes["nome"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "telefone")
+							//tratametno para caso venha ddd com zero
+							nZeroDDD := iif(Left(oDadosAlteracoes["telefone"],1)=='0',1,0)
+							U00->U00_DDD	:= Left(oDadosAlteracoes["telefone"],2+nZeroDDD)
+							U00->U00_TEL	:= SubStr(oDadosAlteracoes["telefone"],3+nZeroDDD)
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "celular")
+							U00->U00_CEL	:= oDadosAlteracoes["celular"]
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "endereco")
+							U00->U00_END		:= UPPER(oDadosAlteracoes["endereco"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "complemento")
+							U00->U00_COMPLE		:= UPPER(oDadosAlteracoes["complemento"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "pto_referencia")
+							U00->U00_REFERE	:= UPPER(oDadosAlteracoes["pto_referencia"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "bairro")
+							U00->U00_BAIRRO		:= UPPER(oDadosAlteracoes["bairro"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "cep")
+							U00->U00_CEP		:= oDadosAlteracoes["cep"]
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "estado")
+							U00->U00_UF		:= UPPER(oDadosAlteracoes["estado"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "municipio")
+							U00->U00_MUN		:= UPPER(oDadosAlteracoes["municipio"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "email")
+							U00->U00_EMAIL	:= oDadosAlteracoes["email"]
+						endif
+
+						if U00->(FieldPos("U00_MSEXP")) > 0 .AND. !empty(U00->U00_MSEXP)
+							U00->U00_MSEXP := DTOS(Date())
+						endif
+							
+						U00->(MsUnlock())
+					else
+						lContinua := .F.
+						cMsgReturn := "Nao foi possível fazer o lock do beneficiario U00 no banco de dados!"
+						EXIT
+					endif
+
+				elseif aRegAlt[nX][1] == "U02"
+
+					U02->(DbGoTo(aRegAlt[nX][2]))
+					if RecLock("U02", .F.)
+
+						if AttIsMemberOf(oDadosAlteracoes, "nome")
+							U02->U02_NOME 		:=  UPPER(oDadosAlteracoes["nome"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "telefone")
+							//tratametno para caso venha ddd com zero
+							nZeroDDD := iif(Left(oDadosAlteracoes["telefone"],1)=='0',1,0)
+							U02->U02_DDD	:= Left(oDadosAlteracoes["telefone"],2+nZeroDDD)
+							U02->U02_FONE	:= SubStr(oDadosAlteracoes["telefone"],3+nZeroDDD)
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "celular")
+							U02->U02_CELULA	:= oDadosAlteracoes["celular"]
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "endereco")
+							U02->U02_END		:= UPPER(oDadosAlteracoes["endereco"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "complemento")
+							U02->U02_COMPLE		:= UPPER(oDadosAlteracoes["complemento"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "bairro")
+							U02->U02_BAIRRO		:= UPPER(oDadosAlteracoes["bairro"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "cep")
+							U02->U02_CEP		:= oDadosAlteracoes["cep"]
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "estado")
+							U02->U02_EST		:= UPPER(oDadosAlteracoes["estado"])
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "municipio")
+							U02->U02_MUN		:= UPPER(oDadosAlteracoes["municipio"])
+							cCodMun := Posicione("CC2",4,xFilial("CC2")+U02->U02_EST+Alltrim(U02->U02_MUN),"CC2_CODMUN")
+							if !empty(cCodMun)
+								U02->U02_CODMUN	:= cCodMun
+							endif
+						endif
+						if AttIsMemberOf(oDadosAlteracoes, "email")
+							U02->U02_EMAIL	:= oDadosAlteracoes["email"]
+						endif
+
+						if U02->(FieldPos("U02_MSEXP")) > 0 .AND. !empty(U02->U02_MSEXP)
+							U02->U02_MSEXP := DTOS(Date())
+						endif
+							
+						U02->(MsUnlock())
+					else
+						lContinua := .F.
+						cMsgReturn := "Nao foi possível fazer o lock do beneficiario U02 no banco de dados!"
+						EXIT
+					endif
+
+				// na UF4 so tem campo nome, por isso ja ignoro caso nao venha a tag nome
+				elseif aRegAlt[nX][1] == "UF4" .AND. AttIsMemberOf(oDadosAlteracoes, "nome")
+					
+					UF4->(DbGoTo(aRegAlt[nX][2]))
+					if RecLock("UF4", .F.)
+
+						if AttIsMemberOf(oDadosAlteracoes, "nome")
+							UF4->UF4_NOME 		:=  UPPER(oDadosAlteracoes["nome"])
+						endif
+
+						if UF4->(FieldPos("UF4_MSEXP")) > 0 .AND. !empty(UF4->UF4_MSEXP)
+							UF4->UF4_MSEXP := DTOS(Date())
+						endif
+
+						UF4->(MsUnlock())
+					else
+						lContinua := .F.
+						cMsgReturn := "Nao foi possível fazer o lock do beneficiario UF4 no banco de dados!"
+						EXIT
+					endif
+
+				endif
+
+			next nX
+
+			if lContinua
+				lErrorlog	:= .F.
+			else
+				DisarmTransaction()
+			endif
+
+		END TRANSACTION
+	Else
+		lContinua := .F.
+		cMsgReturn := "CPF do cliente/beneficiario nao encontrado na base de dados!"
+	Endif
+
+	if lContinua
+		oResponse["status"]     := "sincronizado"
+		oResponse["message"]    := "Alteracao dados cliente realizada com sucesso!"
+	else
+		oResponse["status"]     := "erro"
+		oResponse["message"]    := "Erro ao alterar dados cliente! " + cMsgReturn
+	endIf
+
+	if lErrorlog
+		oResponse := Nil
+	endif
+
+Return(oResponse)
+
+/*/{Protheus.doc} VirtusAlteraCliente::GravarAlteracoes
+Metodo para gravar
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/09/2021
+@param cCGCCliente, character, cgc do cliente
+@param cAlteracoesJson, character, JSON com alteracoes
+@return object, response de retorno
+/*/
+Method GetRegsEdit(cCGCCliente) Class VirtusAlteraCliente
+	
+	Local aRegRet := {}
+	Local cQuery := ""
+	Local cAliasExec := ""
+	Local nUF2		:= 0 
+	Local nU00		:= 0 
+	Local oSX2		:= 0 
+    
+    oSX2		:= UGetSxFile():New
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+
+
+	//procuro o CGC nas tabelas envolvidas (cliente e beneficiarios)
+	cQuery := " SELECT 'SA1' TABELA, SA1.R_E_C_N_O_ RECNO "
+	cQuery += " FROM " + RetSQLName("SA1") + " SA1 "
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery += " AND SA1.A1_CGC = '" + cCGCCliente + "' "
+
+	if nU00 > 0 
+		
+		cQuery += " UNION "
+
+		cQuery += " SELECT 'U00' TABELA, U00.R_E_C_N_O_ RECNO "
+		cQuery += " FROM " + RetSQLName("U00") + " U00 "
+		cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U00.U00_CGC = '" + cCGCCliente + "' "
+
+		cQuery += " UNION "
+
+		cQuery += " SELECT 'U02' TABELA, U02.R_E_C_N_O_ RECNO "
+		cQuery += " FROM " + RetSQLName("U02") + " U02 "
+		cQuery += " WHERE U02.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U02.U02_CPF = '" + cCGCCliente + "' "
+	endif
+
+	if nUF2 > 0 
+		
+		cQuery += " UNION "
+
+		cQuery += " SELECT 'UF4' TABELA, UF4.R_E_C_N_O_ RECNO "
+		cQuery += " FROM " + RetSQLName("UF4") + " UF4 "
+		cQuery += " WHERE UF4.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UF4.UF4_CPF = '" + cCGCCliente + "' "
+	
+	endif
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	cAliasExec := FwExecCachedQuery():OpenQuery( cQuery , /**/,  /**/, /**/, "300", "120" )
+
+	If (cAliasExec)->( !Eof() )
+		While (cAliasExec)->(!Eof())
+
+			aadd(aRegRet, {(cAliasExec)->TABELA , (cAliasExec)->RECNO } )
+
+			(cAliasExec)->(DBSkip())
+		EndDo
+	EndIf
+
+	(cAliasExec)->(DbCloseArea())
+
+Return aRegRet

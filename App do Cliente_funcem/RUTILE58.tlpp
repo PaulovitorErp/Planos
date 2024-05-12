@@ -1,0 +1,207 @@
+#include "protheus.ch"
+#include "topconn.ch"
+#include "tbiconn.ch"
+#include "fileio.ch"
+
+/*/{Protheus.doc} RUTILE58
+JOB para processamento de Carga de Títulos Vencidos - APP Cliente
+
+@author Pablo Nunes
+@since 17/05/2022
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function RUTILE58(xParam1, xParam2)
+
+	Local cMessage	:= ""
+    Local aParam    := {}
+    Local lConsJrMult := .F.
+
+    if valtype(xParam1) == "A" //schedule
+        aParam := aClone(xParam1)
+    elseif valtype(xParam1) == "C" .AND. valtype(xParam2) == "C"
+        aParam := {xParam1, xParam2}
+    elseif IsBlind()
+        FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " PARAMETROS DE EMPRESA E FILIAL INVALIDOS ", 0, 0, {})
+        Return
+    else //execucao via interface
+        aParam := {cEmpAnt, cFilAnt}
+    endif
+
+    // mensagens no console log 
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+    FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " INICIO DO PROCESSO DE CARGA TIT VENCIDOS - APP CLIENTE", 0, 0, {})
+    FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " DATA: " + DTOC( Date() ) + " HORA: " + Time() + " ", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " EMPRESA: " + Alltrim(aParam[1]) + " FILIAL: " + Alltrim(aParam[2]) + " ", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+
+    //Valido se a execução é via Job
+	If IsBlind()
+        //prepara a conexao com empresa
+        RpcSetType(3)
+        RpcClearEnv()  //-- Limpa ambiente
+        RpcSetEnv(aParam[01], aParam[02])
+    Else
+        If !MsgYesNo("Confirma a execução do JOB de carga títulos vencidos para o APP Cliente?", "Atenção")
+            Return
+        EndIf
+    EndIf
+
+    //-- Processa somente se o parâmetro MV_XJUROMRV estiver ativo, caso contrário, as alterações de juros/multas (acréscimo/decréscimo) 
+    //-- serão atualizadas automaticamente pela carga incremental (JOB RUTILE57).
+    lConsJrMult := SuperGetMV("MV_XJURMRV", .F.,.F.) //Considera Juros e Multa no calculo do saldo do título?
+    If !lConsJrMult
+        cMessage := "[RUTILE58]["+ cFilAnt +"] - O parâmetro [MV_XJURMRV] esta desativado, sendo assim, as atualizações de juros/multas (acréscimo/decréscimo) serão enviadas pelo JOB INCREMENTAL [RUTILE57]..."
+        If IsBlind()
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, 0, {})
+		Else
+			MsgAlert(cMessage)
+		EndIf
+        Return
+    EndIf
+
+	//-- Bloqueia rotina para apenas uma execução por vez
+	//-- Criação de semáforo no servidor de licenças
+	//-- LockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> lCreated
+	If !LockByName("RUTILE58", .F., .T.)
+        cMessage := "[RUTILE58]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde..."
+		If IsBlind()
+			FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, 0, {})
+		Else
+			MsgAlert(cMessage)
+		EndIf
+        Return
+    EndIf
+
+	//-- Comando para o TopConnect alterar mensagem do Monitor --//
+	FWMonitorMsg("RUTILE58: JOB CARGA TIT. VENCIDOS APP CLIENTE ")
+
+    If IsBlind()
+        AtTitulosVenc()
+    Else
+        MsAguarde({|| AtTitulosVenc() },"Aguarde","Processando envio...",.F.)
+	EndIf
+
+	//-- Libera rotina para nova execução
+	//-- Excluir semáforo
+	//-- UnLockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> Nil
+	UnLockByName("RUTILE58", .F., .T.)
+
+    FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " FIM DO PROCESSO DE CARGA TIT VENCIDOS - APP CLIENTE", 0, 0, {})
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", " ###################################################### ", 0, 0, {})
+
+Return()
+
+//Função que faz a busca dos títulos vencidos de clientes que serão atualizados
+Static Function AtTitulosVenc()
+
+    Local cQry 		:= ""
+    Local lContinua := .F.
+    Local oVirtusCargaTitulos	As Object
+    Local nQtdRegPg := 100 //Paginação para envio...
+
+    cQry += "SELECT DISTINCT A1_CGC FROM ( " + CRLF
+
+    cQry += " SELECT DISTINCT SA1.A1_CGC " + CRLF
+    cQry += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) " + CRLF
+
+    //contrato cemiterio
+    cQry += " INNER JOIN " +RetSQLName("U00") + " U00 (NOLOCK) ON " + CRLF
+    cQry += "     U00.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += "     AND U00.U00_CLIENT = SA1.A1_COD " + CRLF
+    cQry += "     AND U00.U00_LOJA = SA1.A1_LOJA " + CRLF
+    cQry += "     AND U00.U00_STATUS IN ('A','S') " + CRLF
+
+    //títulos vencidos
+    cQry += " INNER JOIN " +RetSQLName("SE1") + " SE1 (NOLOCK) ON " + CRLF
+    cQry += "     SE1.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += "     AND SE1.E1_FILIAL = U00.U00_MSFIL " + CRLF
+    cQry += "     AND SE1.E1_XCONTRA = U00.U00_CODIGO " + CRLF
+    cQry += "     AND SE1.E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB') " + CRLF
+    cQry += "     AND SE1.E1_VALOR > 0 " + CRLF
+    cQry += "     AND SE1.E1_SALDO > 0 " + CRLF
+    cQry += "     AND SE1.E1_VENCREA <= '"+DToS(date()-1)+"' " + CRLF
+
+    cQry += " WHERE SA1.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += " AND SA1.A1_CGC <> ' ' " + CRLF
+    cQry += " AND SA1.A1_XDTNASC <> ' ' " + CRLF
+
+    cQry += " UNION ALL " + CRLF
+
+    cQry += " SELECT DISTINCT SA1.A1_CGC " + CRLF
+    cQry += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) " + CRLF
+
+    //contrato funeraria
+    cQry += " INNER JOIN " +RetSQLName("UF2") + " UF2 (NOLOCK) ON " + CRLF
+    cQry += "     UF2.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += "     AND UF2.UF2_CLIENT = SA1.A1_COD " + CRLF
+    cQry += "     AND UF2.UF2_LOJA = SA1.A1_LOJA " + CRLF
+    cQry += "     AND UF2.UF2_STATUS IN ('A','S') " + CRLF
+
+    //títulos vencidos
+    cQry += " INNER JOIN " +RetSQLName("SE1") + " SE1 (NOLOCK) ON " + CRLF
+    cQry += "     SE1.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += "     AND SE1.E1_FILIAL = UF2.UF2_MSFIL " + CRLF
+    cQry += "     AND SE1.E1_XCTRFUN = UF2.UF2_CODIGO " + CRLF
+    cQry += "     AND SE1.E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB') " + CRLF
+    cQry += "     AND SE1.E1_VALOR > 0 " + CRLF
+    cQry += "     AND SE1.E1_SALDO > 0 " + CRLF
+    cQry += "     AND SE1.E1_VENCREA <= '"+DToS(date()-1)+"' " + CRLF
+
+    cQry += " WHERE SA1.D_E_L_E_T_ = ' ' " + CRLF
+    cQry += " AND SA1.A1_CGC <> ' ' " + CRLF //CGC tem que estar preenchido
+    cQry += " AND SA1.A1_XDTNASC <> ' ' " + CRLF //não pode ter data de nascimento em branco
+
+    If ExistBlock("PUTL58WQRY") 
+        cQry += ExecBlock("PUTL58WQRY", .F., .F.)
+    EndIf
+
+    cQry += " ) CARGATITULOS " + CRLF
+    cQry += " ORDER BY A1_CGC " + CRLF
+
+    if Select("QRYCARGA") > 0
+		QRYCARGA->(DbCloseArea())
+	endif
+
+	// atualizo o log de console
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "QRYCARGA: " + CRLF + cQry, 0, 0, {})
+
+	cQry := ChangeQuery(cQry)
+
+	TcQuery cQry NEW Alias "QRYCARGA"
+	
+	While QRYCARGA->(!Eof())
+
+        FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "ENVIANDO DADOS DO TIT. VENCIDOS", 0, 0, {})
+        
+        oVirtusCargaTitulos := VirtusCargaTitulos():New()
+        //processa individualmente
+		//lContinua := oVirtusCargaTitulos:ProcessaTitulos((QRYCARGA->A1_CGC)) 
+
+        //processa uma página de até 100 CGC's
+        While QRYCARGA->(!Eof()) .and. Len(oVirtusCargaTitulos:aClientes) < nQtdRegPg
+            aAdd(oVirtusCargaTitulos:aClientes, QRYCARGA->A1_CGC )
+            QRYCARGA->(DbSkip())
+        EndDo
+
+        oVirtusCargaTitulos:CargaTitulos( '',"A,S",nil,nil,0,len(oVirtusCargaTitulos:aClientes))
+        lContinua := oVirtusCargaTitulos:EnviaTitulos("")
+
+	    FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "RETORNO DO ENVIO DO TIT. VENCIDOS: "+iif(lContinua,"SUCESSO!","FALHA!"), 0, 0, {})
+      
+        FreeObj( oVirtusCargaTitulos )
+        oVirtusCargaTitulos := Nil
+
+        If !lContinua
+            Exit //sai do While..
+        EndIf
+		
+		//QRYCARGA->(DbSkip())
+	EndDo
+
+    QRYCARGA->(DbCloseArea())
+
+Return
+
+

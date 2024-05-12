@@ -1,0 +1,249 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE39
+Classe do Modelo de Dados de Carga de Clientes
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/06/2021
+/*/
+User Function RUTILE39()
+Return(Nil)
+
+Class ModCargaClientes
+
+	Public Data cnpj            as Array
+	Public Data cgc_cliente     as Character
+	Public Data nome            as Character
+	Public Data cep             as Character
+	Public Data estado          as Character
+	Public Data municipio       as Character
+	Public Data bairro          as Character
+	Public Data endereco        as Character
+	Public Data complemento     as Character
+	Public Data pto_referencia  as Character
+	Public Data ddd             as Character
+	Public Data telefone        as Character
+	Public Data ddd_celular     as Character
+	Public Data celular         as Character
+	Public Data email           as Character
+	Public Data codigo_cliente  as Character
+	Public Data nascimento      as Character
+	Public Data status          as Character
+	Public Data sexo 			as Character
+	Public Data contratos       as Array
+
+	Public Method New() Constructor
+	Public Method toJsonObject()
+	Public Method toJsonContratos()
+	Public Method toJsonBeneficiarios()
+
+EndClass
+
+/*/{Protheus.doc} ModCargaClientes::New
+Metodo construtor
+@type method
+@version 1.0  
+@author g.sampaio
+@since 30/06/2021
+/*/
+Method New() Class ModCargaClientes
+
+	Self:cnpj            := {}
+	Self:cgc_cliente     := ""
+	Self:nome            := ""
+	Self:cep             := ""
+	Self:estado          := ""
+	Self:municipio       := ""
+	Self:bairro          := ""
+	Self:endereco        := ""
+	Self:complemento     := ""
+	Self:pto_referencia  := ""
+	Self:ddd             := ""
+	Self:telefone        := ""
+	Self:ddd_celular     := ""
+	Self:celular         := ""
+	Self:email           := ""
+	Self:codigo_cliente  := ""
+	Self:nascimento      := U_DataJson("")
+	Self:status          := ""
+	Self:sexo			 := ""
+	Self:contratos       := {}
+
+Return(Self)
+
+/*/{Protheus.doc} ModCargaClientes::toJsonObject
+Metodo para retornoar o json de carga de clientes
+@type method
+@version 1.0 
+@author g.sampaio
+@since 30/06/2021
+@return object, json de modelo de dados de carga de clientes
+/*/
+Method toJsonObject() Class ModCargaClientes
+
+	Local oJson := JsonObject():New()
+
+	oJson["cnpj"]           	:= Self:cnpj
+	oJson["cgc_cliente"]    	:= Self:cgc_cliente
+	oJson["nome"]           	:= Self:nome
+	oJson["cep"]            	:= Self:cep
+	oJson["estado"]         	:= Self:estado
+	oJson["municipio"]      	:= Self:municipio
+	oJson["bairro"]         	:= Self:bairro
+	oJson["endereco"]       	:= Self:endereco
+	oJson["complemento"]    	:= Self:complemento
+	oJson["pto_referencia"] 	:= Self:pto_referencia
+	oJson["ddd"]            	:= Self:ddd
+	oJson["telefone"]       	:= Self:telefone
+	oJson["ddd_celular"]    	:= Self:ddd_celular
+	oJson["celular"]        	:= Self:celular
+	oJson["email"]          	:= Self:email
+	oJson["codigo_cliente"]		:= Self:codigo_cliente
+	oJson["nascimento"]    		:= Self:nascimento
+	oJson["status"]    			:= Self:status
+	oJson["sexo"]    			:= Self:sexo
+	oJson["contratos"]      	:= Self:contratos
+
+Return(oJson)
+
+/*/{Protheus.doc} toJsonContratos
+Modelo de dados do Json contratos 
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/07/2021
+@return object, json do modelo de dados do contrato
+/*/
+Method toJsonContratos() Class ModCargaClientes
+
+	Local oJson := JsonObject():New()
+
+	oJson["cnpj"]				:= ""
+	oJson["codigo"]				:= ""
+	oJson["produto"]			:= ""
+	oJson["termos_id"]			:= ""
+	oJson["tipo"]				:= ""
+	oJson["status"]				:= ""
+	oJson["forma_pagamento"]	:= ""
+	oJson["data_ativacao"]		:= U_DataJson("")
+	oJson["data_ultservico"]	:= U_DataJson("")
+	oJson["qtdpar"]				:= 0
+	oJson["valor"]				:= 0
+	oJson["beneficiarios"]		:= {}
+
+Return(oJson)
+
+/*/{Protheus.doc} toJsonBeneficiarios
+Modelo de dados do beneficiario
+@type function
+@version 1.0 
+@author g.sampaio
+@since 14/07/2021
+@return object, json do modelo de dados
+/*/
+Method toJsonBeneficiarios() Class ModCargaClientes
+
+	Local oJson := JsonObject():New()
+
+	oJson["nome"]			:= ""
+	oJson["nascimento"]		:= U_DataJson("")
+	oJson["cpf"]			:= ""
+	oJson["tipo"]			:= ""
+	oJson["parentesco"]		:= ""
+	oJson["telefone"]		:= ""
+	oJson["carencia"]		:= U_DataJson("")
+	oJson["sexo"]			:= ""
+	oJson["inclusao"]		:= U_DataJson("")
+	oJson["falecimento"]	:= U_DataJson("")
+
+Return(oJson)
+
+/*/{Protheus.doc} DataJson
+Funcao para converter o formato da data
+para o formato <aaaa-mm-dd>
+@type function
+@version 1.0
+@author g.sampaio
+@since 20/07/2021
+@param dData, date, data a ser convertida
+@return character, retorna a data convertida
+/*/
+User Function DataJson(dData)
+
+	Local cRetorno	:= ""
+
+	Default dData	:= ""
+
+	if ValType(dData) == "D"
+		dData := Dtos(dData)
+	endif
+
+	if !Empty(dData)
+		cRetorno := SubStr(dData,1,4) + "-" + SubStr(dData,5,2) + "-" + SubStr(dData,7,2)
+	else
+		cRetorno := ""
+	endif
+
+Return(cRetorno)
+
+/*/{Protheus.doc} DescTipoBenef
+Retorna descrição do tipo do benficiario
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 23/02/2022
+@param cModulo, character, cModulo
+@param cCodTipo, character, cCodTipo
+@return character, cDescTipo
+/*/
+User Function DescTipoBenef(cModulo, cCodTipo)
+	Local cDescTipo	:= ""
+
+	Default cModulo := ""
+	Default cCodTipo := ""
+
+	If Upper(cModulo) = "CEMITERIO"
+		cDescTipo := "Autorizado"
+	ElseIf Upper(cModulo) = "PLANO"
+		If cCodTipo == "1"
+			cDescTipo := "Beneficiário"
+		ElseIf cCodTipo == "2"
+			cDescTipo := "Agregado"
+		EndIf
+	EndIf
+
+Return cDescTipo
+
+/*/{Protheus.doc} DescParentesco
+Retorna descrição do tipo de parentesco
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 23/02/2022
+@param cCodTipo, character, cCodTipo
+@return character, cDescTipo
+/*/
+User Function DescParentesco(cCodTipo)
+	Local cDescTipo	:= ""
+
+	Default cCodTipo := ""
+
+	Do Case
+		Case cCodTipo == "CO"
+			cDescTipo := "Conjuge"
+		Case cCodTipo == "FI"
+			cDescTipo := "Filho(a)"
+		Case cCodTipo == "IR"
+			cDescTipo := "Irmao(a)"
+		Case cCodTipo == "NE"
+			cDescTipo := "Neto(a)"
+		Case cCodTipo == "OU"
+			cDescTipo := "Outros"
+		Case cCodTipo == "PA"
+			cDescTipo := "Pai"
+		Case cCodTipo == "MA"
+			cDescTipo := "Mae"
+	EndCase
+
+Return cDescTipo

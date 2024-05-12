@@ -1,0 +1,183 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE48
+Classe do Modelo de Dados de Carga de Clientes
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/06/2021
+/*/
+User Function RUTILE48()
+Return(Nil)
+
+Class ModCargaTitulos
+
+	Public Data cgc_cliente     	as Character
+	Public Data nome            	as Character
+	Public Data email          		as Character
+	Public Data telefone        	as Character
+	Public Data celular         	as Character
+	Public Data endereco        	as Character
+	Public Data bairro          	as Character
+	Public Data cep             	as Character
+	Public Data complemento     	as Character
+	Public Data pto_referencia  	as Character
+	Public Data estado          	as Character
+	Public Data municipio       	as Character
+	Public Data valor_aberto  		as Numeric
+	Public Data titulos_abertos  	as Numeric
+	Public Data contratos  			as Array
+
+	Public Method New() Constructor
+	Public Method toJsonObject()
+	Public Method toJsonContratos()
+	Public Method toJsonTitulosAberto()
+	Public Method toJsonBoletos()
+	Public Method toJsonTitulosPagos()
+
+EndClass
+
+/*/{Protheus.doc} ModCargaTitulos::New
+Metodo construtor do modelo da carga
+de titulos - ModCargaTitulos
+@type method
+@version 1.0 
+@author g.sampaio
+@since 16/08/2021
+/*/
+Method New() Class ModCargaTitulos
+
+	Self:cgc_cliente     	:= ""
+	Self:nome            	:= ""
+	Self:email          	:= ""
+	Self:telefone        	:= ""
+	Self:celular         	:= ""
+	Self:endereco        	:= ""
+	Self:bairro          	:= ""
+	Self:cep             	:= ""
+	Self:complemento     	:= ""
+	Self:pto_referencia  	:= ""
+	Self:estado          	:= ""
+	Self:municipio       	:= ""
+	Self:valor_aberto  		:= 0
+	Self:titulos_abertos  	:= 0
+	Self:contratos  		:= {}
+
+Return(Self)
+
+/*/{Protheus.doc} ModCargaTitulos::toJsonObject
+Modelo de dados para a Carga de Titulos
+@type method
+@version 1.0 
+@author g.sampaio
+@since 20/08/2021
+@return object, objeto de json
+/*/
+Method toJsonObject() Class ModCargaTitulos
+
+	Local oJson := JsonObject():New()
+
+	oJson["cgc_cliente"]     	:= Self:cgc_cliente
+	oJson["nome"]   			:= Self:nome
+	oJson["email"]          	:= Self:email
+	oJson["telefone"]        	:= Self:telefone
+	oJson["celular"]         	:= Self:celular
+	oJson["endereco"]        	:= Self:endereco
+	oJson["bairro"]          	:= Self:bairro
+	oJson["cep"]             	:= Self:cep
+	oJson["complemento"]     	:= Self:complemento
+	oJson["pto_referencia"]  	:= Self:pto_referencia
+	oJson["estado"]          	:= Self:estado
+	oJson["municipio"]       	:= Self:municipio
+	oJson["valor_aberto"]  		:= Self:valor_aberto
+	oJson["titulos_abertos"]  	:= Self:titulos_abertos
+	oJson["contratos"]  		:= Self:contratos
+
+Return(oJson)
+
+/*/{Protheus.doc} ModCargaTitulos::toJsonContratos
+Modelo de dados JSON de Contratos
+@type method
+@version 1.0  
+@author g.sampaio
+@since 20/08/2021
+@return object, objeto de json
+/*/
+Method toJsonContratos() Class ModCargaTitulos
+
+	Local oJson := JsonObject():New()
+
+	oJson["cnpj"]				:= ""
+	oJson["codigo"]				:= ""
+	oJson["tipo"]				:= ""
+	oJson["status"]				:= ""
+	oJson["titulos_abertos"]	:= {}
+	oJson["titulos_pagos"]		:= {}
+
+Return(oJson)
+
+/*/{Protheus.doc} ModCargaTitulos::toJsonTitulosAberto
+Modelo de dados JSON de Titulos em Aberto
+@type method
+@version 1.0 
+@author g.sampaio
+@since 20/08/2021
+@return object, objeto de json
+/*/
+Method toJsonTitulosAberto() Class ModCargaTitulos
+
+	Local oJson := JsonObject():New()
+
+	oJson["chave"] 				:= ""
+	oJson["contrato"]			:= ""
+	oJson["emissao"]			:= U_DataJson("")
+	oJson["vencto"]				:= U_DataJson("")
+	oJson["valor_titulo"]		:= 0
+	oJson["forma_pagamento"]	:= ""
+	oJson["boleto"]				:= nil
+
+Return(oJson)
+
+/*/{Protheus.doc} ModCargaTitulos::toJsonBoletos
+Modelo de dados JSON de Boletos
+@type method
+@version 1.0
+@author g.sampaio
+@since 20/08/2021
+@return object, objeto de json
+/*/
+Method toJsonBoletos() Class ModCargaTitulos
+
+	Local oJson := JsonObject():New()
+
+	oJson["linha_digitavel"] 	:= ""
+	oJson["codigo_de_barras"] 	:= ""
+	oJson["nosso_numero"] 		:= ""
+	oJson["codigo_banco"] 		:= ""
+	oJson["agencia"] 			:= ""
+	oJson["conta"] 				:= ""
+
+Return(oJson)
+
+/*/{Protheus.doc} ModCargaTitulos::toJsonTitulosPagos
+Modelo de dados JSON de titulos pagos
+@type method
+@version 1.0
+@author g.sampaio
+@since 20/08/2021
+@return object, objeto de json
+/*/
+Method toJsonTitulosPagos() Class ModCargaTitulos
+
+	Local oJson := JsonObject():New()
+
+	oJson["chave"] 				:= ""
+	oJson["contrato"]			:= ""
+	oJson["emissao"]			:= U_DataJson("")
+	oJson["vencto"]				:= U_DataJson("")
+	oJson["data_pagamento"]		:= U_DataJson("")
+	oJson["forma_pagamento"]	:= ""
+	oJson["valor_titulo"]		:= 0
+	oJson["valor_pago"] 		:= 0
+
+Return(oJson)

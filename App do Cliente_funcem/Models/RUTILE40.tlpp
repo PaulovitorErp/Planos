@@ -1,0 +1,100 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE40
+Classe do Modelo de Dados de Carga de Clientes
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/06/2021
+/*/
+User Function RUTILE40()
+Return(Nil)
+
+	Class ModClientes
+
+		Public Data cgc_cliente     as Character
+		Public Data nome            as Character
+		Public Data cep             as Character
+		Public Data estado          as Character
+		Public Data municipio       as Character
+		Public Data bairro          as Character
+		Public Data endereco        as Character
+		Public Data complemento     as Character
+		Public Data pto_referencia  as Character
+		Public Data ddd             as Character
+		Public Data telefone        as Character
+		Public Data ddd_celular     as Character
+		Public Data celular         as Character
+		Public Data email           as Character
+		Public Data codigo_cliente  as Character
+		Public Data nascimento      as Character
+		Public Data status          as Character
+		Public Data sexo 			as Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+/*/{Protheus.doc} ModClientes::New
+Metodo construtor
+@type method
+@version 1.0  
+@author g.sampaio
+@since 30/06/2021
+/*/
+Method New() Class ModClientes
+
+	Self:cgc_cliente     := ""
+	Self:nome            := ""
+	Self:cep             := ""
+	Self:estado          := ""
+	Self:municipio       := ""
+	Self:bairro          := ""
+	Self:endereco        := ""
+	Self:complemento     := ""
+	Self:pto_referencia  := ""
+	Self:ddd             := ""
+	Self:telefone        := ""
+	Self:ddd_celular     := ""
+	Self:celular         := ""
+	Self:email           := ""
+	Self:codigo_cliente  := ""
+	Self:nascimento      := U_DataJson("")
+	Self:status          := ""
+	Self:sexo			 := ""
+
+Return(Self)
+
+/*/{Protheus.doc} ModClientes::toJsonObject
+Metodo para retornoar o json de carga de clientes
+@type method
+@version 1.0 
+@author g.sampaio
+@since 30/06/2021
+@return object, json de modelo de dados de carga de clientes
+/*/
+Method toJsonObject() Class ModClientes
+
+	Local oJson := JsonObject():New()
+
+	oJson["cgc_cliente"]    	:= Self:cgc_cliente
+	oJson["nome"]           	:= Self:nome
+	oJson["cep"]            	:= Self:cep
+	oJson["estado"]         	:= Self:estado
+	oJson["municipio"]      	:= Self:municipio
+	oJson["bairro"]         	:= Self:bairro
+	oJson["endereco"]       	:= Self:endereco
+	oJson["complemento"]    	:= Self:complemento
+	oJson["pto_referencia"] 	:= Self:pto_referencia
+	oJson["ddd"]            	:= Self:ddd
+	oJson["telefone"]       	:= Self:telefone
+	oJson["ddd_celular"]    	:= Self:ddd_celular
+	oJson["celular"]        	:= Self:celular
+	oJson["email"]          	:= Self:email
+	oJson["codigo_cliente"]		:= Self:codigo_cliente
+	oJson["nascimento"]    		:= Self:nascimento
+	oJson["status"]    			:= Self:status
+	oJson["sexo"]    			:= Self:sexo
+
+Return(oJson)

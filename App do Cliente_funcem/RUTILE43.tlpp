@@ -1,0 +1,120 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RUTILE43
+Programa para executar a integracao com
+O App de Cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 27/07/2021
+@param cCGC, character, CGC do cliente
+/*/
+User Function RUTILE43(cCGC, lManual)
+	
+	Default lManual := .F.
+
+	if lManual
+		if !empty(cCGC)
+			FWMsgRun(,{|oSay| Processa(cCGC, lManual) },'Aguarde...','Integrando dados do cliente!')
+		endif
+	else
+		Processa(cCGC, lManual)
+	endif
+
+Return
+
+Static Function Processa(cCGC, lManual)
+
+	Local lContinua				As Logical
+	Local lAPICliente			As Logical
+	Local oVirtusCargaClientes	As Object
+	Local oVirtusCargaTitulos	As Object
+
+	// atribuicao dos valores
+	lAPICliente			:= SuperGetMV("MV_XAPICLI",.F.,.F.)	// parametro para ativar a API de Cliente
+	lContinua := .T.
+
+	// verifico se a integracao esta ativa
+	if lAPICliente .AND. !empty(cCGC)
+
+		if ValidaCtrCGC(cCGC)
+			oVirtusCargaClientes := VirtusCargaClientes():New()
+			lContinua := oVirtusCargaClientes:ProcessaClientes(cCGC)
+		else
+			if lManual
+				MsgAlert("Cliente não possui contrato ativo ou campos necessários não preenchidos!","Atenção")
+			endif
+			Return
+		endif
+
+		// verifico se estou mandando os dados de cliente
+		if lContinua
+
+			oVirtusCargaTitulos := VirtusCargaTitulos():New()
+			lContinua := oVirtusCargaTitulos:ProcessaTitulos(cCGC)
+
+		endIf
+
+		if lManual
+			if lContinua
+				MsgInfo("Dados do Cliente com CPF/CNPJ ["+Alltrim(cCGC)+"] integrados com sucesso.","Sucesso")
+			else
+				MsgAlert("Falha na integração dos dados do Cliente CPF/CNPJ ["+Alltrim(cCGC)+"]. Verifique rotina de log integração.","Atenção")
+			endif
+		endif
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidaCtrCGC
+Valida se o cliente tem contratos
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/09/2021
+@param cCGCCliente, character, CGC do Cliente
+@return logical, retorno se o cliente tem contratos de cemiterio ou funeraria
+/*/
+Static Function ValidaCtrCGC(cCGCCliente)
+
+	Local cAliasExec	As Character
+	Local cQuery		As Character
+	Local lRetorno		As Logical
+
+	Default cCGCCliente	:= ""
+
+	// atribuo valor as variaveis
+	cAliasExec	:= ""
+	cQuery 		:= ""
+	lRetorno	:= .F.
+
+	cQuery := " SELECT SA1.A1_CGC CGCCLIENTE "
+	cQuery += " FROM " + RetSQLName("SA1") + " SA1 "
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_CGC = '" + cCGCCliente + "' "
+	cQuery += " AND SA1.A1_XDTNASC <> ' ' " // Somente clientes com data de nascimento
+	cQuery += " AND (EXISTS "
+	cQuery += " (SELECT U00.U00_CODIGO CODIGO_CEM "
+	cQuery += " FROM " + RetSQLName("U00") + " U00 "
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U00.U00_STATUS IN ('A',	'S') "
+	cQuery += " AND U00.U00_CLIENT = SA1.A1_COD "
+	cQuery += " AND U00.U00_LOJA = SA1.A1_LOJA ) "
+	cQuery += " OR EXISTS "
+	cQuery += " (SELECT UF2.UF2_CODIGO CODIGO_FUN "
+	cQuery += "  FROM " + RetSQLName("UF2") + " UF2 "
+	cQuery += " WHERE UF2.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UF2.UF2_STATUS IN ('A',	'S') "
+	cQuery += " AND UF2.UF2_CLIENT = SA1.A1_COD "
+	cQuery += " AND UF2.UF2_LOJA = SA1.A1_LOJA )) "
+
+	// executo a query e crio o alias temporario
+	cAliasExec := FwExecCachedQuery():OpenQuery( cQuery , /**/,  /**/, /**/, "60", "30" )
+
+	if (cAliasExec)->(!Eof())
+		lRetorno := .T.
+	endIf
+
+Return(lRetorno)
+

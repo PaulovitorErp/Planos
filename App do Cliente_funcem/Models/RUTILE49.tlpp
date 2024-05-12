@@ -1,0 +1,18 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE48
+Classe do Modelo de Dados de Carga de Clientes
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/06/2021
+/*/
+User Function RUTILE49()
+Return(Nil)
+
+	Class ModCargaBaixados
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
