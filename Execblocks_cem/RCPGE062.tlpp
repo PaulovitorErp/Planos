@@ -1,0 +1,105 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RCPGE062
+funcao para atualizar os dados do autorizado
+conforme o cadastro de clientes
+@type function
+@version 1.0
+@author g.sampaio
+@since 16/12/2020
+@param cCodCli, character, codigo do cliente
+@param cLojaCli, character, loja do cliente
+@return logical, retorna se preenchou os corretamente
+/*/
+User Function RCPGE062( cCodCli, cLojaCli )
+
+	Local aArea             As Array
+	Local aAreaSA1          As Array
+	Local nOperation 	    As Numeric
+	Local lRetorno          As Logical
+	Local lContinua         As Logical
+	Local oModel		    As Object
+	Local oModelU00 	    As Object
+	Local oModelU02 	    As Object
+
+	Default cCodCli     := ""
+	Default cLojaCli    := ""
+
+	// atribuo valor as variaveis
+	aArea           := GetArea()
+	aAreaSA1        := SA1->(GetArea())
+	cGrauPar	    := "OU" //Outros
+	lRetorno        := .T.
+	lContinua       := .T.
+	oModel		    := FWModelActive()
+	nOperation 	    := oModel:GetOperation()
+	oModelU00 	    := oModel:GetModel("U00MASTER")
+	oModelU02 	    := oModel:GetModel("U02DETAIL")
+
+	// verifico se os campos estão devidamente preenchidos
+	if !Empty(cCodCli) .And. !Empty(cLojaCli)
+		lContinua := ExistCpo("SA1",cCodCli+cLojaCli)
+	Endif
+
+	// atualizo a variavel de retorno
+	lRetorno := lContinua
+
+	//posiciono no cliente
+	SA1->(DbSetorder(1))
+	if lContinua .And. SA1->(MsSeek(xFilial("SA1")+cCodCli+cLojaCli))
+
+		// verifico se o campo A1_XCEMAUT existe
+		if SA1->(FieldPos("A1_XCEMAUT")) > 0
+
+			if SA1->A1_XCEMAUT == "2" // caso o cliente nao gere autorizado
+
+				Help(,,'Help - CLIENTE',,"Cliente não pode ser utilizado como autorizado, revise o cadastro ou utilize outro cliente!" ,1,0)
+				lContinua := .F.
+
+			endIf
+
+		endif
+
+		if lContinua
+
+			//valida se data de nascimento esta preenchida
+			if !Empty(SA1->A1_XDTNASC)
+
+				oModelU02:LoadValue("U02_DTNASC",SA1->A1_XDTNASC)
+				oModelU02:LoadValue("U02_IDADE",U_UAgeCalculate(SA1->A1_XDTNASC,dDataBase))
+			Endif
+
+			//Carregando dados do titular na grid beneficiarios
+			oModelU02:LoadValue("U02_CODCLI"	, cCodCli )
+			oModelU02:LoadValue("U02_LOJCLI"	, cLojaCli )
+			oModelU02:LoadValue("U02_NOME"		, SA1->A1_NOME 		)
+			oModelU02:LoadValue("U02_SEXO"		, SA1->A1_XSEXO		)
+			oModelU02:LoadValue("U02_CPF"		, SA1->A1_CGC		)
+			oModelU02:LoadValue("U02_ESTCIV"	, SA1->A1_XESTCIV	)
+			oModelU02:LoadValue("U02_CI"		, SA1->A1_PFISICA	)
+			oModelU02:LoadValue("U02_END"		, SA1->A1_END)
+			oModelU02:LoadValue("U02_COMPLE"	, SA1->A1_COMPLEM)
+			oModelU02:LoadValue("U02_CEP"		, SA1->A1_CEP)
+			oModelU02:LoadValue("U02_EST"		, SA1->A1_EST)
+			oModelU02:LoadValue("U02_CODMUN"	, SA1->A1_COD_MUN)
+			oModelU02:LoadValue("U02_MUN"		, SA1->A1_MUN)
+			oModelU02:LoadValue("U02_DDD"		, SA1->A1_DDD)
+			oModelU02:LoadValue("U02_FONE"		, SA1->A1_TEL)
+			oModelU02:LoadValue("U02_CELULA"	, SA1->A1_XCEL)
+			oModelU02:LoadValue("U02_EMAIL"		, SA1->A1_EMAIL)
+			oModelU02:LoadValue("U02_BAIRRO"	, SA1->A1_BAIRRO)
+			oModelU02:LoadValue("U02_NATURA"	, RetField("CC2",1,xFilial("CC2")+SA1->A1_XESTNAS+SA1->A1_XMUNNAT,"CC2_MUN"))
+			
+			oModelU02:LoadValue("U02_STATUS"	, "2")
+
+			// posiciono na primeira linha
+			oModelU02:GoLine(1)
+
+		endIf
+
+	Endif
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(lRetorno)

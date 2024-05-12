@@ -1,0 +1,102 @@
+#include 'totvs.ch'
+#include "topconn.ch"
+#include 'FWMVCDEF.CH'
+#include 'FWEditPanel.CH'
+
+/*/{Protheus.doc} RCPGE061
+Funcao para incluir o titular como autorizado
+@type function
+@version 1.0
+@author g.sampaio
+@since 15/12/2020
+@param cCodCli, character, Codigo do Cliente
+@param cLojaCli, character, Loja do Cliente
+@return Logical, retorno logico da validacao 
+/*/
+User Function RCPGE061( cCodCli, cLojaCli )
+
+	Local aArea			    As Array
+	Local aAreaSA1		    As Array
+	Local lRetorno          As Logical
+	Local lContinua         As Logical
+	Local lCriaAutTitular   As Logical
+	Local nOperation 	    As Numeric
+	Local oModel		    As Object
+	Local oView			    As Object
+	Local oModelU00 	    As Object
+	Local oModelU02 	    As Object
+
+	Default cCodCli     := ""
+	Default cLojaCli    := ""
+
+	// preencho as variaveis
+	aArea	        := GetArea()
+	aAreaSA1        := SA1->(GetArea())
+	lRetorno        := .T.
+	lContinua       := .T.
+	lCriaAutTitular := SuperGetMV("MV_XCEMAUT",.F.,.F.)
+	oModel		    := FWModelActive()
+	oView		    := FWViewActive()
+	nOperation 	    := oModel:GetOperation()
+	oModelU00 	    := oModel:GetModel("U00MASTER")
+	oModelU02 	    := oModel:GetModel("U02DETAIL")
+
+	// verifico se os campos estão devidamente preenchidos
+	if !Empty(cCodCli) .And. !Empty(cLojaCli)
+		lContinua 	:= U_UExistSA1( M->U00_CLIENT, M->U00_LOJA) //ExistCpo("SA1", M->U00_CLIENT+M->U00_LOJA)
+
+		if !lContinua
+			lRetorno := .F.
+			Help(,,'Help - CLIENTE',,"Campos 'Cliente' e 'Loja' devem estar preenchidos na inclusão dos contrato!" ,1,0)
+		endIf
+	else
+		lContinua := .F.
+	endIf
+
+	// verifico se o codigo do cliente e loja do cliente
+	If lContinua .And. lCriaAutTitular
+
+		//posiciono no cliente
+		SA1->(DbSetorder(1))
+		if SA1->(DbSeek(xFilial("SA1")+cCodCli+cLojaCli))
+
+			// verifico se o campo A1_XCEMAUT existe
+			if SA1->(FieldPos("A1_XCEMAUT")) > 0
+
+				if SA1->A1_XCEMAUT == "2" // caso o cliente nao gere autorizado
+					lContinua := .F.
+				endIf
+
+			endif
+
+			// verifico se esta tudo certo
+			if lContinua
+
+				// se a operação for inclusão, limpo o grid, senão deleto todas as linhas
+				if nOperation == MODEL_OPERATION_INSERT
+
+					// função que limpa o grid
+					U_LimpaAcolsMVC(oModelU02, oView)
+
+				Endif
+
+				//Se a primeira linha não estiver em branco, insiro uma nova linha
+				If !Empty(oModelU02:GetValue("U02_NOME"))
+
+					oModelU02:AddLine()
+					oModelU02:GoLine(oModelU02:Length())
+				Endif
+
+				// preencho os dados do autorizado
+				U_RCPGE062( SA1->A1_COD, SA1->A1_LOJA )
+
+			endIf
+
+		Endif
+
+	EndIf
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(lRetorno)

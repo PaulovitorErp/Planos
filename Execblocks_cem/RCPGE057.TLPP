@@ -1,0 +1,95 @@
+#Include 'Protheus.ch'
+
+/*/{Protheus.doc} RCPGE057
+Consulta especifica de quadras
+
+@type function
+@version 
+@author g.sampaio
+@since 16/11/2020
+@return return_type, return_description
+/*/
+User Function RCPGE057()
+
+	Local aArea         as Array        // guarda os dados do ambiente
+    Local aAreaU08      as Array        // guarda os dados do ambiente tabela U08
+	Local aDados	    as Array        // dados para multi-selecao
+	Local cTitulo	    as Character    // titulo da tela
+	Local cMvParDef	    as Character    // String de Opcoes para Retorno
+	Local cVarIni	    as Character    // Variavel de Retorno
+	Local cCodModulo    as Character    // codigo do modulo que esta executando a consulta especifica
+    Local cDescriTipo   as Character    // descricao do tipo de titulo na SX5 - Tabela 05
+	Local nConta		as Numeric      // variavel contadora no laco de repeticao FOR
+	Local nTamanho	    as Numeric      // tamanho do campo E1_TIPO no dicionario de dados - SX3
+
+	Static cMvRetor	    as Character
+
+	// atribuo valor as variaveis
+	aArea       := GetArea()
+    aAreaU08    := U08->(GetArea())
+	aDados	    := {}
+	cTitulo	    := "Quadras"
+	cMvParDef	:= ""
+	cVarIni	    := ""
+	cCodModulo  := ""
+	cMvRetor	:= ""
+	nConta		:= 0
+	nTamanho	:= TamSX3("U08_CODIGO")[1]
+
+	// verifico se a variavel ja tem conteudo
+	If !Empty(cMvRetor)
+
+		// limpo o conteudo da variavel
+		cMvRetor := ""
+
+	EndIf
+
+    U08->(DbSetOrder(1))
+    
+	While U08->(!Eof())
+
+        // atribuo valor para multi-selecao
+		aadd(aDados, U08->U08_CODIGO + " - " + AllTrim(U08->U08_DESC))
+		cMvParDef += U08->U08_CODIGO
+		
+        U08->(DbSkip())
+	Enddo
+
+    // executo a funcao F_Opcoes para montar a tela de multiselecao
+	If F_Opcoes(@cVarIni, cTitulo, aDados, cMvParDef, 12, 49, .F., nTamanho, 36)
+
+        // percorro o laco de acorodo com o tamanho do campo E1_TIPO
+		For nConta := 1 To Len(cVarIni) Step nTamanho
+
+            // aplico a mascara do campo de acordo com o tamanho do campo
+			If substr(cVarIni, nConta, nTamanho) # Replicate("*",TamSX3("U08_CODIGO")[1])
+
+                // aplico o separador ; caso ja exista conteudo na variavel de retonro
+				If !Empty(cMvRetor)
+					cMvRetor += ";"
+				EndIf
+
+                // alimento a variaveld e retorno
+				cMvRetor += substr(cVarIni,nConta,nTamanho)
+
+			EndIf
+
+		Next nConta
+
+	EndIf
+
+    RestArea(aAreaU08)
+	RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RCPGE57A
+Funcao para retorno da consulta especifica
+@type function
+@version 
+@author g.sampaio
+@since 04/03/2020
+@return return_type, return_description
+/*/
+User Function RCPGE57A()
+Return(cMvRetor)

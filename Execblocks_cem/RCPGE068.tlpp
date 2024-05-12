@@ -1,0 +1,90 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE068
+Funcao para mostrar o detalhamento do parcelamento
+antiga funcao DetFin do PCPGA001
+@type function
+@version 1.0 
+@author g.sampaio
+@since 14/05/2021
+/*/
+User Function RCPGE068()
+
+	Local aParcelas	    := {}
+	Local aCampos	    := {"Tipo","Parcela","Valor","Dt. vencto."}
+	Local aLarg		    := {"80","20","60","40"}
+	Local aBrowse 	    := {}
+	Local oBrowse       := Nil
+	Local oSay1         := Nil
+	Local oSay2         := Nil
+	Local oSay3         := Nil
+	Local oSay4         := Nil
+	Local oSay5         := Nil
+	Local nI		    := 1
+	Local nContReg 	    := 0
+	Local nTotReg 		:= 0
+	Local oVirtusFin	:= Nil
+
+	Static oDlgFin
+
+	If !Inclui .And. !Altera
+		MsgInfo("Função disponível somente nas operações de inclusão ou alteração.","Atenção")
+		Return
+	Endif
+
+	If Empty(M->U00_VALOR)
+		MsgInfo("Campo <Valor> obrigatório.","Atenção")
+		Return
+	Endif
+
+	// inicio a classe financeira do virtus
+	oVirtusFin := VirtusFin():New()
+
+	oVirtusFin:CRContratoCemiterio(/*nRecno*/, .F.)
+
+	aParcelas := oVirtusFin:aDadosParcelas
+
+	if Len(aParcelas) > 0
+
+		For nI := 1 To Len(aParcelas)
+
+			if nI == 1 .And. M->U00_VLRENT > 0
+				AAdd(aBrowse,{"Entrada",aParcelas[nI][5],Transform(aParcelas[nI][8],"@E 9,999,999,999,999.99"),aParcelas[nI][6]})
+			else
+				AAdd(aBrowse,{"Parcela",aParcelas[nI][5],Transform(aParcelas[nI][8],"@E 9,999,999,999,999.99"),aParcelas[nI][6]})
+			endIf
+
+			nTotReg += aParcelas[nI][8]
+			nContReg++
+		Next
+
+		DEFINE MSDIALOG oDlgFin TITLE "Parcelamento Financeiro" From 000,000 TO 450,700 COLORS 0, 16777215 PIXEL
+
+		//Browse
+		oBrowse := TCBrowse():New(005,005,340,180,,aCampos,aLarg,oDlgFin,,,,,{||},,,,,,,.F.,,.T.,,.F.,,, )
+		oBrowse:SetArray(aBrowse)
+
+		oBrowse:AddColumn(TCColumn():New("Tipo",{|| aBrowse[oBrowse:nAt,1] },,,,"LEFT",,.F.,.T.,,,,.F.,))
+		oBrowse:AddColumn(TCColumn():New("Parcela",{|| aBrowse[oBrowse:nAt,2] },,,,"LEFT",,.F.,.T.,,,,.F.,))
+		oBrowse:AddColumn(TCColumn():New("Valor",{|| aBrowse[oBrowse:nAt,3] },,,,"LEFT",,.F.,.T.,,,,.F.,))
+		oBrowse:AddColumn(TCColumn():New("Dt. vencto.",{|| aBrowse[oBrowse:nAt,4] },,,,"LEFT",,.F.,.T.,,,,.F.,))
+
+		//Rodapé
+		@ 193, 005 SAY oSay1 PROMPT "Qtd. de registros" SIZE 120, 007 OF oDlgFin COLORS 0, 16777215 PIXEL
+		@ 193, 060 SAY oSay2 PROMPT cValToChar(nContReg) SIZE 040, 007 OF oDlgFin COLORS 0, 16777215 PIXEL
+
+		@ 193, 120 SAY oSay3 PROMPT "Total:" SIZE 100, 007 OF oDlgFin COLORS 0, 16777215 PIXEL
+		@ 193, 160 SAY oSay4 PROMPT Transform(nTotReg,"@E 9,999,999,999,999.99") SIZE 040, 007 OF oDlgFin COLORS 0, 16777215 PIXEL
+
+		//Linha horizontal
+		@ 198, 005 SAY oSay5 PROMPT Repl("_",342) SIZE 342, 007 OF oDlgFin COLORS CLR_GRAY, 16777215 PIXEL
+
+		@ 208, 317 BUTTON oBut2 PROMPT "Ok" SIZE 030, 010 OF oDlgFin ACTION oDlgFin:End() PIXEL
+
+		ACTIVATE MSDIALOG oDlgFin CENTERED
+
+	else
+		MsgAlert("Não existem dados suficientes para exibir o parcelamento financeiro!")
+	endIf
+
+Return(Nil)

@@ -1,0 +1,66 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} RCPGE060
+funcao para validar a alteracao do campo B1_XREQSER
+@type function
+@version 
+@author g.sampaio
+@since 10/12/2020
+@return return_type, return_description
+/*/
+User Function RCPGE060()
+
+	Local cQuery        As Character
+	Local lCemiterio    As Logical
+    Local lRetorno		As Logical
+	Local lValReqser	As Logical
+    
+	// atribuo valor as variaveis
+	cQuery      := ""
+    lCemiterio  := SuperGetMV("MV_XCEMI",.F.,.F.) // verifico se o módulo de cemiterio esta ativado
+	lValReqser	:= SuperGetMV("MV_XREQSER",.F.,.T.) // habilito a validacao do campo B1_XREQSER
+	lRetorno	:= .T.  
+
+    // verifico se o campo ja tem conteudo gravado no banco de dados
+	if lCemiterio .And. lValReqser .And. !Empty(SB1->B1_XREQSER)
+
+		// verifico se o conteudo do campo B1_XREQSER foi alterado
+		if AllTrim(SB1->B1_XREQSER) <>  AllTrim(M->B1_XREQSER)
+
+			// verifico se o alias temporario existe
+			if Select("TRBSER") > 0
+				TRBSER->(DbCloseArea())
+			endIf
+
+			// verifico se existem apontamentos para o servico
+			cQuery := " SELECT UJV.UJV_SERVIC FROM " + RetSqlName("UJV") + " UJV
+			cQuery += " WHERE UJV.D_E_L_E_T_ = ' '
+
+            // caso o o cadastro de produto for exclusivo por filial, eu filtro os apontamentos por filial
+            if FWModeAccess('SB1')  == "E"
+                cQuery += " AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "'"
+            endIf
+            
+			cQuery += " AND UJV.UJV_SERVIC = '" + SB1->B1_COD + "'"
+            cQuery += " AND ( (UJV.UJV_QUADRA <> ' ' OR UJV.UJV_CREMAT <> ' ' ) OR UJV.UJV_OSSARI <> ' ') "
+
+			TcQuery cQuery New Alias "TRBSER"
+
+			if TRBSER->(!Eof())
+
+                lRetorno := .F.
+                Help( ,, 'Help',, 'Alteração não permitida, o serviço [' + AllTrim(SB1->B1_COD) + '-' + AllTrim(SB1->B1_DESC) + '] está vinculado a pelo menos um apontameto de serviços no módulo Virtus Gestão de Cemitérios!', 1, 0 )
+
+			endIf
+
+			// verifico se o alias temporario existe
+			if Select("TRBSER") > 0
+				TRBSER->(DbCloseArea())
+			endIf
+
+		endIf
+
+	endIf
+
+Return(lRetorno)

@@ -1,0 +1,71 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE063
+Validacao para preencher os dados do cliente
+vinculado ao autorizado no apontamento de servicos
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param cCodContrato, character, codigo do contrato
+@param cAutoriApto, character, codigo do autorizado
+@return logical, retorno verdadeiro
+/*/
+User Function RCPGE063( cCodContrato, cAutoriApto)
+
+	Local aArea         As Array
+	Local aAreaU02      As Array
+	Local aAreaSA1      As Array
+	Local lRetorno      As Logical
+	Local oModel 	    As Object
+	Local oModelUJV		As Object
+
+	Default cCodContrato    := ""
+	Default cAutoriApto     := ""
+
+	// declaro o valor para as variaveis
+	aArea       := GetArea()
+	aAreaU02    := U02->(GetArea())
+	aAreaSA1    := SA1->(GetArea())
+	lRetorno    := .T.
+	oModel 		:= FWModelActive()
+	oModelUJV	:= oModel:GetModel( 'UJVMASTER' )
+
+	// nao gera transferencia de endereco ou nao gera para rotina automatica
+	if FWIsInCallStack("U_RCPGA039") .Or. AllTrim(FunName()) $ "RCPGA039"
+
+		// posiciono no cadastro do autorizado
+		U02->(dbSetOrder(1))
+		if U02->( MsSeek( xFilial("U02")+cCodContrato+cAutoriApto ) )
+
+			// verifico se o autorizado tem os dados do cliente preenchidos
+			if !Empty(U02->U02_CODCLI) .And. !Empty(U02->U02_LOJCLI)
+
+				// mensagem para o usuario se ele deseja preencher os dados do pedido de vendas
+				if MsgYesNo("Deseja preencher os dados do pedido de vendas com os dados do autorizado?")
+
+					// posiciono no cadastro do cliente
+					SA1->(dbSetOrder(1))
+					if SA1->( MsSeek( xFilial("SA1")+U02->U02_CODCLI+U02->U02_LOJCLI ) )
+
+						// preencho os dados do cliente
+						oModelUJV:LoadValue("UJV_CLIENT"    , SA1->A1_COD )
+						oModelUJV:LoadValue("UJV_LOJA"	    , SA1->A1_LOJA )
+						oModelUJV:LoadValue("UJV_NOMCLI"    , SA1->A1_NOME )
+						oModelUJV:LoadValue("UJV_CONDPG"    , SA1->A1_CONDPAG )
+
+					endIf
+
+				endIf
+
+			endIf
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaSA1)
+	RestArea(aAreaU02)
+	RestArea(aArea)
+
+Return(lRetorno)

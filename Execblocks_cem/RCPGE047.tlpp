@@ -1,0 +1,326 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE047
+funcao para resertar o finaneiro do contrato
+
+antiga funcao MANUTRES
+@type function
+@version 1.0
+@author g.sampaio
+@since 25/08/2020
+@param cCodContrato, character, codigo do contrato
+@return logical, retorno financeiro se deu tudo certo
+/*/
+User Function RCPGE047(cCodContrato)
+
+	Local aArea             as Array
+	Local aAreaU00          as Array
+	Local aAreaUJV          as Array
+	Local aAreaU32          as Array
+	Local aRecExc           as Array
+	Local cErroVindi	    as Character
+	Local lContinua 	    as Logical
+	Local lRecorrencia	    as Logical
+	Local lUsaNovaComissao	as Logical
+	Local oVindi		    as Object
+	Local oVirtusFin        as Object
+	Local cStatus           as Character
+	Local cOrigem           as Character
+	Local cOrigemDesc       as Character
+
+	// variaveis default
+	Default cCodContrato    := ""
+
+	// atribuo valor as variveis
+	aArea               := GetArea()
+	aAreaU00            := U00->( GetArea() )
+	aAreaUJV            := UJV->( GetArea() )
+	aAreaU32            := U32->( GetArea() )
+	aAreaU43            := U43->( GetArea() )
+	aAreaU20            := U20->( GetArea() )
+	aRecExc             := {}
+	lContinua 	        := .T.
+	oVindi		        := NIL
+	oVirtusFin          := NIL
+	cErroVindi	        := ""
+	lRecorrencia	    := SuperGetMv("MV_XATVREC",.F.,.F.)
+	lUsaNovaComissao	:= SuperGetMv("ES_NEWCOMI",,.F.)	// ativo o uso da nova comissao
+	cStatus             := ""
+	cOrigem             := "RCPGE047"
+	cOrigemDesc         := "Reset de Contrato"
+
+	// posiciono no cadastro do contrato
+	U00->( DbSetOrder(1) )
+	if U00->( MSSeek( xFilial("U00")+cCodContrato ) )
+
+		Do Case
+
+		Case U00->U00_STATUS == "P" //Pré-cadastro
+			MsgAlert("O Contrato já se encontra como pré-cadastro, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "C" //Cancelado
+			MsgAlert("O Contrato se encontra Cancelado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "F" //Finalizado
+			MsgAlert("O Contrato se encontra Finalizado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		EndCase
+
+		if lContinua .And. U00->(FieldPos("U00_TPCONT")) > 0
+
+			// contrato de integracao de empresas
+			if U00->U00_STATUS == "A" .And. U00->U00_TPCONT == "2"
+				MsgInfo("O Contrato de Integração de Empresas, operação não permitida.","Atenção")
+				lContinua := .F.
+			endIf
+
+		endIf
+
+		DbSelectArea("UJV")
+		UJV->(DbSetOrder(2)) //U07_FILIAL+U07_CODIGO+U07_ITEM
+
+		If UJV->(MSSeek(xFilial("UJV")+U00->U00_CODIGO))
+			MsgAlert("Já houve serviço(s) realizado(s) para este Contrato, operação não permitida.","Atenção")
+			lContinua := .F.
+		Endif
+
+		If lContinua
+
+			DbSelectArea("U32")
+			U32->(DbSetOrder(3)) //U32_FILIAL+U32_CONTRA
+
+			If U32->(MSSeek(xFilial("U32")+U00->U00_CODIGO))
+				MsgAlert("Já houve emissão de carnê para este Contrato, operação não permitida.","Atenção")
+				lContinua := .F.
+			Endif
+		Endif
+
+		//verifico se o contrato possui personalizacao, caso sim, nao permito o reset do mesmo
+		U43->(DbSetOrder(2)) //U43_FILIAL + U43_CODIGO
+
+		if U43->(MSSeek(xFilial("U43")+U00->U00_CODIGO))
+
+			MsgAlert("Já houve personalização do contrato, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		endif
+
+		If lContinua
+
+			DbSelectArea("U20")
+			U20->(DbSetOrder(2)) //U20_FILIAL+U20_CONTRA
+
+			If U20->(MSSeek(xFilial("U20")+U00->U00_CODIGO))
+				MsgAlert("Já houve reajuste(s) realizado(s) para este Contrato, operação não permitida.","Atenção")
+				lContinua := .F.
+			Endif
+
+		Endif
+
+		If lContinua
+
+			If MsgYesNo("O Contrato será resetado, deseja continuar?")
+
+				DbSelectArea("SE1")
+				SE1->(DbOrderNickName("XCTRCEM")) //E1_FILIAL+E1_XCONTRA
+
+				U26->(DbSetOrder(2)) //U26_FILIAL + U26_CONTRA
+
+				BEGIN TRANSACTION
+
+					//verifico se o contrato possui taxa de manutencao para realizar a exclusao da mesma
+					if U26->(MSSeek(xFilial("U26")+U00->U00_CODIGO))
+
+						 lContinua := U_ExcluiReaj( U00->U00_DTATIV, dDataBase, U00->U00_CODIGO, U00->U00_CODIGO, U00->U00_PLANO, U00->U00_INDICE )
+
+					endif
+
+					if lContinua
+
+						If SE1->(MSSeek(xFilial("SE1")+U00->U00_CODIGO))
+
+							// inicio a classe de financeiro do Virtus ERP
+							oVirtusFin := VirtusFin():New()
+
+							//valido se o contrato esta em cobranca
+							If !oVirtusFin:VldCobranca( "C", SE1->E1_FILIAL, U00->U00_CODIGO)
+								MsgInfo("O Contrato possui titulos em cobrança, operação cancelada.","Atenção")
+								DisarmTransaction()
+								lContinua := .F.
+							else
+								While SE1->(!EOF()) .And. SE1->E1_FILIAL == xFilial("SE1") .And. SE1->E1_XCONTRA == U00->U00_CODIGO
+
+									If SE1->E1_SALDO > 0 //Título em aberto
+
+										oVirtusFin:ExcBordTit( SE1->(Recno()) )
+
+										// aidiciono os recnos dos titulos que seram excluidos
+										aAdd( aRecExc, SE1->(Recno()))
+									Else
+										MsgInfo("Houve baixa em parcela(s) referente ao Contrato, operação cancelada.","Atenção")
+										DisarmTransaction()
+										lContinua := .F.
+										Exit
+									Endif
+
+									SE1->(DbSkip())
+								EndDo
+							endif
+
+							// verifico se tenho titulos para serem excluidos
+							if Len(aRecExc) > 0
+
+								// faco a exclusao dos titulos do financeiro
+								// retorno mensagem para o usuario
+								FWMsgRun(,{|oSay| lContinua := ExclusaoFinanceiro( oSay, aRecExc, oVirtusFin ) },"Aguarde","Excluindo parcelas geradas na ativação do contrato...")
+
+							endIf
+
+						Endif
+
+						// se estiver tudo certo e nao utilizar o novo modelo de comissao
+						If lContinua .And. !lUsaNovaComissao
+
+							MsgRun("Realizando exclusão dos Títulos de Comissão...","Aguarde",{|| lContinua := U_RCPGB011(U00->U00_CODIGO,2)})
+
+							If !lContinua
+								MsgInfo("Houve problema no estorno de comissão(ões) referente ao Contrato, operação cancelada.","Atenção")
+								DisarmTransaction()
+							Endif
+
+						Endif
+
+						// se estiver tudo certo e estiver utilizando a recorrencia
+						if lContinua .And. lRecorrencia
+
+							// posiciono no cliente da vindi
+							U61->(DbSetOrder(1)) // U61_FILIAL + U61_CONTRA + U61_CLIENT + U61_LOJA
+							if U61->(MSSeek(xFilial("U61") + U00->U00_CODIGO + U00->U00_CLIENT + U00->U00_LOJA))
+
+								// se o cliente vindi estiver ativo
+								if U61->U61_STATUS == "A"
+
+									// crio o objeto de integracao com a vindi
+									oVindi := IntegraVindi():New()
+
+									// envia exclusão do cliente para a Vindi
+									FWMsgRun(,{|oSay| lContinua := oVindi:CliOnline("E","C",@cErroVindi,cOrigem,cOrigemDesc)},'Aguarde...','Enviando Exclusão do Cliente para Plataforma Vindi...')
+
+									//Se cliente na vindi foi excluido, arqvivo as faturas Vindi
+									if lContinua
+
+										//Posiciono nas faturas do contrato para inativar
+										U65->(DbSetOrder(4)) //U65_FILIAL + U65_CONTRA + U65_CLIENT + U65_LOJA
+										if U65->(MSSeek(xFilial("U65") + U00->U00_CODIGO + U00->U00_CLIENT + U00->U00_LOJA))
+
+											While U65->(!EOF());
+													.AND. 	U65->U65_FILIAL + U65->U65_CONTRA + U65->U65_CLIENT + AllTrim(U65->U65_LOJA) == xFilial("U65") + U00->U00_CODIGO + U00->U00_CLIENT + U00->U00_LOJA
+
+												//Consulto status da fatura na VINDI
+												cStatus := oVindi:ConsultaFatura("C",@cErroVindi,U65->U65_CODVIN,/*cCodRet*/,/*cDescRetorno*/,/*cDadosRetorno*/)
+
+												If AllTrim(cStatus) == "canceled" .AND. U65->U65_STATUS == "A"
+													If Reclock("U65",.F.)
+														U65->U65_STATUS := "I"
+														U65->(MsUnLock())
+													EndIf
+												ElseIf AllTrim(cStatus) <> "canceled" .AND. U65->U65_STATUS == "I"
+													If Reclock("U65",.F.)
+														U65->U65_STATUS := "A"
+														U65->(MsUnLock())
+													EndIf
+												EndIf
+
+												U65->(DbSkip())
+											EndDo
+										endif
+									endif
+								endif
+
+								if !lContinua
+									Help(NIL, NIL, "Atenção!", NIL, "Ocorreu um erro na exclusão do Cliente Vindi", 1, 0, NIL, NIL, NIL, NIL, NIL, {cErroVindi})
+									DisarmTransaction()
+								endif
+
+							endif
+
+						endif
+
+						If lContinua
+							RecLock("U00",.F.)
+							U00->U00_STATUS := "P" //Pré-cadastro
+							U00->U00_DTATIV	:= CToD("  /  /    ")
+							U00->(MsUnlock())
+						Endif
+
+					endif
+
+				END TRANSACTION
+
+				// verifico se deu tudo certo
+				If lContinua
+					MsgInfo("Contrato " + U00->U00_CODIGO + " com o financeiro resetado com sucesso!","Atenção")
+				Endif
+
+			Endif
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaU20)
+	RestArea(aAreaU43)
+	RestArea(aAreaU32)
+	RestArea(aAreaUJV)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} ExclusaoFinanceiro
+funcao para excluir os titulos no financeiro do contrato
+@type function
+@version 
+@author g.sampaio
+@since 25/08/2020
+@param oSay, object, param_description
+@param aRecExc, array, param_description
+@param oVirtusFin, object, param_description
+@return return_type, return_description
+/*/
+Static Function ExclusaoFinanceiro( oSay, aRecExc, oVirtusFin )
+
+	Local lRetorno  as Logical
+	Local lContinua as Logical
+	Local nTitulo   as Numeric
+
+	// variaveis default
+	Default aRecExc := {}
+
+	// defino valor das variaveis
+	lRetorno    := .T.
+	lContinua   := .T.
+	nTitulo     := 0
+
+	// vou percorrer todos os recnos passados
+	For nTitulo := 1 to Len(aRecExc)
+
+		// mensagem na barra de processamento
+		oSay:cCaption := "Excluindo a parcela " + StrZero( nTitulo, 3 ) + " de " + StrZero( Len(aRecExc), 3 ) + " do contrato " + U00->U00_CODIGO
+		ProcessMessages()
+
+		// executo a exclusao do financeiro
+		lContinua := oVirtusFin:ExcluiTituloFin( aRecExc[nTitulo] )
+
+		if !lContinua
+			Exit
+		endIf
+
+	Next nTitulo
+
+	lRetorno := lContinua
+
+Return(lRetorno)

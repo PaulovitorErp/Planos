@@ -1,0 +1,274 @@
+#include "totvs.ch"
+#include "topconn.ch"
+#include "tbiconn.CH"
+#INCLUDE 'FWMVCDEF.CH'
+#INCLUDE 'FWEditPanel.CH'
+
+/*/{Protheus.doc} RCPGE051
+funcao para validar o Produto de Cemitério preenchido
+
+Validacao do usuario do campo U00_PLANO
+
+(antiga funcao CPGA001P)
+@type function
+@version 1.0 
+@author g.sampaio
+@since 11/09/2020
+@return logical, retorna se deu tudo certo
+/*/
+User Function RCPGE051()
+
+	Local aArea			as Array
+	Local lRet			as Logical
+	Local nPrecoItem	as Numeric
+	Local nValorCtr		as Numeric
+	Local nOperation 	as Numeric
+	Local oModel		as Object
+	Local oView			as Object
+	Local oModelU00 	as Object
+	Local oModelU01 	as Object
+	Local oModelU37 	as Object
+
+	// atribui os valores as variaveis
+	lRet		:= .T.
+	aArea		:= GetArea()
+	oModel		:= FWModelActive()
+	oView		:= FWViewActive()
+	oModelU00 	:= oModel:GetModel("U00MASTER")
+	oModelU01 	:= oModel:GetModel("U01DETAIL")
+	oModelU37 	:= oModel:GetModel("U37DETAIL")
+	nOperation 	:= oModel:GetOperation()
+	nPrecoItem	:= 0
+	nValorCtr	:= 0
+
+	// para inclusao ou status pendente
+	if oModel:GetOperation() == 3 .Or. oModelU00:GetValue("U00_STATUS") == 'P'
+
+		U05->(DbSetOrder(1)) //U05_FILIAL+U05_CODIGO
+		DA0->(DbSetOrder(1)) //DA0_FILIAL + DA0_CODTAB
+
+		If U05->(DbSeek(xFilial("U05")+oModelU00:GetValue("U00_PLANO")))
+
+			If U05->U05_SITUAC == "I" //Inativo
+
+				Help(,,'Help',,"O Produto de Cemitério digitado se encontra inativo.",1,0)
+				lRet := .F.
+
+			elseif (!Empty(U05->U05_DTINIC) .And. U05->U05_DTINIC > dDatabase) .Or. (!Empty(U05->U05_DTFIM) .And. U05->U05_DTFIM < dDatabase)
+
+				Help(,,'Help',,"O Produto de Cemitério digitado se encontra fora de vigência!",1,0)
+				lRet := .F.
+
+			endif
+
+		else
+
+			Help(,,'Help',,"O Produto de Cemitério inválido, favor verifique o código digitado!",1,0)
+			lRet := .F.
+
+		Endif
+
+		if lRet
+
+			//libero a edicao das linhas
+			oModel:GetModel("U01DETAIL"):SetNoInsertLine(.F.)
+			oModel:GetModel("U01DETAIL"):SetNoUpdateLine(.F.)
+			oModel:GetModel("U01DETAIL"):SetNoDeleteLine(.F.)
+
+			oModel:GetModel("U37DETAIL"):SetNoInsertLine(.F.)
+			oModel:GetModel("U37DETAIL"):SetNoUpdateLine(.F.)
+			oModel:GetModel("U37DETAIL"):SetNoDeleteLine(.F.)
+
+			// valido se estou na integracao de vendas
+			if !IsInCallStack("U_RUTIL21B")
+
+				//valido se a tabela de preco padrao existe na base de dados
+				if !Empty(U05->U05_TABPRE) .And. DA0->(DbSeek(xFilial("DA0")+U05->U05_TABPRE))
+
+					//verifico a validade da tabela de preco
+					if !(DA0->DA0_DATDE <= dDatabase .And. (Empty(DA0->DA0_DATATE) .Or. DA0->DA0_DATATE >= dDatabase))
+
+						Help(,,'Help',,"Tabela de Preço fora da vigência, verifique o cadastro da tabela: " + U05->U05_TABPRE + "! ",1,0)
+						lRet := .F.
+
+					endif
+
+				else
+
+					Help(,,'Help',,"Tabela de Preço do Produto de Cemitério inválida, favor verifique o cadastro de tabela de preco!",1,0)
+					lRet := .F.
+
+				endif
+
+			endif
+
+			If lRet
+
+				// se a operação for inclusão, limpo o grid, senão deleto todas as linhas
+				if nOperation == MODEL_OPERATION_INSERT
+
+					//e necessario a funcao LimpaAcolsMVC apenas quando possui itens preenchidos
+					oModelU01:GoLine(1)
+
+					if !Empty(oModelU01:GetValue("U01_PRODUT"))
+						U_LimpaAcolsMVC(oModelU01,oView)
+						U_LimpaAcolsMVC(oModelU37,oView)
+					endif
+
+				elseif nOperation == 4
+
+					// função que deleta todas as linhas do grid
+					oModelU01:DelAllLine()
+					oModelU37:DelAllLine()
+
+				endIf
+
+				U06->(DbSetOrder(1)) //U06_FILIAL+U06_CODIGO+U06_ITEM
+
+				If U06->(DbSeek(xFilial("U06")+oModelU00:GetValue("U00_PLANO")))
+
+					While U06->(!Eof()) .And. U06->U06_FILIAL == xFilial("U06") .And. U06->U06_CODIGO == oModelU00:GetValue("U00_PLANO")
+
+						SB1->(DbSetOrder(1)) //B1_FILIAL + B1_COD
+
+						if SB1->(DbSeek(xFilial("SB1")+U06->U06_PRODUT))
+
+							nPrecoItem := U_RetPrecoVenda(U05->U05_TABPRE,U06->U06_PRODUT,.F.)
+
+							// pego o valor do item na tabela de precos
+							if nPrecoItem == 0 .And. SB1->B1_XLOCACA <> "S"
+
+								Help( ,, 'Help',, 'O Produto/Servico: '+ Alltrim(U06->U06_PRODUT) +' não possui preço vigente na tabela: ' +Alltrim(U05->U05_TABPRE)+'', 1, 0 )
+
+								lRet := .F.
+								Exit
+
+							endif
+
+							if lRet
+
+								If !IsInCallStack("U_RUTIL21B") //Se integração Mobile
+
+									//Se a primeira linha não estiver em branco, insiro uma nova linha
+									If !Empty(oModelU01:GetValue("U01_PRODUT"))
+										oModelU01:AddLine()
+										oModelU01:GoLine(oModelU01:Length())
+									Endif
+
+									oModelU01:LoadValue("U01_TIPO"  ,"AVGBOX1.PNG")
+									oModelU01:LoadValue("U01_PRODUT",U06->U06_PRODUT)
+									oModelU01:LoadValue("U01_DESCRI",U06->U06_DESCRI)
+									oModelU01:LoadValue("U01_VLRUNI",nPrecoItem)
+									oModelU01:LoadValue("U01_QUANT" ,U06->U06_QUANT)
+									oModelU01:LoadValue("U01_VLRTOT",nPrecoItem * U06->U06_QUANT)
+									oModelU01:LoadValue("U01_SALDO" ,U06->U06_QUANT)
+									oModelU01:LoadValue("U01_CTRSLD",If(!Empty(SB1->B1_XDEBPRE),SB1->B1_XDEBPRE,'N'))
+								Endif
+
+								//somo o valor dos produtos do contrato
+								nValorCtr += nPrecoItem * U06->U06_QUANT
+
+							endif
+
+						else
+
+							lRet := .F.
+							Help(,,'Help',,"Produto: " + Alltrim(U06->U06_PRODUT) + " não encontrado no cadastro de produtos!",1,0)
+							Exit
+
+						endif
+
+						U06->(DbSkip())
+
+					EndDo
+
+				Endif
+
+				if lRet
+
+					U36->(DbSetOrder(1)) //U36_FILIAL+U36_CODIGO+U36_ITEM
+
+					If U36->(DbSeek(xFilial("U36")+oModelU00:GetValue("U00_PLANO")))
+
+						While U36->(!Eof()) .And. U36->U36_FILIAL == xFilial("U36") .And. U36->U36_CODIGO == oModelU00:GetValue("U00_PLANO")
+
+							SB1->(DbSetOrder(1)) //B1_FILIAL + B1_COD
+
+							if SB1->(DbSeek(xFilial("SB1")+U36->U36_SERVIC))
+
+								if lRet
+
+									If !IsInCallStack("U_RUTIL21B") //Se integração Mobile
+
+										//Se a primeira linha não estiver em branco, insiro uma nova linha
+										If !Empty(oModelU37:GetValue("U37_SERVIC"))
+											oModelU37:AddLine()
+											oModelU37:GoLine(oModelU37:Length())
+										Endif
+
+										oModelU37:LoadValue("U37_TIPO"      ,"AVGBOX1.PNG")
+										oModelU37:LoadValue("U37_SERVIC"    ,U36->U36_SERVIC)
+										oModelU37:LoadValue("U37_DESCRI"    ,U36->U36_DESCRI)
+										oModelU37:LoadValue("U37_QUANT"     ,U36->U36_QUANT)
+										oModelU37:LoadValue("U37_SALDO"     ,U36->U36_QUANT)
+										oModelU37:LoadValue("U37_CTRSLD"    ,If(!Empty(SB1->B1_XDEBPRE),SB1->B1_XDEBPRE,'N'))
+									Endif
+
+								endif
+
+							else
+
+								lRet := .F.
+								Help(,,'Help',,"Produto: " + Alltrim(U36->U36_SERVIC) + " não encontrado no cadastro de produtos!",1,0)
+								Exit
+
+							endif
+
+							U36->(DbSkip())
+						EndDo
+
+					Endif
+
+				endif
+
+				oModelU00:LoadValue("U00_VLRBRU",nValorCtr)
+				oModelU00:LoadValue("U00_VALOR",nValorCtr)
+
+				//retorno a protecao das linhas, caso nao esteja ativo a personalizacao
+				oModel:GetModel("U01DETAIL"):SetNoInsertLine(.T.)
+				oModel:GetModel("U01DETAIL"):SetNoUpdateLine(.T.)
+				oModel:GetModel("U01DETAIL"):SetNoDeleteLine(.T.)
+
+				oModel:GetModel("U37DETAIL"):SetNoInsertLine(.T.)
+				oModel:GetModel("U37DETAIL"):SetNoUpdateLine(.T.)
+				oModel:GetModel("U37DETAIL"):SetNoDeleteLine(.T.)
+
+				oModelU01:GoLine(1)
+				oModelU37:GoLine(1)
+
+			Endif
+
+		endif
+
+		//===========================================
+		// Calculo de regra de contrato contrato
+		//===========================================
+
+		// caso nao estiver na rotina de importacao nao considero a regra de negociacao
+		if .NOT. FunName() == "RIMPM003"
+
+			// para quando a quantidade de parcelas e forma de pagamento preenchidas
+			if oModelU00:GetValue("U00_QTDPAR") > 0 .And. !Empty(oModelU00:GetValue("U00_FORPG"))
+
+				// executo a validacao da regra de negociacao
+				U_USetNegociacaoCemiterio()
+
+			endIf
+
+		endIf
+
+	endif
+
+	RestArea(aArea)
+
+Return(lRet)

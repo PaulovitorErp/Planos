@@ -1,0 +1,885 @@
+#include "totvs.ch"
+#include "topconn.ch"
+#include "tbiconn.CH"
+
+/*/{Protheus.doc} RegraNegociacao
+Classe de regra de negociacao
+
+@type class
+@version 
+@author g.sampaio
+@since 10/09/2020
+/*/
+Class RegraNegociacao
+
+	Public data aRegras                     as Array
+	Public data cItemRegra                  as Character
+	Public data cTipoEntrada                as Character
+	Public data cTipoCarenciaFinanceiro     as Character
+	Public data cTipoDescontoVendedor       as Character
+	Public data nParcIni                    as Numeric
+	Public data nParcFim                    as Numeric
+	Public data nTaxaJuros                  as Numeric
+	Public data nCarenciaFinanceiro         as Numeric
+	Public data nCarenciaDiasServico        as Numeric
+	Public data nValorEntradaMinima         as Numeric
+	Public data nLimiteDescontoVendedor     as Numeric
+	Public data nLimiteDescontoSuperior     as Numeric
+	Public data nPosRegra                   as Numeric
+	Public data nValorCalculo               as Numeric
+	Public data lTemRegra                   as Logical
+
+	Public Method New() Constructor         // metodo construtor
+	Public Method ValidaRegra()             // metodo para validacao da regra
+	Public Method EntradaMinima()           // metodo para calcular a entrada minima
+	Public Method LimiteDesconto()          // metodo para calcular o limite de desconto
+	Public Method AlcadasLiberacao()        // metodo para liberar o desconto do vendedor
+	Public Method RetCarenciaFinanceiro()   // metodo para retornar carencia financeira
+	Public Method ValRegraCarencia()        // metodo com a tela de validacao da carencia
+
+EndClass
+
+/*/{Protheus.doc} RegraNegociacao::New
+Metodo construtor da classe
+
+@type method
+@version 
+@author g.sampaio
+@since 21/07/2020
+@return return_type, return_description
+/*/
+Method New( cRegra, cFormaPagamento ) Class RegraNegociacao
+
+	Local aArea             as Array
+	Local cQuery            as Character
+	Local lAtivaNegociacao  as Logical
+
+	// defino o valor das variveis
+	aArea                       := GetArea()
+	cQuery                      := ""
+	lAtivaNegociacao            := SuperGetMV("MV_XATVNEG",, .F.)
+	::aRegras                   := {}
+	::lTemRegra                 := .F.
+	::nPosRegra                 := 0
+	::cItemRegra                := ""
+	::nParcIni                  := 0
+	::nParcFim                  := 0
+	::nTaxaJuros                := 0
+	::nCarenciaFinanceiro       := 0
+	::nCarenciaDiasServico      := 0
+	::cTipoEntrada              := ""
+	::cTipoCarenciaFinanceiro   := ""
+	::cTipoDescontoVendedor     := ""
+	::nValorEntradaMinima       := 0
+	::nLimiteDescontoVendedor   := 0
+	::nLimiteDescontoSuperior   := 0
+	::nValorCalculo             := 0
+	::lTemRegra                 := .T.                            // digo que tem regra de negociacao
+
+	// verifico se a regra de negociacao esta ativada
+	if lAtivaNegociacao
+
+		if Select("TRBNEG") > 0
+			TRBNEG->( DbCloseArea() )
+		endIf
+
+		cQuery := " SELECT
+		cQuery += "     U83.U83_CODIGO	REGRA,
+		cQuery += "     U84.U84_FORMA	FORMAPAG,
+		cQuery += "     U84.U84_ITEM	ITEMFROMA,
+		cQuery += "     U85.U85_ITEM	ITEMREGRA,
+		cQuery += "     U85.U85_PARINI	PARC_INICIAL,
+		cQuery += "     U85.U85_PARFIN	PARC_FINAL,
+		cQuery += "     U85.U85_TXJUR	TAXAJUROS,
+		cQuery += "     U85.U85_TPCARF	TIPO_CARENCIAFIN,
+		cQuery += "     U85.U85_CARFIN	CARENCIA_FINANCEIRO,
+		cQuery += "     U85.U85_CARDIA	CARENCIA_DIA,
+		cQuery += "     U85.U85_TIPENT  TIPO_ENTRADA,
+		cQuery += "     U85.U85_ENTMIN  ENTRADA_MINIMA,
+		cQuery += "     U85.U85_TPDESC 	TIPO_DESCONTO,
+		cQuery += "     U85.U85_DESCVE 	DESC_VENDEDOR,
+		cQuery += "     U85.U85_DESCSU	DESC_SUPERIOR,
+		cQuery += "     U85.U85_VLCALC	VALOR_CALCULO
+		cQuery += "     FROM " + RetSqlName("U83") + " U83
+		cQuery += "     INNER JOIN " + RetSqlName("U84") + " U84 ON U84.D_E_L_E_T_ = ' '
+		cQuery += "     AND U84.U84_FILIAL = '" + xFilial("U84") + "'
+		cQuery += "     AND U84.U84_CODIGO = U83.U83_CODIGO
+		cQuery += "     INNER JOIN " + RetSqlName("U85") + " U85 ON U85.D_E_L_E_T_ = ' '
+		cQuery += "     AND U85.U85_FILIAL = '" + xFilial("U85") + "'
+		cQuery += "     AND U85.U85_CODIGO = U84.U84_CODIGO
+		cQuery += "     AND U85.U85_ITEMFO = U84.U84_ITEM
+		cQuery += "     WHERE U83.D_E_L_E_T_ = ' '"
+		cQuery += "     AND U83.U83_FILIAL = '" + xFilial("U83") + "'"
+		cQuery += "     AND U83.U83_CODIGO = '" + cRegra + "' "
+		cQuery += "     AND U84.U84_FORMA  = '" + cFormaPagamento + "' "
+
+		TcQuery cQuery New Alias "TRBNEG"
+
+		While TRBNEG->(!Eof())
+
+			// preencho a regra de negociacao
+			Aadd( ::aRegras, { TRBNEG->REGRA,;  // [01] Codigo da Regra
+			TRBNEG->FORMAPAG,;                  // [02] Forma de Pagamento
+			TRBNEG->ITEMFROMA,;                 // [03] Item Forma de pagamento
+			TRBNEG->ITEMREGRA,;                 // [04] Item Regra de regra
+			TRBNEG->PARC_INICIAL,;              // [05] Parcela Inicial
+			TRBNEG->PARC_FINAL,;                // [06] Parcela Final
+			TRBNEG->TAXAJUROS,;                 // [07] Taxa de Juros
+			TRBNEG->CARENCIA_FINANCEIRO,;       // [08] Carencia Financeiro
+			TRBNEG->CARENCIA_DIA,;              // [09] Carencia em dias
+			TRBNEG->TIPO_ENTRADA,;              // [10] Entrada minima
+			TRBNEG->ENTRADA_MINIMA,;            // [11] Entrada minima
+			TRBNEG->DESC_VENDEDOR,;             // [12] Limite de Desconto Vendedor
+			TRBNEG->DESC_SUPERIOR,;             // [13] Limite de Desconto Superior
+			TRBNEG->TIPO_CARENCIAFIN,;          // [14] Tipo Carencia Financeira
+			TRBNEG->TIPO_DESCONTO,;             // [15] Tipo de desconto
+			TRBNEG->VALOR_CALCULO })            // [16] Valor da Faixa
+
+			TRBNEG->(DbSkip())
+		EndDo
+
+		// verifico se teve regra preenchida
+		if Len(::aRegras)
+			::lTemRegra := .T. // caso tenham regras
+		endIf
+
+		if Select("TRBNEG") > 0
+			TRBNEG->( DbCloseArea() )
+		endIf
+
+	endIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} RegraNegociacao::ValidaRegra
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 10/09/2020
+@param nQtdParcelas, numeric, param_description
+@return return_type, return_description
+/*/
+Method ValidaRegra( nQtdParcelas ) Class RegraNegociacao
+
+	Default nQtdParcelas := 0
+
+	// posicao do array em se encontra a regra adequada
+	::nPosRegra := AScan( ::aRegras, {|x| nQtdParcelas >= x[5] .And. nQtdParcelas <= x[6] } )
+
+	// verifico se encontrou alguma regra compativel
+	if ::nPosRegra > 0
+
+		::cItemRegra                := ::aRegras[::nPosRegra, 04]     // item da regra
+		::nParcIni                  := ::aRegras[::nPosRegra, 05]     // parcela inicial
+		::nParcFim                  := ::aRegras[::nPosRegra, 06]     // parcela final
+		::nTaxaJuros                := ::aRegras[::nPosRegra, 07]     // taxa de juros
+		::nCarenciaFinanceiro       := ::aRegras[::nPosRegra, 08]     // carencia financeiro para servico
+		::nCarenciaDiasServico      := ::aRegras[::nPosRegra, 09]     // carencia dias para servico
+		::cTipoEntrada              := ::aRegras[::nPosRegra, 10]     // tipo de entrada
+		::nValorEntradaMinima       := ::aRegras[::nPosRegra, 11]     // valor entrada minima
+		::nLimiteDescontoVendedor   := ::aRegras[::nPosRegra, 12]     // limite de desconto do vendedor
+		::nLimiteDescontoSuperior   := ::aRegras[::nPosRegra, 13]     // limite de desconto do superior
+		::lTemRegra                 := .T.                            // digo que tem regra de negociacao
+		::cTipoCarenciaFinanceiro   := ::aRegras[::nPosRegra, 14]     // tipo carencia financeira
+		::cTipoDescontoVendedor     := ::aRegras[::nPosRegra, 15]     // tipo desconto vendedor
+		::nValorCalculo             := ::aRegras[::nPosRegra, 16]     // valor do calculo
+
+	else
+
+		// nao enconrou regra
+		::lTemRegra := .F.
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RegraNegociacao::EntradaMinima
+pego o valor da entrada minima
+
+@type method
+@version 
+@author g.sampaio
+@since 10/09/2020
+@param nValorContrato, numeric, param_description
+@return return_type, return_description
+/*/
+Method EntradaMinima(nValorContrato) Class RegraNegociacao
+
+	Local nRetorno          as Numeric
+	Local oModel            as Object
+	Local oView             as Object
+	Local oModelU00         as Object
+	Local oVirtusFin        as Object
+	Local nJur              as Numeric
+	Local nValorLiquido     as Numeric
+	Local nNumeroParcelas   as Numeric
+
+	Default nValorContrato := 0
+
+	// atribuo valor das variaveis
+	nRetorno := 0
+
+	// calculo o valor da entrada minima
+	if ::cTipoEntrada == "1" // percentual
+		nRetorno    := nValorContrato * (::nValorEntradaMinima/100)
+
+	elseIf ::cTipoEntrada == "2" // valor em reais
+		nRetorno    := ::nValorEntradaMinima
+
+	elseIf ::cTipoEntrada   == "3"//parcela
+
+		// atribuo valor as variaveis
+		oModel	            := FWModelActive()                                              // modelo de dados ativo
+		oView		        := FWViewActive()                                               // view ativa
+		oModelU00	        := oModel:GetModel("U00MASTER")                                 // modelo de dados do cadastro de contrato
+		nNumeroParcelas     := oModelU00:GetValue("U00_QTDPAR")                             // quantidade de parcelas do contratoto
+		nValorLiquido       := oModelU00:GetValue("U00_VALOR")                              // pego o valor liquido do contrato
+		nJur                := ::nTaxaJuros/100
+
+		// inicio a classe financeira do virtus
+		oVirtusFin := VirtusFin():New()
+
+		// pego o valor da parcela no financiamento
+		nRetorno := oVirtusFin:RetValParcelasFinanciamento( nValorLiquido, 0, nNumeroParcelas, nJur, .F. )
+
+	endIf
+
+Return(nRetorno)
+
+/*/{Protheus.doc} RegraNegociacao::LimiteDesconto
+pego o limite de desconto do vendedor ou superior
+
+@type method
+@version 
+@author g.sampaio
+@since 10/09/2020
+@param nTipo, numeric, param_description
+@param nValorContrato, numeric, param_description
+@return return_type, return_description
+/*/
+Method LimiteDesconto(nTipo, nValorContrato) Class RegraNegociacao
+
+	Local nRetorno  as Numeric
+
+	Default nTipo          := 0
+	Default nValorContrato := 0
+
+	// atribuo valor das variaveis
+	nRetorno := 0
+
+	// verifico o tipo  de vendedor
+	if nTipo == 1 // vendedor
+
+		if ::cTipoDescontoVendedor == "1" // percentual
+			nRetorno := nValorContrato * (::nLimiteDescontoVendedor/100)
+		else // valor
+			nRetorno := ::nLimiteDescontoVendedor
+		endIf
+
+	elseIf nTipo == 2 // superior
+
+		if ::cTipoDescontoVendedor == "1" // percentual
+			nRetorno := nValorContrato * (::nLimiteDescontoSuperior/100)
+		else // valor
+			nRetorno := ::nLimiteDescontoSuperior
+		endIf
+	endIf
+
+Return(nRetorno)
+
+/*/{Protheus.doc} USetNegociacaoCemiterio
+preencho os campos do contrato de cemiterio
+a partir dos dados da regra de negociacao
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 10/09/2020
+@return logical, return_description
+/*/
+User Function USetNegociacaoCemiterio()
+
+	Local aArea			 	As Array
+	Local aAreaU00 			As Array
+	Local cRegraNegociacao  As Character
+	Local cFormaPagamento   As Character
+	Local cParamPreco       As Character
+	Local lRetorno          As Logical
+	Local lAtivaNegociacao  As Logical
+	Local lAlteraValor		As Logical
+	Local nNumeroParcelas   As Numeric
+	Local nValorContrato    As Numeric
+	Local nValorLiquido     As Numeric
+	Local nEntrada          As Numeric
+	Local nValorTabela		As Numeric
+	Local oModel	        As Object
+	Local oView	            As Object
+	Local oModelU00	        As Object
+	Local oRegraNegociacao  As Object
+
+	// attribuo valor as variaveis
+	aArea				:= GetArea()
+	aAreaU00			:= U00->(GetArea())
+	oModel	            := FWModelActive()                                              							// modelo de dados ativo
+	oView		        := FWViewActive()                                              						 		// view ativa
+	oModelU00	        := oModel:GetModel("U00MASTER")                                 							// modelo de dados do cadastro de contrato
+	cRegraNegociacao    := Posicione("U05",1,xFilial("U05")+oModelU00:GetValue("U00_PLANO"),"U05_REGNEG")       	// regra de negociacao preenchida
+	cFormaPagamento     := oModelU00:GetValue("U00_FORPG")                             		 						// forma de pagamento preenchida
+	cParamPreco         := SuperGetMV("MV_XPRCCTR",,"1")                               		 						// hierarquia do preco do contrato 1=Regra de Negociação;2=Tabela de Preços
+	nNumeroParcelas     := oModelU00:GetValue("U00_QTDPAR")                             							// quantidade de parcelas do contratoto
+	nValorContrato      := oModelU00:GetValue("U00_VLRBRU")                             							// pego o valor bruto do contrato
+	nValorLiquido       := oModelU00:GetValue("U00_VALOR")                              							// pego o valor liquido do contrato
+	nEntrada            := 0
+	nValorTabela		:= 0
+	oRegraNegociacao    := RegraNegociacao():New( cRegraNegociacao, cFormaPagamento )   							// inicio a classe de regra de negociacao
+	lRetorno            := .T.                                                          							// retorno da valorizacao
+	lAtivaNegociacao    := SuperGetMV("MV_XATVNEG",, .F.)                               							// ativa ou nao a regra de negociacao
+	lAlteraValor		:= .F.
+
+	// verifico se tem regra
+	if lAtivaNegociacao .And. oRegraNegociacao:lTemRegra
+
+		// verifico se alguma regra estruturada
+		oRegraNegociacao:ValidaRegra( nNumeroParcelas )
+
+		// verifico se tem regra compativel
+		if oRegraNegociacao:lTemRegra
+
+			// verifico se tem valor de calculo maior que zero
+			if cParamPreco == "1" .And. oRegraNegociacao:nValorCalculo > 0
+
+				// valor de tabela
+				nValorTabela := U_CPGA006A(oModelU00:GetValue("U00_PLANO"))
+
+				// verifico se o valor de tabela é diferente do valor da regra
+				if (oRegraNegociacao:nValorCalculo <> nValorContrato) .Or. (oRegraNegociacao:nValorCalculo <> nValorTabela)
+					lAlteraValor := .T.
+				endIf
+
+				// preencho o valor bruto
+				oModelU00:LoadValue("U00_VLRBRU"	, oRegraNegociacao:nValorCalculo )
+
+				// calculo o valor liquido novamente
+				nValorLiquido := oRegraNegociacao:nValorCalculo - oModelU00:GetValue("U00_DESCON")
+
+				// vou engatilhar o valor liquido
+				oModelU00:LoadValue("U00_VALOR"	, nValorLiquido )
+
+				// atualiza o valor dos itens do cemiterio
+				if lAlteraValor
+					AtuValorU01( oModel, oModelU00, oRegraNegociacao:nValorCalculo, nValorTabela)
+				endIf
+
+				// novo valor base do contrato
+				nValorContrato      := oRegraNegociacao:nValorCalculo
+
+			endIf
+
+			// pego o valor de carencia fianceira
+			nCarFinanceiro := oRegraNegociacao:RetCarenciaFinanceiro(nValorLiquido)
+
+			// calculo o valor da entrada
+			nEntrada := oRegraNegociacao:EntradaMinima(nValorContrato)
+
+			// atribuo os valores da regra de negociacao
+			/*oModelU00:LoadValue("U00_ITEREG"	, oRegraNegociacao:cItemRegra )
+			oModelU00:LoadValue("U00_PARINI"	, oRegraNegociacao:nParcIni )
+			oModelU00:LoadValue("U00_PARFIM"	, oRegraNegociacao:nParcFim )
+			oModelU00:LoadValue("U00_TXJURE"	, oRegraNegociacao:nTaxaJuros )
+			oModelU00:LoadValue("U00_JUROS"	    , oRegraNegociacao:nTaxaJuros )
+			oModelU00:LoadValue("U00_CARFIN"	, nCarFinanceiro )
+			oModelU00:LoadValue("U00_CARDIA"	, oRegraNegociacao:nCarenciaDiasServico )
+			oModelU00:LoadValue("U00_ENTMIN"	, nEntrada )
+			oModelU00:LoadValue("U00_VLRENT"	, nEntrada )
+			oModelU00:LoadValue("U00_DSCVEN"	, oRegraNegociacao:LimiteDesconto(1, nValorContrato) )
+			oModelU00:LoadValue("U00_DSCSUP"	, oRegraNegociacao:LimiteDesconto(2, nValorContrato) )*/
+			FwFldPut("U00_ITEREG"	,oRegraNegociacao:cItemRegra	,,,,.F.)
+			FwFldPut("U00_PARINI"	,oRegraNegociacao:nParcIni	,,,,.F.)
+			FwFldPut("U00_PARFIM"	,oRegraNegociacao:nParcFim	,,,,.F.)
+			FwFldPut("U00_TXJURE"	,oRegraNegociacao:nTaxaJuros	,,,,.F.)
+			FwFldPut("U00_JUROS"	,oRegraNegociacao:nTaxaJuros	,,,,.F.)
+			FwFldPut("U00_CARFIN"	,nCarFinanceiro	,,,,.F.)
+			FwFldPut("U00_CARDIA"	,oRegraNegociacao:nCarenciaDiasServico	,,,,.F.)
+			FwFldPut("U00_ENTMIN"	,nEntrada	,,,,.F.)
+			FwFldPut("U00_VLRENT"	,nEntrada	,,,,.F.)
+			FwFldPut("U00_DSCVEN"	,oRegraNegociacao:LimiteDesconto(1, nValorContrato)	,,,,.F.)
+			FwFldPut("U00_DSCSUP"	,oRegraNegociacao:LimiteDesconto(2, nValorContrato)	,,,,.F.)
+
+			If oView <> nil
+				oView:Refresh()
+			EndIf
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraNegociacao::AlcadasLiberacao
+description
+@type method
+@version 
+@author g.sampaio
+@since 19/09/2020
+@return return_type, return_description
+/*/
+Method AlcadasLiberacao( cCodVendedor ) Class RegraNegociacao
+
+	Local aArea                     as array
+	Local aAreaSA3                  as Array
+	Local aVendedores               aS Array
+	Local cParamLiberaDesconto      as Character
+	Local cQuery                    as Character
+	Local lRetorno                  as Logical
+
+	Default cCodVendedor    := ""
+
+	// atribuo valor a variavel
+	aArea                   := GetArea()
+	aAreaSA3                := SA3->( GetArea() )
+	aVendedores             := {}
+	lRetorno                := .T.
+	cParamLiberaDesconto    := SuperGetMV("MV_XLIBDSC", .F., "")
+
+	// vou fazer a consulta se existem alcadadas para o vendedor
+	if Select("TRBSA3") > 0
+		TRBSA3->( DbCloseArea() )
+	endif
+
+	cQuery := " SELECT SA3.A3_COD CODVENDEDOR FROM " + RetSqlName("SA3") + " SA3 "
+	cQuery += " WHERE SA3.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA3.A3_FILIAL = '" + xFilial("SA3") + "' "
+	cQuery += " AND SA3.A3_CODUSR = '" + __cUserId + "' "
+	cQuery += " AND EXISTS ( "
+	cQuery += "                 SELECT SA3B.A3_COD CODVENDEDOR FROM " + RetSqlName("SA3") + " SA3B "
+	cQuery += "                 WHERE SA3B.D_E_L_E_T_ = ' ' "
+	cQuery += "                 AND SA3B.A3_FILIAL = SA3.A3_FILIAL "
+	cQuery += "                 AND ( SA3B.A3_SUPER = SA3.A3_COD OR SA3B.A3_GEREN = SA3.A3_COD )
+	cQuery += "                 AND SA3B.A3_COD = '" + cCodVendedor + "'"
+	cQuery += " ) "
+
+	TcQuery cQuery New Alias "TRBSA3"
+
+	if TRBSA3->(!Eof())
+		lRetorno := .T.
+	else
+
+		// caso nao tenha nenhum
+		if __cUserId $ cParamLiberaDesconto
+			lRetorno := .T.
+		else
+			lRetorno := .F.
+		endIf
+
+	endIf
+
+	if Select("TRBSA3") > 0
+		TRBSA3->( DbCloseArea() )
+	endif
+
+	RestArea(aAreaSA3)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraNegociacao::RetCarenciaFinanceiro
+description
+@type method
+@version 
+@author g.sampaio
+@since 21/09/2020
+@return return_type, return_description
+/*/
+Method RetCarenciaFinanceiro( nValorContrato ) Class RegraNegociacao
+
+	Local nRetorno  as Numeric
+
+	Default nValorContrato  := 0
+
+	// atribuo valor nas variaveis
+	nRetorno    := 0
+
+	if ::cTipoCarenciaFinanceiro == "1" // percentual
+		nRetorno := nValorContrato * (::nCarenciaFinanceiro/100)
+	elseIf ::cTipoCarenciaFinanceiro == "2" // valor
+		nRetorno := ::nCarenciaFinanceiro
+	endIf
+
+Return(nRetorno)
+
+/*/{Protheus.doc} RegraNegociacao::ValRegraCarencia
+Valida a regra 
+@type method
+@version 1.0 
+@author g.sampaio
+@since 22/09/2020
+/*/
+Method ValRegraCarencia( cCodRegra, dDataAtivacao, nValorContrato, nPerCarFin, nCarFin, nCarDias, nDiasAtivacao, nRecebido ) Class RegraNegociacao
+
+	Local cTipoCarencia         as Character
+	Local cCarenciaPercentual   as Character
+	Local cCarenciaValor        as Character
+	Local cCarenciaDias         as Character
+	Local cDiasAtivacao         as Character
+	Local cDiasEmCarencia       as Character
+	Local cValorContrato        as Character
+	Local cValorRecebido        as Character
+	Local cSaldoCarencia        as Character
+	Local cCSSGroup             as Character
+	Local oBitmap1              as Object
+	Local oButton1              as Object
+	Local oFont1                as Object
+	Local oFont2                as Object
+	Local oFont3                as Object
+	Local oFont4                as Object
+	Local oGroup1               as Object
+	Local oGroup2               as Object
+	Local oGroup3               as Object
+	Local oGroup4               as Object
+	Local oSay1                 as Object
+	Local oSay10                as Object
+	Local oSay11                as Object
+	Local oSay12                as Object
+	Local oSay13                as Object
+	Local oSay14                as Object
+	Local oSay15                as Object
+	Local oSay16                as Object
+	Local oSay17                as Object
+	Local oSay18                as Object
+	Local oSay19                as Object
+	Local oSay2                 as Object
+	Local oSay20                as Object
+	Local oSay21                as Object
+	Local oSay22                as Object
+	Local oSay23                as Object
+	Local oSay3                 as Object
+	Local oSay4                 as Object
+	Local oSay5                 as Object
+	Local oSay6                 as Object
+	Local oSay7                 as Object
+	Local oSay8                 as Object
+	Local oSay9                 as Object
+	Local oDlgCarencia          as Object
+
+	Default cCodRegra       := ""
+	Default dDataAtivacao   := Stod("")
+	Default nValorContrato  := 0
+	Default nPerCarFin      := 0
+	Default nCarFin         := 0
+	Default nCarDias        := 0
+	Default nDiasAtivacao   := 0
+	Default nRecebido       := 0
+
+	// atribuo valor as variaveis
+	oFont1 := TFont():New("Arial Narrow",,020,,.F.,,,,,.F.,.F.)
+	oFont2 := TFont():New("Arial Black",,022,,.T.,,,,,.F.,.F.)
+	oFont3 := TFont():New("MS Sans Serif",,016,,.T.,,,,,.F.,.F.)
+	oFont4 := TFont():New("Arial Black",,018,,.T.,,,,,.F.,.F.)
+
+	// verifico o tipo de carencia
+	if ::cTipoCarenciaFinanceiro == "1" // percentual
+		cTipoCarencia   := "1-Percentual"
+
+	elseIf ::cTipoCarenciaFinanceiro == "2" // valor
+		cTipoCarencia   := "2-Valor"
+
+		// calculo o percentual de carencial do contrato
+		nPerCarFin := (nCarFin / nValorContrato) * 100
+
+	endIf
+
+	// variaveis da tela de carencia
+	cCarenciaPercentual := Transform(nPerCarFin                 , "@E 999.99"      )
+	cCarenciaValor      := Transform(nCarFin                    , "@E 999,999.99"  )
+	cCarenciaDias       := Transform(nCarDias                   , "@E 999"         )
+	cDiasAtivacao       := Transform(nDiasAtivacao              , "@E 999"         )
+	cDiasEmCarencia     := Transform(nCarDias - nDiasAtivacao   , "@E 999"         )
+	cValorContrato      := Transform(nValorContrato             , "@E 999,999.99"  )
+	cValorRecebido      := Transform(nRecebido                  , "@E 999,999.99"  )
+	cSaldoCarencia      := Transform(nCarFin - nRecebido        , "@E 999,999.99"  )
+
+	// tela de carencia
+	DEFINE MSDIALOG oDlgCarencia TITLE "Carência" FROM 000, 000  TO 435, 600 COLORS 0, 16777215 PIXEL
+
+	// CSS do objeto group para colorir a borda
+	cCSSGroup := " QGroupBox { "
+	cCSSGroup += " border: 1px solid #0076CE; "
+	cCSSGroup += " padding-top: 0px; "
+	cCSSGroup += " color: #000000;"
+	cCSSGroup += " }
+
+	@ 002, 002 GROUP oGroup4 TO 216, 301 PROMPT "" OF oDlgCarencia COLOR 0, 16777215 PIXEL
+	oGroup4:SetCSS(cCSSGroup)
+
+	@ 005, 014 BITMAP   oBitmap1    SIZE 024, 024 OF oDlgCarencia FILENAME "vicone-alerta.png" NOBORDER PIXEL
+
+	@ 008, 052 SAY      oSay23      PROMPT "Não é permitida realização do apontamento serviço enquanto o contrato estiver em carência." SIZE 221, 021 OF oDlgCarencia FONT oFont4 COLORS 0, 16777215 PIXEL
+
+	//==========================================
+	// dados de carência
+	//==========================================
+
+	@ 035, 005 GROUP oGroup3 TO 090, 298 PROMPT "Carência" OF oGroup4 COLOR 0, 16777215 PIXEL
+	oGroup3:oFont := oFont3
+	oGroup3:SetCSS(cCSSGroup)
+
+	@ 045, 015 SAY oSay17 PROMPT "Regra de negociação" SIZE 068, 007 OF oGroup3 COLORS 0, 16777215 PIXEL
+	@ 044, 070 SAY oSay18 PROMPT cCodRegra SIZE 025, 007 OF oGroup3 FONT oFont3 COLORS 0, 16777215 PIXEL
+
+	@ 045, 145 SAY oSay10 PROMPT "Tipo carência" SIZE 046, 007 OF oDlgCarencia COLORS 0, 16777215 PIXEL
+	@ 044, 185 SAY oSay11 PROMPT cTipoCarencia SIZE 025, 007 OF oDlgCarencia FONT oFont3 COLORS 0, 16777215 PIXEL
+
+	@ 060, 015 SAY oSay3 PROMPT "Carência (%)" SIZE 057, 010 OF oGroup3 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 070, 020 SAY oSay6 PROMPT cCarenciaPercentual SIZE 081, 015 OF oGroup3 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 060, 095 SAY oSay8 PROMPT "Valor Carência (R$)" SIZE 059, 010 OF oGroup3 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 070, 100 SAY oSay12 PROMPT cCarenciaValor SIZE 081, 015 OF oGroup3 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 060, 190 SAY oSay13 PROMPT "Carência em Dias" SIZE 061, 010 OF oGroup3 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 070, 195 SAY oSay14 PROMPT cCarenciaDias SIZE 081, 015 OF oGroup3 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	//==========================================
+	// dados de ativacao dos contratos
+	//==========================================
+
+	@ 095, 005 GROUP oGroup2 TO 140, 298 PROMPT "Ativação do Contrato" OF oGroup4 COLOR 0, 16777215 PIXEL
+	oGroup2:oFont := oFont3
+	oGroup2:SetCSS(cCSSGroup)
+
+	@ 105, 015 SAY oSay15 PROMPT "Data Ativacao" SIZE 057, 010 OF oGroup2 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 115, 020 SAY oSay16 PROMPT Dtoc(dDataAtivacao) SIZE 081, 015 OF oGroup2 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 105, 095 SAY oSay19 PROMPT "Dias desde a ativação" SIZE 079, 010 OF oGroup2 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 115, 100 SAY oSay20 PROMPT cDiasAtivacao SIZE 081, 015 OF oGroup2 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 105, 190 SAY oSay21 PROMPT "Dias em carência" SIZE 091, 010 OF oGroup2 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 115, 195 SAY oSay22 PROMPT cDiasEmCarencia SIZE 081, 015 OF oGroup2 FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	//==========================================
+	// dados de valores dos contratos
+	//==========================================
+
+	@ 145, 005 GROUP oGroup1 TO 190, 298 PROMPT "Valores Contrato" OF oGroup4 COLOR 0, 16777215 PIXEL
+	oGroup1:oFont := oFont3
+	oGroup1:SetCSS(cCSSGroup)
+
+	@ 155, 015 SAY oSay1 PROMPT "Valor do contrato (R$)" SIZE 057, 010 OF oGroup1 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 165, 020 SAY oSay2 PROMPT cValorContrato SIZE 081, 015 OF oDlgCarencia FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 155, 095 SAY oSay4 PROMPT "Valor recebido (R$)" SIZE 057, 010 OF oGroup1 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 165, 100 SAY oSay5 PROMPT cValorRecebido SIZE 081, 015 OF oDlgCarencia FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	@ 155, 190 SAY oSay7 PROMPT "Saldo carência (R$)" SIZE 060, 010 OF oGroup1 FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 165, 195 SAY oSay9 PROMPT 3 SIZE 081, 015 OF oDlgCarencia FONT oFont2 COLORS 0, 16777215 PIXEL
+
+	// CSS do botao
+	cBotaoCSSCinza      := CSSBotoesCinza()
+
+	@ 197, 254 BUTTON oButton1 PROMPT "Sair" SIZE 037, 012 OF oDlgCarencia PIXEL ACTION(oDlgCarencia:End())
+	oButton1:SetCSS(cBotaoCSSCinza)
+
+	ACTIVATE MSDIALOG oDlgCarencia CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} CSSBotoesCinza
+Funcao para retornar o CSS do Botao Cinza
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna o CSS do botão
+/*/
+Static Function CSSBotoesCinza( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #d2d2d2; "
+	cRetorno    += " border: 1px solid #696969;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cRetorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #000000;}"
+	cRetorno    += " QPushButton:hover { background-color: #696969;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #d2d2d2;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} AtuValorU01
+Atualizo o valor da U01 para quando
+	for usado o valor da regra de negocicao
+@type function
+@version 1.0
+@author g.sampaio
+@since 08/05/2021
+@param oModel, object, modelo de dados ativo
+@param oModelU00, object, modelo de dados da U00
+@param nValorRegra, numeric, valor da regra de negociacao
+@param nValorTabela, numeric, valor do contrato de acordo com a tabela de precos
+/*/
+Static Function AtuValorU01( oModel, oModelU00, nValorRegra, nValorTabela )
+
+	Local aArea					as Array
+	Local aAreaSB1				as Array
+	Local aItensU01				as Array
+	Local cCodTabela    		as Character
+	Local lPrecoTabelaTerreno 	as Logical
+	Local nPercAux      		as Numeric
+	Local nItem         		as Numeric
+	Local nPrecoTabela  		as Numeric
+	Local nDiferenca			as Numeric
+	Local nPercTot				as Numeric
+	Local nValorAux				as Numeric
+	Local oModelU01     		as Object
+
+	Default oModel          := Nil
+	Default oModelU00       := Nil
+	Default nValorRegra     := 0
+	Default nValorTabela	:= 0
+
+	// atribuo valor as variaveis
+	aArea				:= GetArea()
+	aAreaSB1			:= SB1->(GetArea())
+	aItensU01			:= {}
+	oModelU01       	:= oModel:GetModel("U01DETAIL")
+	cCodTabela      	:= Posicione("U05",1,xFilial("U05")+oModelU00:GetValue("U00_PLANO"),"U05_TABPRE")
+	lPrecoTabelaTerreno	:= SuperGetMV("MV_XPTBTER",.F.,.F.)
+	nPrecoTabela    	:= 0
+	nDiferenca			:= 0
+	nItem				:= 0
+	nPercTot			:= 0
+	nValorAux			:= 0
+
+	// verifico se valor da regra e da tabela e diferente para verificar a necessidad de alterar o plano
+	if nValorTabela > 0
+
+		// zero o valor de tabela
+		nValorAux := 0
+
+		for nItem := 1 to oModelU01:Length()
+
+			oModelU01:GoLine(nItem)
+
+			if !oModelU01:IsDeleted()
+
+				// zero o valor dos itens
+				nPrecoTabela    := 0
+
+				SB1->(DBSetOrder(1))
+				if SB1->(MSSeek(xFilial("SB1")+oModelU01:GetValue("U01_PRODUT")))
+
+					// pego o valor do preco de tabelas
+					nPrecoTabela := U_RetPrecoVenda( cCodTabela, oModelU01:GetValue("U01_PRODUT"), .F. )
+
+					aAdd( aItensU01, {nItem, SB1->B1_COD, SB1->B1_XTPCEM, oModelU01:GetValue("U01_QUANT"), nPrecoTabela})
+					nValorAux += nPrecoTabela
+
+				endIf
+
+			endIf
+
+		next nItem
+
+		if nValorAux > 0 .And. nValorAux <> nValorTabela
+			nValorTabela := nValorAux
+		endIf
+
+		oModelU01:GoLine(1)
+
+		//===================================================
+		// ================== LEIA ME =======================
+		//===================================================
+		// Existe um parametro MV_XPTBTER que determina que
+		// os produtos do tipo de cemiterio(B1_XTPCEM) 4=Terreno
+		// irão considerar o valor da tabela de precos
+		// ao ser utilizado o preço determinado na regra de negociacao
+
+		//libero a edicao das linhas
+		oModel:GetModel("U01DETAIL"):SetNoInsertLine(.F.)
+		oModel:GetModel("U01DETAIL"):SetNoUpdateLine(.F.)
+		oModel:GetModel("U01DETAIL"):SetNoDeleteLine(.F.)
+
+		// faco a ordenacao pelo tipo de cemiterio
+		if Len(aItensU01) > 0
+			ASort(aItensU01,/*nInicio*/,/*nCont*/,{|x,y| x[3] > y[3]})
+		endIf
+
+		// percorro os itens
+		for nItem := 1 to Len(aItensU01)
+
+			oModelU01:GoLine(aItensU01[nItem, 1])
+
+			if !oModelU01:IsDeleted()
+
+				// zero o valor dos itens
+				nPercAux        := 0
+				nPrecoAux       := 0
+
+				// atualizo o valor do percentual
+				nPercAux 		:= aItensU01[nItem, 5]/nValorTabela
+	
+				// pego o preco com base
+				if lPrecoTabelaTerreno .And. aItensU01[nItem, 3] == "4" .And. aItensU01[nItem, 5] > 0
+					nPrecoAux 		:= aItensU01[nItem, 5]
+					nValorTabela 	:= nValorTabela - nPrecoAux
+					nValorRegra		:= nValorRegra - nPrecoAux
+
+				elseif nItem == Len(aItensU01) .And. ( Round(nPercTot+nPercAux,2) <> 1 ) .And. (aItensU01[nItem, 5]/nValorTabela) <> 1 // caso for o ultimo item
+					nPrecoAux 	:= nValorRegra
+
+				else
+					// pego o percentual do produto de acordo com o valor de tabela
+					nPrecoAux 	:= nValorRegra * nPercAux
+					nPercTot	+= nPercAux
+				endIf
+
+				// atualizo os valores da grid
+				oModelU01:LoadValue("U01_VLRUNI", nPrecoAux)
+				oModelU01:LoadValue("U01_VLRTOT", nPrecoAux * aItensU01[nItem, 4])
+
+			endIf
+
+		next nItem
+
+		oModelU01:GoLine(1)
+
+		//retorno a protecao das linhas
+		oModel:GetModel("U01DETAIL"):SetNoInsertLine(.T.)
+		oModel:GetModel("U01DETAIL"):SetNoUpdateLine(.T.)
+		oModel:GetModel("U01DETAIL"):SetNoDeleteLine(.T.)
+
+	endIf
+
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(Nil)

@@ -1,0 +1,600 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} RCPGE045
+Funcao para ativacao do contrato
+
+(Antiga função CPGA001A)
+@type function
+@version 1.0
+@author g.sampaio
+@since 19/08/2020
+@param cContrato, character, codigo do contrato
+@param lJob, logical, esta executando via job
+@return logical, retorno logico que o contrato foi ativado
+/*/
+User Function RCPGE045( cContrato, lJob, cLogMsg )
+
+	Local aArea             	as Array
+	Local aAreaU00          	as Array
+	Local aParcelas 			as Array
+	Local lContinua				as Logical
+	Local lRetorno				as Logical
+	Local lRecorrencia			as Logical
+	Local lAtivaRegraManutencao as Logical
+	Local lAtivaNegociacao  	as Logical
+	Local nStart				as Numeric
+	Local oRegraManutencao  	as Object
+	Local oVirtusFin			as Object
+	Local oSay              	as Object
+
+	Default cContrato       := ""
+	Default lJob			:= .F.
+	Default cLogMsg			:= ""
+
+	// atribuo valores as variaveis
+	aArea               	:= GetArea()
+	aAreaU00            	:= U00->( GetArea() )
+	lContinua				:= .T.
+	lRetorno				:= .T.
+	aParcelas 		    	:= {}
+	lRecorrencia			:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	lAtivaRegraManutencao	:= SuperGetMv("MV_XREGCEM",,.F.)			// parametro para ativacao da regra da taxa de manutencao
+	lAtivaNegociacao    	:= SuperGetMV("MV_XATVNEG",,.F.)			// parametro para ativacao da regra de negociacao
+	nStart			    	:= 0
+	oRegraManutencao    	:= Nil
+	oVirtusFin				:= Nil
+	oSay                	:= Nil
+
+	// posiciono no cadastro de contrato
+	U00->( DbSetOrder(1) )
+	if U00->( MSSeek( xFilial("U00")+cContrato ) )
+
+		Do Case
+
+		Case U00->U00_STATUS == "A" //Ativo
+			If !lJob
+				MsgInfo("O Contrato já se encontra Ativo, operação não permitida.","Atenção")
+			Else
+				cLogMsg += "O Contrato já se encontra Ativo, operação não permitida."
+			Endif
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "C" //Cancelado
+			If !lJob
+				MsgInfo("O Contrato se encontra Cancelado, operação não permitida.","Atenção")
+			Else
+				cLogMsg += "O Contrato se encontra Cancelado, operação não permitida."
+			Endif
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "S" //Suspenso
+			If !lJob
+				MsgInfo("O Contrato se encontra Suspenso, operação não permitida.","Atenção")
+			Else
+				cLogMsg += "O Contrato se encontra Suspenso, operação não permitida."
+			Endif
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "F" //Finalizado
+			If !lJob
+				MsgInfo("O Contrato se encontra Finalizado, operação não permitida.","Atenção")
+			Else
+				cLogMsg += "O Contrato se encontra Finalizado, operação não permitida."
+			Endif
+			lContinua := .F.
+
+		EndCase
+
+		// verifico se a regra de negociacao esta ativada
+		if lContinua .And. lAtivaNegociacao
+
+			// verifico se existe algum bloqueio
+			if U00->U00_DSCBLQ $ "1/2"
+
+				lContinua := .F.
+
+				// mensagem para o usuario
+				If !lJob
+					MsgAlert("O contrato não poderá ser ativado por conta do bloqueio de desconto do vendedor, é necessário que o superior do vendedor faça a liberação do contrato")
+				Else
+					cLogMsg += "O contrato não poderá ser ativado por conta do bloqueio de desconto do vendedor, é necessário que o superior do vendedor faça a liberação do contrato"
+				Endif
+
+			endIf
+
+		endIf
+
+		//verifico se o plano gera taxa de manutencao na ativacao do contrato
+		U05->(DbSetOrder(1)) //U05_FILIAL + U05_CODIGO
+		if lContinua .And. !lAtivaRegraManutencao .And. U05->(MsSeek(xFilial("U05")+U00->U00_PLANO)) .And. U05->U05_MNTATI == 'S'
+
+			if U00->U00_TXMANU == 0
+
+				lContinua := .F.
+
+				If !lJob
+
+					Help( ,, 'Help',, 'Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido, ' + ;
+						'favor preencher o mesmo e realize novamente a operação!', 1, 0 )
+				else
+
+					cLogMsg +=  " >>> Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido. "
+					cLogMsg +=  " >>> Favor preencher o valor e realize novamente a operação! "
+					FwLogMsg("INFO", , "REST", FunName(), "", "01", " >>> Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido. ", 0, (nStart - Seconds()), {})
+					FwLogMsg("INFO", , "REST", FunName(), "", "01", " >>> Favor preencher o valor e realize novamente a operação! ", 0, (nStart - Seconds()), {})
+
+				endif
+
+			endif
+
+		elseIf lAtivaRegraManutencao // para quando a regra de taxa de manutencao estiver ativa
+
+			// se tiver regra de taxa de manutencao zerada
+			if !Empty(U00->U00_REGRA) .And. U00->U00_TXMANU == 0
+
+				lContinua := .F.
+
+				If !lJob
+
+					Help( ,, 'Help',, 'Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido, ' + ;
+						'favor preencher o mesmo e realize novamente a operação!', 1, 0 )
+				else
+
+					cLogMsg +=  " >>> Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido. "
+					cLogMsg +=  " >>> Favor preencher o valor e realize novamente a operação! "
+					FwLogMsg("INFO", , "REST", FunName(), "", "01", " >>> Para gerar taxa de manutenção na ativação do contrato o valor da mesma deve ser inserido. ", 0, (nStart - Seconds()), {})
+					FwLogMsg("INFO", , "REST", FunName(), "", "01", " >>> Favor preencher o valor e realize novamente a operação! ", 0, (nStart - Seconds()), {})
+
+				endif
+
+			endIf
+
+		endif
+
+		BEGIN TRANSACTION
+
+			If lContinua
+
+				if !lJob
+					// pego o retorno da decisao do usuario de ativar o contrato
+					lContinua := MsgYesNo("O Contrato será ativado, deseja continuar?")
+				else
+					lContinua := .T.
+				endIf
+
+				If lContinua
+
+					// verifico se a recorrencia esta habilitada
+					if !lJob .And. lRecorrencia
+
+						// se a forma de pagamento estiver vinculada a um metodo de pagamento VINDI
+						U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+						if lContinua .And. !Empty(U00->U00_FORPG) .And. U60->(MsSeek(xFilial("U60") + U00->U00_FORPG)) .And. U60->U60_STATUS == "A"
+
+							if U_NaoExistCliRecor( U00->U00_CLIENT, U00->U00_LOJA, U00->U00_CODIGO )
+								// tela para preenchimento do perfil de pagamento
+								FWMsgRun(,{|oSay| lContinua := U_UIncPerfil()},'Aguarde...','Abrindo Perfil de Pagamento...')
+							else
+								lContinua := .F.
+							endif
+
+						elseif lContinua .And. !Empty(U00->U00_FPTAXA) .And. U60->(MsSeek(xFilial("U60") + U00->U00_FPTAXA)) .And. U60->U60_STATUS == "A"
+
+							if U_NaoExistCliRecor( U00->U00_CLIENT, U00->U00_LOJA, U00->U00_CODIGO )
+								// tela para preenchimento do perfil de pagamento
+								FWMsgRun(,{|oSay| lContinua := U_UIncPerfil()},'Aguarde...','Abrindo Perfil de Pagamento...')
+							else
+								lContinua := .F.
+							endif
+
+						endIf
+
+					endIf
+
+					if lContinua
+
+						// gero a taxa de manutencoa na ativacao
+						if !lAtivaRegraManutencao .And. U05->U05_MNTATI == 'S'
+
+							if !lJob
+								FWMsgRun(,{|oSay| lContinua := GeraTxMnt(U00->U00_CODIGO) },'Aguarde...','Gerando Taxa de Manutenção para o Contrato!')
+							else
+								lContinua := GeraTxMnt(U00->U00_CODIGO)
+							endIf
+
+						endif
+
+						//valido se o contrato nao possui valor financeiro
+						if lContinua .And. U00->U00_VALOR > 0
+
+							// inicio a classe de metodos financeiros do Virtus ERP
+							oVirtusFin := VirtusFin():New()
+
+							//Gera financeiro conforme parcelamento
+							if !lJob
+								FWMsgRun(,{|oSay| lContinua := oVirtusFin:CRContratoCemiterio( U00->(Recno()) ) },"Aguarde","Gerando Título(s) referente ao Contrato...")
+							else
+								lContinua := oVirtusFin:CRContratoCemiterio(U00->(Recno()))
+							endIf
+
+						Else
+							if !lJob .And. lContinua
+								If !MsgYesNo("O Contrato não possui valor digitado, portanto não será gerado parcelas, deseja continuar?")
+									lContinua := .F.
+								Endif
+							elseif lContinua
+								lContinua := .F.
+								FwLogMsg("INFO", , "REST", FunName(), "", "01", "O Contrato não possui valor digitado, portanto não será gerado parcelas", 0, (nStart - Seconds()), {})
+								cLogMsg += " >>> O Contrato não possui valor digitado, portanto não será gerado parcelas"
+							endIf
+
+						Endif
+
+						If lContinua
+
+							//Atualiza status
+							RecLock("U00",.F.)
+							U00->U00_STATUS := "A" //Ativo
+							U00->U00_DTATIV	:= dDataBase
+							U00->(MsUnlock())
+
+							// ponto de entrada para gravar informacoes de clientes na confirmacao do
+							if ExistBlock("PECPG45ATV")
+								ExecBlock("PECPG45ATV")
+							endIf
+
+						Endif
+
+					endif
+
+				Endif
+
+			Endif
+
+			// caso estiver tudo certo e usando regra de contrato
+			if lContinua .And. lAtivaRegraManutencao
+
+				// inicio o ojeto de Regras de Manutencao - parametro Regra do contrato e "A" - Rotina de Ativação
+				oRegraManutencao    := RegraTaxaManutencao():New( U00->U00_REGRA, "A" )
+
+				// caso tenha regra de taxa de manutencao preenchida no contrato
+				if oRegraManutencao:lTemRegra
+
+					// vou validar a execucao do contrato
+					// mensagem de processamento para o usuario
+					if !lJob
+						FWMsgRun(,{|oSay| lContinua := oRegraManutencao:ValidaRegra( U00->U00_CODIGO, U00->U00_PRIMVE ) },"Aguarde","Gerando Taxa de Manutenção na ativação do contrato...")
+					else
+						lContinua := oRegraManutencao:ValidaRegra( U00->U00_CODIGO, U00->U00_PRIMVE )
+					endIf
+
+					if !lContinua
+						Help( ,, 'Help - Regras de Manutenção',, 'Não foi possível gerar a taxa de manutenção na ativação de contrato, revise às regras de manutenção e as informações do contrato', 1, 0 )
+					EndIf
+
+				endIf
+
+				// fecho objeto
+				FreeObj(oRegraManutencao)
+				oRegraManutencao := Nil
+
+			endIf
+
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			Endif
+
+		END TRANSACTION
+
+		// atualizo a variavel de retorno de acondo com a de continuar
+		if !lContinua
+			lRetorno    := .F.
+		endIf
+
+		// mensagem de retorno poistivo do contrato
+		if !lJob .And. lRetorno
+
+			// mensagem para o usuario
+			MsgInfo( "Contrato " + U00->U00_CODIGO + " ativado com sucesso!", "Atenção" )
+
+		Else
+
+			cLogMsg += " >>> Contrato " + U00->U00_CODIGO + " ativado com sucesso!"
+
+		endIf
+
+	endif
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} GeraTitPa
+Funcao para gerar o tituto no financeiro na ativacao do contrato de cemiterio
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 21/08/2020
+@param cContrato, character, param_description
+@param cCli, character, param_description
+@param cLojaCli, character, param_description
+@param nVlrContr, numeric, param_description
+@param nVlrEnt, numeric, param_description
+@param dDtEnt, date, param_description
+@param aParcelas, array, param_description
+@param nJuros, numeric, param_description
+@param cVend, character, param_description
+@param cNat, character, param_description
+@return return_type, return_description
+/*/
+Static Function GeraTitPa( oSay, cContrato, cCli, cLojaCli, nVlrContr, nVlrEnt, dDtEnt, aParcelas, nJuros, cVend, cNat )
+
+	Local lRet 			:= .T.
+
+	Local nI
+	Local aFin040 		:= {}
+	Local cParc			:= ""
+	Local nJur			:= nJuros/100
+	Local nNroParc		:= Len(aParcelas) - 1
+	Local lEnt			:= .F.
+	Local cPref 		:= SuperGetMv("MV_XPREFCT",.F.,"CTR")
+	Local cTipo			:= SuperGetMv("MV_XTIPOCT",.F.,"AT")
+	Local cTipoEnt		:= SuperGetMv("MV_XTIPOEN",.F.,"ENT")
+	Local lRecorrencia	:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	Local nPercJuros	:= GetMV("MV_TXPER")
+	Local dBkpDtBase	:= dDataBase
+	Local oVirtusFin    := Nil
+
+	Private lMsErroAuto := .F.
+	Private lMsHelpAuto := .T.
+
+	// inicio a classe financeira do virtus
+	oVirtusFin := VirtusFin():New()
+
+	// pego o valor da parcela no financiamento
+	nVlrParc := oVirtusFin:RetValParcelasFinanciamento( nVlrContr, nVlrEnt, nNroParc, nJur )
+
+	// vou criar a entrada do contrato
+	If nVlrEnt > 0 //Entrada
+
+		// mensagem na barra de processamento
+		oSay:cCaption := "Criando a parcela de entrada do contrato..."
+		ProcessMessages()
+
+		//se entrada for inferior a database, alterar database
+		if dDtEnt < dDataBase
+			dDataBase := dDtEnt
+		endif
+
+		AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")											   					,Nil } )
+		AAdd(aFin040, {"E1_PREFIXO"	, cPref          						   					   					,Nil } )
+		AAdd(aFin040, {"E1_NUM"		, cContrato		 	   															,Nil } )
+		AAdd(aFin040, {"E1_PARCELA"	, "001"									   					   					,Nil } )
+		AAdd(aFin040, {"E1_XPARCON"	, "001/" + StrZero(Len(aParcelas),3)	   										,Nil } )
+		AAdd(aFin040, {"E1_TIPO"	, cTipoEnt	 							   										,Nil } )
+		AAdd(aFin040, {"E1_NATUREZ"	, cNat														   					,Nil } )
+		AAdd(aFin040, {"E1_CLIENTE"	, cCli									   					   					,Nil } )
+		AAdd(aFin040, {"E1_LOJA"	, cLojaCli								   										,Nil } )
+		AAdd(aFin040, {"E1_EMISSAO"	, dDataBase								   										,Nil } )
+		AAdd(aFin040, {"E1_VENCTO"	, dDtEnt																		,Nil } )
+		AAdd(aFin040, {"E1_VENCREA"	, DataValida(dDtEnt)															,Nil } )
+		AAdd(aFin040, {"E1_VALOR"	, nVlrEnt								   										,Nil } )
+		AAdd(aFin040, {"E1_PORCJUR"	, nPercJuros									   								,Nil } )
+		AAdd(aFin040, {"E1_XCONTRA"	, cContrato								   										,Nil } )
+
+		if lRecorrencia
+
+			AAdd(aFin040, {"E1_XFORPG"	, U00->U00_FORPG								   								,Nil } )
+
+		endif
+
+		MSExecAuto({|x,y| FINA040(x,y)},aFin040,3)
+
+		If lMsErroAuto
+
+			If !IsBlind()
+				MostraErro()
+			Endif
+
+			DisarmTransaction()
+			lRet := .F.
+		Else
+			lEnt := .T.
+		EndIf
+
+		//restauro a database do sistema
+		dDataBase  := dBkpDtBase
+
+	Endif
+
+	// verifico se esta tudo certo
+	If lRet
+
+		// verifico se esta tudo certo com a entrada do contrato
+		If lEnt
+
+			// vou percorrer as parcelas do contrato, comecando da linha 2 porque a primeira parcela é a de entrada
+			For nI := 2 To Len(aParcelas)
+
+				// mensagem na barra de processamento
+				oSay:cCaption := "Criando a parcela " + StrZero( nI, 3 ) + " de " + StrZero( Len(aParcelas), 3 ) + " para contrato " + cContrato
+				ProcessMessages()
+
+				// reinicio o valor do array de execauto do financeiro
+				aFin040 := {}
+
+				// pego o numero da parcela
+				cParc := StrZero(nI,3)
+
+				nParcOri 	:= IIF(nJuros > 0,Round((nVlrContr - nVlrEnt) / nNroParc,2),nVlrParc)
+				nAcresc		:= IIF(nNroParc > 0,nVlrParc - nParcOri,0)
+
+				AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")											   					,Nil } )
+				AAdd(aFin040, {"E1_PREFIXO"	, cPref          						   					   					,Nil } )
+				AAdd(aFin040, {"E1_NUM"		, cContrato		 	   															,Nil } )
+				AAdd(aFin040, {"E1_PARCELA"	, cParc									   					   					,Nil } )
+				AAdd(aFin040, {"E1_XPARCON"	, cParc + "/" + StrZero(Len(aParcelas),3)										,Nil } )
+				AAdd(aFin040, {"E1_TIPO"	, cTipo		 							   										,Nil } )
+				AAdd(aFin040, {"E1_NATUREZ"	, cNat														   					,Nil } )
+				AAdd(aFin040, {"E1_CLIENTE"	, cCli									   					   					,Nil } )
+				AAdd(aFin040, {"E1_LOJA"	, cLojaCli								   										,Nil } )
+				AAdd(aFin040, {"E1_EMISSAO"	, dDataBase								   										,Nil } )
+				AAdd(aFin040, {"E1_VENCTO"	, IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1])						,Nil } )
+				AAdd(aFin040, {"E1_VENCREA"	, DataValida(IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1]))			,Nil } )
+				AAdd(aFin040, {"E1_VALOR"	, nParcOri								   										,Nil } )
+
+				If nJuros > 0
+					AAdd(aFin040, {"E1_ACRESC"	, nAcresc																		,Nil } )
+					AAdd(aFin040, {"E1_SDACRES"	, nAcresc																		,Nil } )
+				Endif
+
+				AAdd(aFin040, {"E1_PORCJUR"	, nPercJuros									   								,Nil } )
+				AAdd(aFin040, {"E1_XCONTRA"	, cContrato								   										,Nil } )
+
+				if lRecorrencia
+					AAdd(aFin040, {"E1_XFORPG"	, U00->U00_FORPG						   										,Nil } )
+				endif
+
+				MSExecAuto({|x,y| FINA040(x,y)},aFin040,3)
+
+				If lMsErroAuto
+
+					If !IsBlind()
+						MostraErro()
+					Endif
+
+					DisarmTransaction()
+					lRet := .F.
+					Exit
+				EndIf
+			Next
+		Else
+
+			// vou percorrer as parcelas do contrato, comecando da linha 1 porque não tem entrada
+			For nI := 1 To Len(aParcelas)
+
+				// mensagem na barra de processamento
+				oSay:cCaption := "Criando a parcela " + StrZero( nI, 3 ) + " de " + StrZero( Len(aParcelas), 3 ) + " para contrato " + cContrato
+				ProcessMessages()
+
+				aFin040 := {}
+
+				cParc := StrZero(nI,3)
+
+				nParcOri 	:= aParcelas[nI][2]
+				nAcresc		:= IIF(nNroParc > 0,nVlrParc - nParcOri,0)
+
+				AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")											   					,Nil } )
+				AAdd(aFin040, {"E1_PREFIXO"	, cPref          						   					   					,Nil } )
+				AAdd(aFin040, {"E1_NUM"		, cContrato		 	   															,Nil } )
+				AAdd(aFin040, {"E1_PARCELA"	, cParc									   					   					,Nil } )
+				AAdd(aFin040, {"E1_XPARCON"	, cParc + "/" + StrZero(Len(aParcelas),3)										,Nil } )
+				AAdd(aFin040, {"E1_TIPO"	, cTipo		 							   										,Nil } )
+				AAdd(aFin040, {"E1_NATUREZ"	, cNat														   					,Nil } )
+				AAdd(aFin040, {"E1_CLIENTE"	, cCli									   					   					,Nil } )
+				AAdd(aFin040, {"E1_LOJA"	, cLojaCli								   										,Nil } )
+				AAdd(aFin040, {"E1_EMISSAO"	, dDataBase								   										,Nil } )
+				AAdd(aFin040, {"E1_VENCTO"	, IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1])						,Nil } )
+				AAdd(aFin040, {"E1_VENCREA"	, DataValida(IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1]))			,Nil } )
+				AAdd(aFin040, {"E1_VALOR"	, nParcOri								   										,Nil } )
+
+				if lRecorrencia
+					AAdd(aFin040, {"E1_XFORPG"	, U00->U00_FORPG						   										,Nil } )
+				endif
+
+				If nJuros > 0
+					AAdd(aFin040, {"E1_ACRESC"	, nAcresc																		,Nil } )
+					AAdd(aFin040, {"E1_SDACRES"	, nAcresc																		,Nil } )
+				Endif
+
+				AAdd(aFin040, {"E1_PORCJUR"	, nPercJuros									   								,Nil } )
+				AAdd(aFin040, {"E1_XCONTRA"	, cContrato								   										,Nil } )
+
+				MSExecAuto({|x,y| FINA040(x,y)},aFin040,3)
+
+				If lMsErroAuto
+
+					If !IsBlind()
+						MostraErro()
+					Endif
+
+					DisarmTransaction()
+					lRet := .F.
+					Exit
+				Endif
+			Next
+		Endif
+	Endif
+
+Return lRet
+
+/*/{Protheus.doc} GeraTxMnt
+Funcao para gerar taxa de manutencao
+para o contrato na ativacao
+@author Raphael Martins 
+@since 12/01/2019
+@version P12
+@return nPreco - Preco de Venda da Tabela
+/*/
+Static Function GeraTxMnt(cContrato)
+
+	Local aArea				:= GetArea()
+	Local aAreaU00			:= U00->(GetArea())
+	Local cDiaVenc			:= ""
+	Local cProxReaj			:= ""
+	Local cCliente			:= ""
+	Local cLoja				:= ""
+	Local cIndice			:= ""
+	Local dDtAux			:= CTOD("")
+	Local lRet				:= .T.
+	Local nMesesMan			:= SuperGetMv("MV_XINTTXA",.F.,6) // intervalo de meses para geração da segunda taxa
+	Local nQtdManut			:= SuperGetMv("MV_XQTDTXA",.F.,2) // quantidade de taxas de manutenção que serão geradas
+	Local nQtdMesPTx		:= SuperGetMv("MV_XPRIMPA",.F.,6) // quantidade de meses para gerar a primeira parcela da taxa de manutencao
+	Local nQtdProxReaj		:= SuperGetMv("MV_XQPROXR",.F.,6) // quantidade de meses para a proximo reajuste
+	Local nDiferenca		:= 0
+
+	// posiciono no cadastro de cliente
+	U00->(DbSetOrder(1)) //U00_FILIAL + U00_CODIGO
+	if U00->(MsSeek(xFilial("U00")+cContrato))
+
+		cCliente := U00->U00_CLIENT
+		cLoja 	 := U00->U00_LOJA
+		cIndice	 := U00->U00_INDICE
+		nTaxa	 := U00->U00_TXMANU
+
+		//verifico o dia vencimento das parcelas esta definida via primeira data de vencimento
+		cDiaVenc := SubStr(DTOS(U00->U00_PRIMVE),7,2)
+
+		// somo a quantidade de meses para a próxima manutenção
+		dDtAux		:= MonthSum(dDatabase,(nMesesMan * nQtdManut) + nQtdProxReaj )
+
+		//taxa de manutencao sera x meses (MV_XPRIMPA) apos a data da entrada, caso contrario sera com base na data de ativacao
+		if !Empty(U00->U00_DTENTR)
+
+			nDiferenca	:= 	DateDiffMonth(iif(U00->U00_DTENTR < dDatabase, dDatabase , U00->U00_DTENTR ), dDatabase)
+			nQtdMesPTx 	:=  nQtdMesPTx + nDiferenca
+
+			// somo o proximo reajuste de acordo com a data
+			dDtAux		:= MonthSum(U00->U00_DTENTR,(nMesesMan * nQtdManut) + nQtdProxReaj )
+
+		endif
+
+		cProxReaj	:= StrZero(Month(dDtAux),2) + StrZero(Year(dDtAux),4)
+
+		lRet := U_ProcManut( cContrato, cCliente, cLoja , nTaxa , 0 , cDiaVenc , cIndice, 0 ,cProxReaj , nQtdMesPTx )
+
+	else
+
+		lRet := .F.
+		Help( ,, 'Help',, 'Contrato informado não encontrado!', 0 )
+
+	endif
+
+	RestArea(aArea)
+	RestArea(aAreaU00)
+
+Return(lRet)

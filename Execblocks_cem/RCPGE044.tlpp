@@ -1,0 +1,1776 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+/*/{Protheus.doc} RCPGE044
+Tela de Geracao da Taxa de Manutencao com Regra
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/02/2020
+@return logical, retorno logico padrao (.T.)
+/*/
+User Function RCPGE044(aLocaliza)
+
+	Local aObjects 			        as Array
+	Local aSizeAut	   		        as Array
+	Local aPosObj			        as Array
+	Local aCords			        as Array
+	Local cTrbManutencao            as Character
+	Local cContratoDe               as Character
+	Local cContratoAte              as Character
+	Local cPlano                    as Character
+	Local cIndice                   as Character
+	Local cRegra                    as Character
+	Local nLinhaFiltro1             as Numeric
+	Local nLinhaFiltro2             as Numeric
+	Local nLinhaFiltro3             as Numeric
+	Local nLinhaFiltro4             as Numeric
+	Local nLinhaFiltro5             as Numeric
+	Local nColunaFiltro1            as Numeric
+	Local nColunaFiltro2            as Numeric
+	Local nColunaFiltro3            as Numeric
+	Local nColunaFiltro4            as Numeric
+	Local nColunaBotao1             as Numeric
+	Local nColunaBotao2             as Numeric
+	Local nColunaBotao3             as Numeric
+	Local nComboStatus				as Numeric
+	Local oPanelRod			        as Object
+	Local oPanelFiltro		        as Object
+	Local oPanelTaxas         		as Object
+	Local oPanelHistTransferencia	as Object
+	Local oBrowseManutencao	        as Object
+	Local oDlg				        as Object
+	Local oGetContratoDe            as Object
+	Local oGetContratoAte           as Object
+	Local oGetPlano                 as Object
+	Local oGetIndice                as Object
+	Local oGetRegra                 as Object
+	Local oSayContratoDe            as Object
+	Local oSayContratoAte           as Object
+	Local oSayPlano                 as Object
+	Local oSayIndice                as Object
+	Local oSayRegra                 as Object
+	Local oTempManutencao		    as Object
+	Local oFontTitulo               as Object
+	Local oFontLabel                as Object
+	Local oAddFiltros               as Object
+	Local oBotaoConsultar           as Object
+	Local oBotaoLimpar              as Object
+	Local oBotaoSair                as Object
+	Local oBotaoConfirmar           as Object
+	Local oSayCombo					as Object
+	Local oComboStatus				as Object
+	Local oSayTotal					as Object
+	Local oSayValorTotal			as Object
+	Local oGetTotal					as Object
+	Local oGetValorTotal			as Object
+
+	Default aLocaliza       := Array(4)
+
+	// chamo a classe
+	oAddFiltros := AddFiltros():New()
+
+	// valor das variaveis
+	aObjects            := {}
+	aCords              := {}
+	nLinhaFiltro1       := 0
+	nLinhaFiltro2       := 0
+	nLinhaFiltro3       := 0
+	nLinhaFiltro4       := 0
+	nLinhaFiltro5       := 0
+	nColunaFiltro1      := 0
+	nColunaFiltro2      := 0
+	nColunaFiltro3      := 0
+	nColunaFiltro4      := 0
+	nColunaBotao1       := 0
+	nColunaBotao2       := 0
+	nColunaBotao3       := 0
+	nComboStatus		:= 1
+	aSizeAut	   	    := MsAdvSize()
+	cContratoDe         := Space(6)
+	cContratoAte        := Replicate("Z",6)
+	cPlano              := Space(100)
+	cIndice             := Space(6)
+	cRegra              := Space(6)
+	nGetTotal			:= 0
+	nGetValorTotal		:= 0
+
+	oFontTitulo         := TFont():New("Arial",,020,,.T.,,,,,.F.,.F.)
+	oFontLabel          := TFont():New("Arial",,018,,.F.,,,,,.F.,.F.)
+
+	// Largura, Altura, Modifica largura, Modifica altura
+	Aadd( aObjects, { 100,	100, .T., .T. } ) // PANEL COM AS ABAS
+
+	aInfo  	:= { aSizeAut[ 1 ], aSizeAut[ 2 ], aSizeAut[ 3 ], aSizeAut[ 4 ], 2, 2 }
+	aPosObj := MsObjSize( aInfo, aObjects, .T. , .T.)
+
+	// {linha inicial,coluna inicial,largura,altura}
+	Aadd(aCords,{( aSizeAut[6] / 2 ) - 25	    ,	000					, (aSizeAut[5] / 2) + 3		                                    , 025}) // Panel Rodapé
+	Aadd(aCords,{000        				    ,	000					, ( (aSizeAut[6] / 2) - (aCords[1,4]) - 5 ) * 0.5				, aSizeAut[4] - 030 }) // Panel Filtros
+	Aadd(aCords,{aCords[1,2]			        ,	aCords[2,3] + 5		, ( (aSizeAut[5] / 2) - aCords[2,3] )+ 3	                                            , aCords[2,4] }) // Panel de Enderecados
+	Aadd(aCords,{aCords[3,1] + aCords[3,4] + 5	,	aCords[3,2]			, aCords[3,3] 				                                    , aCords[1,1] - (aCords[3,1] + aCords[3,4] + 5)  }) // Panel de Historico de transferencias
+
+	// ajusta a tela para resolucoes menores
+	AjustaPosFiltros( aSizeAut, aCords, @nLinhaFiltro1, @nLinhaFiltro2, @nLinhaFiltro3,;
+		@nColunaFiltro1, @nColunaFiltro2, @nColunaFiltro3, @nColunaFiltro4,;
+		@nColunaBotao1, @nColunaBotao2, @nColunaBotao3 )
+
+	// faco o ajuste do tamanho da fontes
+	AjustaTamanhofonte( aSizeAut, @oFontTitulo, @oFontLabel )
+
+	DEFINE MSDIALOG oDlg TITLE "Gerar Taxa de Manutenção" FROM aSizeAut[7], 0 TO aSizeAut[6], aSizeAut[5] COLORS 0, 16777215 PIXEL // STYLE DS_MODALFRAME
+
+	// ===============================================
+	// Inicio Painel de filtros
+	// ===============================================
+
+	@ aCords[2,1], aCords[2,2] MSPANEL oPanelFiltro	PROMPT "" SIZE aCords[2,3], aCords[2,4] OF oDlg COLORS 0, 16777215
+
+	// ===============================================
+	// filtros desejados
+	// ===============================================
+
+	// CSS do objeto group para colorir a borda
+	cCSSGroup := " QGroupBox { "
+	cCSSGroup += " border: 2px solid #0076CE; "
+	cCSSGroup += " padding-top: 0px; "
+	cCSSGroup += " }
+
+	@ 005, 005 GROUP oGroup1 TO aCords[2,4] - 5 , aCords[2,3] - 5 PROMPT "Realize os filtros desejados" OF oPanelFiltro COLOR 0, 16777215 PIXEL
+	oGroup1:oFont := oFontTitulo
+	oGroup1:SetCss(cCSSGroup)
+
+	@ 019, nColunaFiltro1 SAY oSayContratoDe PROMPT "Contrato de:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 030, nColunaFiltro1 - 1  MSGET oGetContratoDe VAR cContratoDe PICTURE "@!" F3 "U00" SIZE 050, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 049, nColunaFiltro1 SAY oSayContratoAte PROMPT "Contrato até:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 060, nColunaFiltro1 - 1  MSGET oGetContratoAte VAR cContratoAte PICTURE "@!" F3 "U00" SIZE 050, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 079, nColunaFiltro1 SAY oSayPlano PROMPT "Produto:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 090, nColunaFiltro1 - 1  MSGET oGetPlano VAR cPlano   F3 "U05MRK" PICTURE "@!" SIZE 100, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 109, nColunaFiltro1 SAY oSayIndice PROMPT "Indice:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 120, nColunaFiltro1 - 1  MSGET oGetIndice VAR cIndice F3 "U22" PICTURE "@!" SIZE 050, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 139, nColunaFiltro1 SAY oSayRegra PROMPT "Regra:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 150, nColunaFiltro1 - 1  MSGET oGetRegra VAR cRegra   F3 "U79" PICTURE "@!" SIZE 050, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 169, nColunaFiltro1 SAY oSayCombo PROMPT "Status:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 180, nColunaFiltro1 - 1  MSCOMBOBOX oComboStatus VAR nComboStatus   ITEMS {"Ambos","Provisionado","Reajuste"} SIZE 050, 010 OF oGroup1 COLORS 0, 16777215 PIXEL
+
+	// preenche os campos automaticos
+	oComboStatus:nAt	:= 1
+
+	// ===============================================
+	// Botoes da tela
+	// ===============================================
+
+	// monto o CSS dos botoes
+	cBotaoCSSCinza  := CSSBotoesCinza( aSizeAut[5] )
+	cBotaoCSSAzul   := CSSBotoesAzul( aSizeAut[5] )
+
+	// botao de flimpar filtros
+	oBotaoLimpar := TButton():New( 210, 015, "Limpar", oPanelFiltro,{ || LimpaConsulta( @cContratoDe, @cContratoAte, @cPlano, @cIndice, @cRegra, @oPanelFiltro, @oComboStatus, @nGetTotal, @nGetValorTotal ) }, 045, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoLimpar:SetCss(cBotaoCSSCinza)
+
+	// botao de consultar
+	oBotaoConsultar := TButton():New( 210, 070, "Consultar", oPanelFiltro,{ || Consultar( cContratoDe, cContratoAte, cPlano, cIndice, cRegra, ;
+		@cTrbManutencao, @oBrowseManutencao, @oTempManutencao, oComboStatus:nAt, @nGetTotal, @nGetValorTotal ) },;
+		045, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoConsultar:SetCss(cBotaoCSSCinza)
+
+	// ===============================================
+	// Fim Painel de filtros
+	// ===============================================
+
+	// ===============================================
+	// Inicio Painel de Enreçados
+	// ===============================================
+
+	@ aCords[3,1], aCords[3,2] MSPANEL oPanelTaxas	 	PROMPT "" SIZE aCords[3,3], aCords[3,4] OF oDlg COLORS 0, 16777215
+
+	// grupo para os contratos enderecados
+	@ 005, 005 GROUP oGroup3 TO aCords[3,4] - 5 , aCords[3,3] - 5 PROMPT "Taxas de Manutenção para serem geradas:" OF oPanelTaxas COLOR 0, 16777215 PIXEL
+	oGroup3:oFont := oFontTitulo
+	oGroup3:SetCss(cCSSGroup)
+
+	@ 015, 015 MSPANEL oPanelGridEnderecados	 	PROMPT "" SIZE aCords[3,3] - 025, aCords[3,4] - 035 OF oGroup3 COLORS 0, 16777215
+
+	ManutencaoGrid( oPanelGridEnderecados, cTrbManutencao, @oBrowseManutencao, @oTempManutencao, @nGetTotal, @nGetValorTotal )
+
+	// ===============================================
+	// Fim Painel de Enreçados
+	// ===============================================
+
+	// ===============================================
+	// Inicio Painel de Historico de Transferencias
+	// ===============================================
+
+	@ aCords[4,1], aCords[4,2] MSPANEL oPanelHistTransferencia 		PROMPT "" SIZE aCords[4,3], aCords[4,4] OF oDlg COLORS 0, 16777215
+
+	// ===============================================
+	// Inicio rodape
+	// ===============================================
+
+	@ aCords[1,1], aCords[1,2] MSPANEL oPanelRod 			    PROMPT "" SIZE aCords[1,3], aCords[1,4] OF oDlg COLORS 0, 16777215
+
+	@ 008, aCords[1,3] - 520 SAY oSayTotal PROMPT "Selecionados:" SIZE 100, 007 OF oPanelRod FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 007, aCords[1,3] - 460 MSGET oGetTotal VAR nGetTotal PICTURE "@E 999,999" WHEN .F. SIZE 060, 012 OF oPanelRod COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 088, aCords[1,3] - 340 SAY oSayValorTotal PROMPT "Valor Total:" SIZE 100, 007 OF oPanelRod FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ 007, aCords[1,3] - 280 MSGET oGetValorTotal VAR nGetValorTotal PICTURE "@E 999,999,999.99" WHEN .F. SIZE 080, 012 OF oPanelRod COLORS 0, 16777215 PIXEL HASBUTTON
+
+	// botao de flimpar filtros
+	oBotaoSair := TButton():New( 007, aCords[1,3] - 160 , "Sair", oPanelRod,{ || oDlg:End() }, 050, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoSair:SetCss(cBotaoCSSCinza)
+
+	// botao de flimpar filtros
+	oBotaoConfirmar := TButton():New( 007, ( aCords[1,3] - 100 ), "Confirmar", oPanelRod,{ || FWMsgRun(,{|oSay| Confirmar( cTrbManutencao, oTempManutencao ) },'Aguarde...','Gerando Taxa de Manutenção...'), oDlg:end() }, 090, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoConfirmar:SetCss(cBotaoCSSAzul)
+
+	// ==============================================='
+	// Fim rodape
+	// ===============================================
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+Return(.T.)
+
+/*/{Protheus.doc} ManutencaoGrid
+Grid de Taxas de Manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/02/2020
+@param oPanel, object, objeto do painel
+@param cArqTrb, character, alias do arquivo de transferencia
+@param oBrowse, object, objeto do browse
+@param oTempManutencao, object, objeto do alias temporario
+/*/
+Static Function ManutencaoGrid( oPanel, cArqTrb, oBrowse, oTempManutencao, nGetTotal, nGetValorTotal )
+
+	Local oColumn   as Object
+	Local aFields	as Array
+
+	Default oPanel              := Nil
+	Default cArqTrb             := ""
+	Default oBrowse             := Nil
+	Default oTempManutencao    := Nil
+
+	// atribuo valores paras as variaveis
+	oColumn := Nil
+	aFields	:= {}
+
+	// defino o nome do arquivo de trabalho
+	If Empty(cArqTrb)
+		cArqTrb := "TRBREG"
+	EndIf
+
+	// crio a estrutura do alias de contrato
+	CriaTabManutencao( cArqTrb, @oTempManutencao )
+
+	///////////////////////////////////////////////////////////////////////////
+	////////////////// 		      CRIO O GRID		     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+	oBrowse := FWBrowse():New(oPanel)
+
+	oBrowse:OptionConfig(.T.)
+
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias( cArqTrb )
+
+
+	// Adiciono o MARK
+	oBrowse:AddMarkColumns({||Iif((cArqTrb)->TR_MARK,'CHECKED','UNCHECKED')},{|oBrowse| DbClickDisp( oBrowse, cArqTrb, .F., @nGetTotal, @nGetValorTotal)},;
+		{|oBrowse| FWMsgRun(,{|oSay| HdClickDisp( oBrowse, cArqTrb, @nGetTotal, @nGetValorTotal) },'Aguarde...','Marcando ou desmarcando todos os registros...') })
+
+	// Coluna de locacao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_STATUS } )	    // campo referente a coluna
+	oColumn:SetTitle("Status")            // titulo da coluna
+	oColumn:SetSize(5)					    // tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de locacao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_PROMAN } )	    // campo referente a coluna
+	oColumn:SetTitle("Mês.Manutencao")      // titulo da coluna
+	oColumn:SetSize(2)					    // tamanho da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de contrato
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_DATA } )    // campo referente a coluna
+	oColumn:SetTitle("Data")				// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@D")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de locacao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_CONTRA } )	    // campo referente a coluna
+	oColumn:SetTitle("Contrato")            // titulo da coluna
+	oColumn:SetSize(5)					    // tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de codigo do cliente
+	oColumn := FWBrwColumn():New()			    // instancio da classe do objeto
+	oColumn:SetData( { || TR_CLIENTE } )		// campo referente a coluna
+	oColumn:SetTitle("Codigo")			// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			    // adiciono o objeto da coluna no browse
+
+	// Coluna de loja do cliente
+	oColumn := FWBrwColumn():New()			    // instancio da classe do objeto
+	oColumn:SetData( { || TR_LOJA } )		// campo referente a coluna
+	oColumn:SetTitle("Loja")			// titulo da coluna
+	oColumn:SetSize(1)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			    // adiciono o objeto da coluna no browse
+
+	// Coluna de nome do cliente
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_NOMECLI } )		// campo referente a coluna
+	oColumn:SetTitle("Nome Cliente")			// titulo da coluna
+	oColumn:SetSize(30)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_PLANO } )		// campo referente a coluna
+	oColumn:SetTitle("Plano")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_DSCPLAN } )		// campo referente a coluna
+	oColumn:SetTitle("Desc.Plano")	// titulo da coluna
+	oColumn:SetSize(15)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_REGRA } )		// campo referente a coluna
+	oColumn:SetTitle("Regra")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_DSCREGR } )		// campo referente a coluna
+	oColumn:SetTitle("Desc.Decra")	// titulo da coluna
+	oColumn:SetSize(15)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_INDICE } )		// campo referente a coluna
+	oColumn:SetTitle("Indice")	// titulo da coluna
+	oColumn:SetSize(1)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_DSCIND } )		// campo referente a coluna
+	oColumn:SetTitle("Desc.Indice")	// titulo da coluna
+	oColumn:SetSize(15)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_TXINDI } )		// campo referente a coluna
+	oColumn:SetTitle("Taxa Indice")	// titulo da coluna
+	oColumn:SetSize(2)						// tamanho da coluna
+	oColumn:SetPicture("@E 99.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_TXATU } )		// campo referente a coluna
+	oColumn:SetTitle("Taxa Atual")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@E 999,999,999.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_VLDESC } )		// campo referente a coluna
+	oColumn:SetTitle("Valor Desconto")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@E 999,999,999.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_COBADI } )		// campo referente a coluna
+	oColumn:SetTitle("% Cobrança Adicional")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@E 999.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_VLREAJ } )		// campo referente a coluna
+	oColumn:SetTitle("Valor do Reajuste")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@E 999,999,999.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_TXREAJ } )		// campo referente a coluna
+	oColumn:SetTitle("Taxa do Reajuste")	// titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@E 999,999,999.99")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	AAdd(aFields,{"TR_CONTRA","Contrato","C",6,0,"@!"})
+	AAdd(aFields,{"TR_NOMECLI","Nome Cliente","C",60,0,"@!"})
+	AAdd(aFields,{"TR_DSCPLAN","Descri. Plano","C",60,0,"@!"})
+	AAdd(aFields,{"TR_REGRA","Regra","C",6,0,"@!"})
+	AAdd(aFields,{"TR_DSCREGR","Desc. Regra","C",6,0,"@!"})
+	AAdd(aFields,{"TR_INDICE","Indice","C",3,0,"@!"})
+	AAdd(aFields,{"TR_PROMAN","Mês.Manutencao","C",6,0,"@!"})
+
+	oBrowse:SetFieldFilter( aFields )
+	oBrowse:SetUseFilter()
+
+
+	oBrowse:Activate()
+
+Return( Nil )
+
+/*/{Protheus.doc} DbClickDisp
+funcao para duplo clique
+@type function
+@version 1.0 
+@author g.sampaio
+@since 28/02/2020
+@param oBrowse, object, objeto do browse da tela
+@param cArqTrb, character, alias de trabalho
+@param lTodos, logical, marca todos
+@param nGetTotal, numeric, total selecionado
+@param nGetValorTotal, numeric, valor total selecionado
+/*/
+Static Function DbClickDisp( oBrowse, cArqTrb, lTodos, nGetTotal, nGetValorTotal )
+
+	Default cArqTrb         := ""
+	Default lTodos          := .F.
+	Default nGetTotal		:= 0
+	Default nGetValorTotal	:= 0
+
+	// vejo se o alias esta preenchido
+	If !Empty( cArqTrb )
+
+		BEGIN TRANSACTION
+
+			// atualizo o registro atual
+			if (cArqTrb)->(RecLock( cArqTrb,.F.))
+				if (cArqTrb)->TR_MARK
+					(cArqTrb)->TR_MARK := .F.
+					nGetTotal--
+					nGetValorTotal-=(cArqTrb)->TR_VLREAJ
+				else
+					(cArqTrb)->TR_MARK := .T.
+					nGetTotal++
+					nGetValorTotal+=(cArqTrb)->TR_VLREAJ
+				endIf
+				(cArqTrb)->(MsUnLock())
+			endif
+
+		END TRANSACTION
+
+		// verifico se estou marcando todos
+		if !lTodos
+
+			// Atualizo os dados do Browse
+			oBrowse:Refresh(.F.)
+
+		EndIf
+
+	EndIf
+
+Return( Nil )
+
+/*/{Protheus.doc} HdClickDisp
+Função do clique no header da coluna
+@type function
+@version 1.0 
+@author g.sampaio
+@since 28/02/2020
+@param oBrowse, object, browse da tela
+@param cArqTrb, character, alias de trabalho
+@param nGetTotal, numeric, total selecionado
+@param nGetValorTotal, numeric, valor total
+/*/
+Static Function HdClickDisp( oBrowse, cArqTrb, nGetTotal, nGetValorTotal )
+
+	Default cArqTrb         := ""
+	Default nGetTotal		:= 0
+	Default nGetValorTotal	:= 0
+
+	// verifico se o alias esta preenchido
+	If !Empty(cArqTrb)
+
+		// salvo o ambiente de trabalho
+		aAreaTRB := (cArqTrb)->( GetArea() )
+
+		(cArqTrb)->(DbGoTop())
+		While (cArqTrb)->(!Eof())
+
+			DbClickDisp( oBrowse, cArqTrb, .T., @nGetTotal, @nGetValorTotal)
+
+			(cArqTrb)->(DbSkip())
+		EndDo
+
+		// posiciono no primeiro registro
+		(cArqTrb)->(DbGoTop())
+
+		// Atualizo os dados do Browse
+		oBrowse:Refresh(.F.)
+
+	EndIf
+
+Return( Nil )
+
+/*/{Protheus.doc} CriaTabManutencao
+funcao para gerar a estrutura do alias temporario
+de contratos para a locacao de nicho
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/03/2020
+@param cArqTrb, character, alias temporario de contrato
+@param oTempManutencao, object, objeto da estrutura do alias temporario de contratos
+/*/
+Static Function CriaTabManutencao( cArqTrb, oTempManutencao )
+
+	Local aCampos               as Array
+	Local aIndEnderecados	    as Array
+	Local aIndNome				as Array
+	Local lOrdNome				as Logical
+
+	Default cArqTrb            := "TRBREG"
+	Default oTempManutencao    := Nil
+
+	// defino o nome do arquivo de trabalho
+	If Empty(cArqTrb)
+		cArqTrb := "TRBREG"
+	EndIf
+
+	// declaracao das variaveis
+	aCampos             := {}
+	aIndEnderecados	    := {"TR_CONTRA"}
+	aIndNome			:= {"TR_NOMECLI"}
+	lOrdNome			:= SuperGetMv("MV_XORDNOM",,.F.)
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////    MONTO A ESTRUTURA DA TABELA    //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Array contendo os campos da tabela temporária
+	Aadd( aCampos, { "TR_MARK" 		, "L" , 1 	 , 0 })
+	Aadd( aCampos, { "TR_STATUS" 	, "C" , 15 	 , 0 })
+	Aadd( aCampos, { "TR_PROMAN" 	, "C" , 7 	 , 0 })
+	Aadd( aCampos, { "TR_CONTRA"	, "C" , 6 	 , 0 })
+	Aadd( aCampos, { "TR_DATA"	    , "D" , 8    , 0 })
+	Aadd( aCampos, { "TR_CLIENTE"	, "C" , 6 	 , 0 })
+	Aadd( aCampos, { "TR_LOJA"	    , "C" , 2 	 , 0 })
+	Aadd( aCampos, { "TR_NOMECLI"   , "C" , 40 	 , 0 })
+	Aadd( aCampos, { "TR_PLANO"     , "C" , 6 	 , 0 })
+	Aadd( aCampos, { "TR_DSCPLAN"   , "C" , 40 	 , 0 })
+	Aadd( aCampos, { "TR_REGRA"     , "C" , 6 	 , 0 })
+	Aadd( aCampos, { "TR_DSCREGR"   , "C" , 40 	 , 0 })
+	Aadd( aCampos, { "TR_INDICE"	, "C" , 3    , 0 })
+	Aadd( aCampos, { "TR_DSCIND"	, "C" , 40   , 0 })
+	Aadd( aCampos, { "TR_TXATU"	    , "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_TXINDI"    , "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_COBADI"	, "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_VLREAJ"	, "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_TXREAJ"	, "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_VLDESC"	, "N" , 12	 , 2 })
+	Aadd( aCampos, { "TR_CODIGO"	, "C" , 6	 , 0 })
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////      CRIO A TABELA TEMPORARIA     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Antes de criar a tabela, verificar se a mesma já foi aberta
+	If Select( cArqTrb ) > 0
+		(cArqTrb)->(DbCloseArea())
+	Endif
+
+	// zero o objeto
+	if oTempManutencao <> NIL
+		FreeObj(oTempManutencao)
+	endIf
+
+	//-------------------
+	//Criação do objeto
+	//-------------------
+	oTempManutencao := FWTemporaryTable():New( cArqTrb )
+	oTempManutencao:SetFields( aCampos )
+
+	if lOrdNome
+		oTempManutencao:AddIndex("01", aIndNome )
+	else
+		oTempManutencao:AddIndex("01", aIndEnderecados )
+	endif
+	//------------------
+	//Criação da tabela
+	//------------------
+	oTempManutencao:Create()
+
+Return(Nil)
+
+/*/{Protheus.doc} CSSBotoesCinza
+Funcao para estilizar botao com CSS
+Cor Cinza
+@type function
+@version 1.0 
+@author g.sampaio
+@since 28/07/2020
+@return character, estilo do botao em CSS
+/*/
+Static Function CSSBotoesCinza( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #d2d2d2; "
+	cRetorno    += " border: 1px solid #696969;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cRetorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #000000;}"
+	cRetorno    += " QPushButton:hover { background-color: #696969;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #d2d2d2;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesAzul
+Funcao para estilizar botao com CSS
+Cor Azul
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, estilo do botao em CSS
+/*/
+Static Function CSSBotoesAzul( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #35ACCA; "
+	cRetorno    += " border: 1px solid #1f6779;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #35ACCA;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesVerde
+Funcao para estilizar botao com CSS
+Cor Verde
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, estilo do botao em CSS
+/*/
+Static Function CSSBotoesVerde( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #1FD203; "
+	cRetorno    += " border: 1px solid #107800;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #107800;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #1FD203;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} Consultar
+Funcao para realizar a consulta de dados
+@type function
+@version 1.0 
+@author g.sampaio
+@since 28/07/2020
+@param cContratoDe, character, incio do range de contrato
+@param cContratoAte, character, fim do range de contrato
+@param cPlano, character, codigo do produto de cemiterio
+@param cIndice, character, codigo do indice de reajute
+@param cRegra, character, codigo da regra
+@param cTrbManutencao, character, alias de trabalho da manutencao
+@param oBrowseManutencao, object, brose de manutencao
+@param oTempManutencao, object, objeto temporario de manutencao
+@param nComboStatus, numeric, staus selecionado para filtro
+@param nGetTotal, numeric, total selecionado
+@param nGetValorTotal, numeric, valor total dos itens selecionados
+/*/
+Static function Consultar( cContratoDe, cContratoAte, cPlano, cIndice, cRegra, cTrbManutencao, oBrowseManutencao, oTempManutencao, nComboStatus, nGetTotal, nGetValorTotal )
+
+	Local lEnd              as Logical
+	Local oProcess          as Object
+
+	// atribuo valores iniciais para as variaveis
+	lEnd    := .F.
+
+	Default cContratoDe         := ""
+	Default cContratoAte        := ""
+	Default cPlano              := ""
+	Default cIndice             := ""
+	Default cRegra              := ""
+	Default oAddFiltros         := Nil
+	Default cTrbManutencao      := "TRBREG"
+	Default oBrowseManutencao   := NIL
+	Default oTempManutencao     := NIL
+	Default nComboStatus		:= 0
+	Default nGetTotal			:= 0
+	Default nGetValorTotal		:= 0
+
+	// zero os totais para iniciar uma nova consulta
+	nGetTotal 		:= 0
+	nGetValorTotal	:= 0
+
+	// crio a barra de processamento
+	oProcess := MsNewProcess():New({|lEnd| ConsultaManutencao( @oProcess, @lEnd, cContratoDe, cContratoAte, cPlano, cIndice, cRegra,;
+		@cTrbManutencao, @oBrowseManutencao, @oTempManutencao, nComboStatus, @nGetTotal, @nGetValorTotal ) },"Consultando dados...","Aguarde! Consultando dados de óbitos...",.T.)
+
+	oProcess:Activate()
+
+Return(Nil)
+
+/*/{Protheus.doc} GravaDados
+Funcao para gerar os registros em alias temporarios
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/01/2024
+@param aCampos, array, array da estrutura de campos
+@param cFwAlias, character, alias temporario
+@param lGeraDados, logical, gera dados vazios
+@param oBrowseDados, object, browse de tela
+/*/
+Static Function GravaDados( aCampos, cFwAlias, lGeraDados, oBrowseDados )
+
+	Local aDados	as Array
+	Local aAux		as Array
+	Local nX		as Numeric
+	Local nI		as Numeric
+
+	Default aCampos		    := {}
+	Default cFwAlias	    := ""
+	Default lGeraDados	    := .F.
+	Default oBrowseDados    := Nil
+
+	// atribuo os valores das variaveis
+	aAux    := {}
+	aDados  := {}
+
+	// limpa os registros ja existentes
+	if Select(cFwAlias) > 0
+		LimpaDados( cFwAlias )
+	endIf
+
+	// verifico se existe alias temporario
+	If !Empty(cFwAlias)
+
+		// caso forem gerados registros vazios
+		If lGeraDados
+
+			aAux := {}
+			For nX := 1 To Len( aCampos )
+
+				If aCampos[nX,2] == "L" // para o marcar
+
+					Aadd( aAux, { aCampos[nX, 1] , .T. } )
+
+				ElseIf aCampos[nX,2] == "C" // tipo caracter
+
+					Aadd( aAux, { aCampos[nX, 1] , "" } )
+
+				ElseIf aCampos[nX,2] == "D" // tipo data
+
+					Aadd( aAux, { aCampos[nX, 1] , StoD("") } )
+
+				ElseIf aCampos[nX,2] == "N" // tipo numerico
+
+					Aadd( aAux, { aCampos[nX, 1] , 0 } )
+
+				EndIf
+
+			Next nX
+
+			// monto o array aDados
+			Aadd( aDados, aAux  )
+
+		Else
+
+			// a estrutura do aCampos se torna o aDados
+			aDados := aCampos
+
+		EndIf
+
+		// posiciono no ultimo registro do alias
+		(cFwAlias)->( DbGoBottom() )
+
+		// inicio a transacao
+		BEGIN TRANSACTION
+
+			For nX := 1 To Len( aDados )
+
+				// travo o registro para gravacao
+				If (cFwAlias)->( RecLock( cFwAlias, .T. ) )
+
+					For nI := 1 To Len( aDados[nX] )
+						&( cFwAlias + "->" + aDados[nX,nI,1] ) := aDados[nX,nI,2]
+					Next nI
+
+					(cFwAlias)->( MsUnLock() )
+
+				Else
+
+					(cFwAlias)->( DisarmTransaction() )
+
+				EndIf
+
+			Next nX
+
+		END TRANSACTION
+
+	EndIf
+
+	// verifico se a variavel oBrowseContrato e objeto
+	If ValType( oBrowseDados ) == "O"
+
+		// atualizo o objeto
+		oBrowseDados:Refresh(.T.)
+
+		// atualizo a construcao do browse
+		oBrowseDados:UpdateBrowse(.T.)
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaDados
+Funcao para limpar os dados do alias temporario
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/01/2024
+@param cFwAlias, character, alias temporario
+/*/
+Static Function LimpaDados( cFwAlias )
+
+	Default cFwAlias    := ""
+
+	// posiciono no primeiro registro
+	(cFwAlias)->( DbGoTop() )
+
+	// percorro todo o alias ate o seu fim
+	While ( cFwAlias )->( !Eof() )
+
+		BEGIN TRANSACTION
+
+			If ( cFwAlias )->( RecLock( cFwAlias, .F. ) )
+
+				// deleto o registro do alias
+				( cFwAlias )->( DbDelete() )
+
+			Else
+				( cFwAlias )->( MsUnLock() )
+			EndIf
+
+		END TRANSACTION
+
+		( cFwAlias )->( DbSkip() )
+	EndDo
+
+Return(Nil)
+
+/*/{Protheus.doc} ConsultaManutencao
+Funcao de consulta de dados para reajuste de taxa de manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 27/07/2020
+@param oProcess, object, objeto de processamento
+@param lEnd, logical, variavel para interromper o processamento
+@param cContratoDe, character, inicio do range de contrato
+@param cContratoAte, character, fim do range de contrato
+@param cPlano, character, codigo do produto de cemiterio
+@param cIndice, character, codigo do indice
+@param cRegra, character, codigo da regra
+@param cTrbManutencao, character, alias temporario de manutencao
+@param oBrowseManutencao, object, browse de manutencao
+@param oTempManutencao, object, objeto do alias temporario
+@param nOpcStatus, numeric, status selecionado para filtro
+@param nGetTotal, numeric, quantidade total de itens selecionados
+@param nGetValorTotal, numeric, valor total de itens selecionados
+/*/
+Static Function ConsultaManutencao( oProcess, lEnd, cContratoDe, cContratoAte, cPlano, cIndice, cRegra,;
+		cTrbManutencao, oBrowseManutencao, oTempManutencao, nOpcStatus, nGetTotal, nGetValorTotal )
+
+	Local aAuxManutencao            as Array
+	Local aDadosManutencao          as Array
+	Local cQuery                    as Character
+	Local cStatus                   as Character
+	Local cProximaManutencao        as Character
+	Local cIndiceTaxa				as Character
+	Local cDescIndTaxa				as Character
+	Local cStatusContrato			as Character
+	Local cTaxaProduto				as Character
+	Local cConsideraIndice			as Character
+	Local lMsgIndice                as Logical
+	Local lContratoAdimplente       as Logical
+	Local lAtivaTaxaContratoEmDia   as Logical
+	Local lOrdNome					as Logical
+	Local lRegraContra				as Logical
+	Local lReajustaProvisionado		as Logical
+	Local nTaxaIndice               as Numeric
+	Local nTaxaReajuste             as Numeric
+	Local nValorReajuste            as Numeric
+	Local nValorDesconto			as Numeric
+	Local nValorTaxa				as Numeric
+	Local nReajProduto				as Numeric
+	Local oRegraTaxaManutencao      as Object
+	Local oVirtusFin                as Object
+
+	Default oProcess                := Nil
+	Default lEnd                    := .F.
+	Default cNomeFalecido           := ""
+	Default dDataSepultamento       := Stod("")
+	Default cNomeTitular            := ""
+	Default cCGC                    := ""
+	Default oAddFiltros             := Nil
+	Default cTrbManutencao          := "TRBREG"
+	Default oBrowseManutencao       := NIL
+	Default oTempManutencao         := NIL
+	Default oVirtusFin              := NIL
+	Default nOpcStatus				:= 0
+	Default nGetTotal				:= 0
+	Default nGetValorTotal			:= 0
+
+	// atribuir valores de variaveis
+	aAuxManutencao          := {}
+	aDadosManutencao        := {}
+	cIndiceTaxa				:= ""
+	cDescIndTaxa			:= ""
+	cStatusContrato			:= SuperGetMV("MV_XMANSTS",.F.,"A;S")
+	lMsgIndice              := .T.
+	lContratoAdimplente     := .T.
+	lAtivaTaxaContratoEmDia := SuperGetMv("MV_XTMADIM",.F., .F.) // gera taxa ou reajuste apenas para contratos em dias
+	lRegraContra			:= SuperGetMV("MV_XREGMCT",.F., .T.)
+	lReajustaProvisionado	:= SuperGetMV("MV_XRJMPRO",.F., .F.)
+	nTaxaIndice             := 0
+	nTaxaReajuste           := 0
+	nValorReajuste          := 0
+	nValorTaxa				:= 0
+	nValorDesconto			:= 0
+	nReajProduto			:= 0
+	oRegraTaxaManutencao    := Nil
+
+	// inicio a classe finacneiro do viturs
+	oVirtusFin  := VirtusFin():New()
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua1(1)
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua1("Consultando registros de Taxa de Manutencao...")
+
+	// verifico se o alias esta em uso
+	if Select("TMPMAN") > 0
+		TMPMAN->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " 	HIST_TAXA.U26_CODIGO  	CODIGO, "
+	cQuery += " 	HIST_TAXA.U26_CONTRA  	CONTRATO, "
+	cQuery += " 	HIST_TAXA.U26_DATA   	DATA_EMISSAO, "
+	cQuery += " 	HIST_TAXA.U26_PROMAN  	PROXIMA_MANUTENCAO, "
+	cQuery += " 	HIST_TAXA.U26_TXBRU    	TAXABRUTA, "
+	cQuery += " 	HIST_TAXA.U26_TAXA    	TAXATUAL, "
+	cQuery += " 	HIST_TAXA.U26_STATUS  	STATUSMAN, "
+	cQuery += " 	HIST_TAXA.U26_VLDESC  	DESCONTO, "
+	cQuery += " 	CONTRATO.U00_DTATIV		DATA_CONTRA, "
+	cQuery += " 	CONTRATO.U00_CLIENT		CLIENTE, "
+	cQuery += " 	CONTRATO.U00_LOJA    	LOJA, "
+	cQuery += " 	CONTRATO.U00_NOMCLI 	NOMECLIENTE, "
+	cQuery += " 	CONTRATO.U00_PLANO   	PLANO, "
+	cQuery += " 	CONTRATO.U00_DESCPL  	DESCPLANO, "
+	cQuery += "     CONTRATO.U00_FPTAXA  	FORMAPAGAMENTO, "
+	cQuery += " 	CONTRATO.U00_INDMAN  	INDICE, "
+	cQuery += " 	INDICE.U22_DESC    		DESCINDICE, "
+
+	if lRegraContra
+		cQuery += " 	CONTRATO.U00_REGRA   REGRA, "
+	Else
+		cQuery += " 	HIST_TAXA.U26_REGRA   REGRA, "
+	EndIf
+
+	cQuery += " 	REGRA_MAN.U79_DESCRI  DESCREGRA, "
+	cQuery += " 	REGRA_MAN.U79_COBADI  COBADIC, "
+
+	If U79->(FieldPos("U79_TAXPRO")) > 0
+		cQuery += " 	REGRA_MAN.U79_TAXPRO  TAXAPRODUTO, "
+	EndIf
+
+	If U79->(FieldPos("U79_CONIND")) > 0
+		cQuery += " 	REGRA_MAN.U79_CONIND  CONSINDICE, "
+	EndIf
+
+	cQuery += " 	PROD_CEM.U05_VLRTXM 	VALOR_MANUTENCAO "
+
+	cQuery += " FROM " + RetSqlName("U26") + " HIST_TAXA "
+	cQuery += " INNER JOIN " + RetSqlName("U00") + " CONTRATO ON CONTRATO.D_E_L_E_T_ = '' "
+	cQuery += " 	AND CONTRATO.U00_FILIAL = '" + xFilial("U00") + "' "
+	cQuery += "     AND CONTRATO.U00_CODIGO = HIST_TAXA.U26_CONTRA "
+
+	If !Empty(cStatusContrato)
+		cQuery += "     AND CONTRATO.U00_STATUS IN " + FormatIn( cStatusContrato,";")
+	Else
+		cQuery += "     AND CONTRATO.U00_STATUS IN ('A','S')
+	EndIf
+
+	cQuery += " 	AND CONTRATO.U00_TXMANU > 0"
+	cQuery += " INNER JOIN " + RetSqlName("U79") + " REGRA_MAN ON REGRA_MAN.D_E_L_E_T_ = '' "
+	cQuery += " 	AND REGRA_MAN.U79_FILIAL = '" + xFilial("U79") + "' "
+
+	if lRegraContra
+		cQuery += " 	AND REGRA_MAN.U79_CODIGO = CONTRATO.U00_REGRA "
+	Else
+		cQuery += " 	AND REGRA_MAN.U79_CODIGO = HIST_TAXA.U26_REGRA "
+	EndIf
+
+	cQuery += " INNER JOIN " + RetSqlName("U05") + " PROD_CEM ON PROD_CEM.D_E_L_E_T_ = '' "
+	cQuery += " 	AND PROD_CEM.U05_FILIAL = '" + xFilial("U05") + "' "
+	cQuery += " 	AND PROD_CEM.U05_CODIGO = CONTRATO.U00_PLANO "
+	cQuery += " INNER JOIN " + RetSqlName("U22") + " INDICE ON INDICE.D_E_L_E_T_ = '' "
+	cQuery += " 	AND INDICE.U22_FILIAL = '" + xFilial("U22") + "' "
+	cQuery += "     AND INDICE.U22_CODIGO = CONTRATO.U00_INDMAN "
+	cQuery += " WHERE HIST_TAXA.D_E_L_E_T_ = '' "
+	cQuery += " AND HIST_TAXA.U26_FILIAL = '" + xFilial("U26") + "' "
+
+	if !Empty(cContratoAte)
+		cQuery += " AND HIST_TAXA.U26_CONTRA BETWEEN '" + cContratoDe + "' AND '" + cContratoAte + "' "
+	endIf
+
+	if !Empty(cPlano)
+		cQuery += " AND CONTRATO.U00_PLANO IN " + FormatIn( AllTrim(cPlano), ";" )
+	endIf
+
+	if !Empty(cIndice)
+		cQuery += " AND CONTRATO.U00_INDMAN = '" + cIndice + "'"
+	endIf
+
+	if !Empty(cRegra)
+		If lRegraContra
+			cQuery += " AND CONTRATO.U00_REGRA  = '" + cRegra + "' "
+		Else
+			cQuery += " AND HIST_TAXA.U26_REGRA = '" + cRegra + "' "
+		EndIF
+	endIf
+
+	if nOpcStatus == 1 // ambos
+		cQuery += "     AND HIST_TAXA.U26_STATUS  <> '3' "
+	elseIf nOpcStatus == 2 // provisionado
+		cQuery += "     AND HIST_TAXA.U26_STATUS  = '1' "
+	elseIf nOpcStatus == 3 // reajuste
+		cQuery += "     AND HIST_TAXA.U26_STATUS  = '2' "
+	endIf
+
+	cQuery += " AND SUBSTRING(HIST_TAXA.U26_PROMAN,3,4) + SUBSTRING(HIST_TAXA.U26_PROMAN,1,2)  <= '" + AnoMes(dDataBase) + "'  "
+
+	if lOrdNome
+		cQuery += " ORDER BY CONTRATO.U00_NOMCLI, HIST_TAXA.U26_DATA, HIST_TAXA.U26_CONTRA "
+	else
+		cQuery += " ORDER BY HIST_TAXA.U26_DATA, HIST_TAXA.U26_CONTRA "
+	endif
+
+	MemoWrite("c:\temp\RCPGE044_" + DtoS(dDataBase) + StrTran(Time(),":","") + ".txt",cQuery)
+
+	// função que converte a query genérica para o protheus
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TMPMAN" )
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua2(TMPMAN->(Reccount()))
+
+	TMPMAN->(DbGoTop())
+
+	// crio alias conforme os parametros
+	while TMPMAN->(!Eof())
+
+		// executo a classe de taxa de manutencao
+		oRegraTaxaManutencao    := RegraTaxaManutencao():New(TMPMAN->REGRA)
+
+		//1=considera a taxa que esta no produto(plano);2=Nao considera a taxa que esta no produto(plano)
+		If U79->(FieldPos("U79_TAXPRO")) > 0
+			cTaxaProduto := TMPMAN->TAXAPRODUTO
+		Else
+			cTaxaProduto := "2"
+		EndIf
+
+		// 1=considera indice;2=Nao considera indice
+		If U79->(FieldPos("U79_CONIND")) > 0
+			cConsideraIndice := TMPMAN->CONSINDICE
+		Else
+			cConsideraIndice := "1"
+		EndIf
+
+		// zerp o arrau de enderecos
+		aAuxManutencao      := {}
+		lContratoAdimplente := .T.
+
+		// considero o contrato em dias
+		if lAtivaTaxaContratoEmDia
+			lContratoAdimplente := oVirtusFin:ContratoAdimplente(TMPMAN->CONTRATO, "C") //// vejo se o contrato esta adimplente
+		endIf
+
+		// caso o contrato esteja adimplente
+		if lContratoAdimplente
+
+			// pego a descricao do status conforme a SX3
+			cStatus := RetDescricaoStatus( TMPMAN->STATUSMAN )
+			cProximaManutencao  := Substr(TMPMAN->PROXIMA_MANUTENCAO,1,2) + "/" + Substr(TMPMAN->PROXIMA_MANUTENCAO,3,6)
+
+			cIndiceTaxa 	:= TMPMAN->INDICE
+			cDescIndTaxa	:= TMPMAN->DESCINDICE
+			nTaxaIndice		:= 0
+
+			// taxa atual do indice
+			if lReajustaProvisionado .Or. (TMPMAN->STATUSMAN <> "1" .And. cConsideraIndice == "1")
+				oRegraTaxaManutencao:RetValorIndice( cIndiceTaxa, @nTaxaIndice, @lMsgIndice )
+			endif
+
+			If cTaxaProduto == "1" // considero a taxa que esta no produto
+				nValorTaxa 		:= TMPMAN->VALOR_MANUTENCAO
+				nReajProduto	:= TMPMAN->VALOR_MANUTENCAO - (TMPMAN->TAXATUAL + TMPMAN->DESCONTO)
+			Else
+				nValorTaxa := TMPMAN->TAXATUAL
+			EndIf
+
+			// valor da taxa atual
+			nValorTaxa := ValidaValorRegra(TMPMAN->CODIGO, TMPMAN->FORMAPAGAMENTO, TMPMAN->REGRA, nValorTaxa, oRegraTaxaManutencao, @nValorDesconto)
+
+			// taxa do reajuste
+			nTaxaReajuste   := (nValorTaxa * (nTaxaIndice / 100))
+
+			// valor do reajuste
+			nValorReajuste  := nValorTaxa + nTaxaReajuste
+
+			//Array contendo os campos da tabela temporária
+			Aadd( aAuxManutencao, { "TR_MARK" 		, .T.           	            })
+			Aadd( aAuxManutencao, { "TR_STATUS" 	, cStatus	                    })
+			Aadd( aAuxManutencao, { "TR_PROMAN" 	, cProximaManutencao            })
+			Aadd( aAuxManutencao, { "TR_CONTRA"	    , TMPMAN->CONTRATO	            })
+			Aadd( aAuxManutencao, { "TR_DATA"	    , Stod( TMPMAN->DATA_EMISSAO )  })
+			Aadd( aAuxManutencao, { "TR_CLIENTE"	, TMPMAN->CLIENTE	            })
+			Aadd( aAuxManutencao, { "TR_LOJA"	    , TMPMAN->LOJA  	            })
+			Aadd( aAuxManutencao, { "TR_NOMECLI"    , TMPMAN->NOMECLIENTE	        })
+			Aadd( aAuxManutencao, { "TR_PLANO"      , TMPMAN->PLANO	                })
+			Aadd( aAuxManutencao, { "TR_DSCPLAN"    , TMPMAN->DESCPLANO	            })
+			Aadd( aAuxManutencao, { "TR_REGRA"      , TMPMAN->REGRA	                })
+			Aadd( aAuxManutencao, { "TR_DSCREGR"    , TMPMAN->DESCREGRA	            })
+			Aadd( aAuxManutencao, { "TR_INDICE"	    , cIndiceTaxa	           	 	})
+			Aadd( aAuxManutencao, { "TR_DSCIND"	    , cDescIndTaxa	        		})
+			Aadd( aAuxManutencao, { "TR_TXATU"	    , TMPMAN->TAXATUAL	            })
+			Aadd( aAuxManutencao, { "TR_TXINDI"     , nTaxaIndice	                })
+			Aadd( aAuxManutencao, { "TR_TXREAJ"	    , nTaxaReajuste	+ nReajProduto	})
+			Aadd( aAuxManutencao, { "TR_VLDESC"	    , nValorDesconto	            })
+			Aadd( aAuxManutencao, { "TR_COBADI"	    , TMPMAN->COBADIC          	 	})
+			Aadd( aAuxManutencao, { "TR_VLREAJ"	    , nValorReajuste	            })
+			Aadd( aAuxManutencao, { "TR_CODIGO"	    , TMPMAN->CODIGO	            })
+
+			nGetTotal++
+			nGetValorTotal+=TMPMAN->TAXATUAL
+
+			// preencho o array de dados
+			Aadd( aDadosManutencao, aAuxManutencao )
+
+		endIf
+
+		FreeObj(oRegraTaxaManutencao)
+		oRegraTaxaManutencao := Nil
+
+		TMPMAN->(DbSkip())
+	endDo
+
+	// vou popular a tabela de dados - detalhes
+	CriaTabManutencao( @cTrbManutencao, @oTempManutencao )
+
+	// chama a funcao para gravar os registros de tipo
+	GravaDados( aDadosManutencao, cTrbManutencao, /*lGeraDados*/, @oBrowseManutencao )
+
+	// verifico se o alias esta em uso
+	if Select("TMPMAN") > 0
+		TMPMAN->(DbCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaPosFiltros
+Funcao para ajustar a tela
+ajusta a tela para resolucoes menores
+@type function
+@version 1.0
+@author g.sampaio
+@since 03/08/2020
+@param aSizeAut, array, dados do tamanho da tela
+@param aCords, array, coordenadas da tela
+@param nLinhaFiltro1, numeric, linha do filtro 
+@param nLinhaFiltro2, numeric, linha do filtro 
+@param nLinhaFiltro3, numeric, linha do filtro 
+@param nColunaFiltro1, numeric, linha do filtro 
+@param nColunaFiltro2, numeric, linha do filtro 
+@param nColunaFiltro3, numeric, linha do filtro 
+@param nColunaFiltro4, numeric, linha do filtro 
+@param nColunaBotao1, numeric, linha do filtro 
+@param nColunaBotao2, numeric, linha do filtro 
+@param nColunaBotao3, numeric, linha do filtro 
+/*/ 
+Static Function AjustaPosFiltros( aSizeAut, aCords, nLinhaFiltro1, nLinhaFiltro2, nLinhaFiltro3,;
+		nColunaFiltro1, nColunaFiltro2, nColunaFiltro3, nColunaFiltro4,;
+		nColunaBotao1, nColunaBotao2, nColunaBotao3 )
+
+	Default aSizeAut        := {}
+	Default aCords          := {}
+	Default nLinhaFiltro1   := 0
+	Default nLinhaFiltro2   := 0
+	Default nLinhaFiltro3   := 0
+	Default nColunaFiltro1  := 0
+	Default nColunaFiltro2  := 0
+	Default nColunaFiltro3  := 0
+	Default nColunaFiltro4  := 0
+	Default nColunaBotao1   := 0
+	Default nColunaBotao2   := 0
+	Default nColunaBotao3   := 0
+
+	// verifico se o tamanho da tela é menor que 1900 pixels
+	if Len(aSizeAut) > 0 .And. aSizeAut[5] < 1900
+
+		// linhas
+		nLinhaFiltro1   := 019
+		nLinhaFiltro2   := 029
+		nLinhaFiltro3   := aCords[2,4] - (aCords[2,4]/4) - 7
+
+		// colunas
+		nColunaFiltro1  := 015
+		nColunaFiltro2  := (aCords[2,3]/4) + 20
+		nColunaFiltro3  := (aCords[2,3]/2) + 10
+		nColunaFiltro4  := (aCords[2,3]/2) + (aCords[2,3]/4) + 20
+
+	else // tela com grande definicao
+
+		// linhas
+		nLinhaFiltro1   := 025
+		nLinhaFiltro2   := 040
+		nLinhaFiltro3   := aCords[2,4] - (aCords[2,4]/4)
+
+		// colunas
+		nColunaFiltro1  := 015
+		nColunaFiltro2  := (aCords[2,3]/4) + 20
+		nColunaFiltro3  := (aCords[2,3]/2) + 10
+		nColunaFiltro4  := (aCords[2,3]/2) + (aCords[2,3]/4) + 20
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaTamanhofonte
+Ajusta tamanho da fonte
+@type function
+@version 1.0
+@author g.sampaio
+@since 03/08/2020
+@param aSizeAut, array, dados do tamanho da tela
+@param oFontTitulo, object, fonte do titulo da tela
+@param oFontLabel, object, fonte da label
+/*/
+Static Function AjustaTamanhofonte( aSizeAut, oFontTitulo, oFontLabel )
+
+	Default aSizeAut    := {}
+	Default oFontTitulo := Nil
+	Default oFontLabel  := Nil
+
+	// verifico se o tamanho da tela é menor que 1900 pixels
+	if Len(aSizeAut) > 0 .And. aSizeAut[5] < 1900
+		oFontTitulo := TFont():New("Arial",,012,,.T.,,,,,.F.,.F.)
+		oFontLabel := TFont():New("Arial",,014,,.F.,,,,,.F.,.F.)
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaConsulta
+Funcao poara limpar a consulta de dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 03/08/2020
+@param cContratoDe, character, inicio do range do contrato
+@param cContratoAte, character, fim do range de contrato
+@param cPlano, character, codigo do produto de cemiterio
+@param cIndice, character, codigo do indice
+@param cRegra, character, codigo da regra
+@param oPanelFiltro, object, painel de filtros
+@param oComboStatus, object, combo de status da manutencao
+@param nGetTotal, numeric, total de itens selecionados
+@param nGetValorTotal, numeric, valor total de itens selecionados
+/*/
+Static Function LimpaConsulta( cContratoDe, cContratoAte, cPlano, cIndice, cRegra, oPanelFiltro, oComboStatus, nGetTotal, nGetValorTotal )
+
+	Default cContratoDe     := ""
+	Default cContratoAte    := ""
+	Default cPlano          := ""
+	Default cIndice         := ""
+	Default cRegra          := ""
+	Default oPanelFiltro    := Nil
+	Default oComboStatus	:= Nil
+	Default nGetTotal		:= 0
+	Default nGetValorTotal	:= 0
+
+	// limpa dados de consulta
+	cContratoDe         := Space(6)
+	cContratoAte        := Replicate("Z",6)
+	cPlano              := Space(100)
+	cIndice             := Space(6)
+	cRegra              := Space(6)
+	oComboStatus:nAt	:= 1
+	nGetTotal			:= 0
+	nGetValorTotal		:= 0
+
+	// atualizo os objetos de tela
+	oPanelFiltro:Refresh()
+
+Return(Nil)
+
+/*/{Protheus.doc} RetDescricaoStatus
+Retorno a descricao do campo U26_STATUS
+conforme o X3_CBOX
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/08/2020
+@param cStatus, character, status da taxa de manutencao
+@return character, retorna a descricao do status
+/*/
+Static Function RetDescricaoStatus( cStatus )
+
+	Local aOpcao    as Array
+	Local cRetorno  as Character
+	Local cOpcao    as Character
+	Local nPos      as Numeric
+
+	Default cStatus := ""
+
+	// pego o conteudo do campo X3_CBOX do campo UF4_TIPO
+	cOpcao 	:= GetSx3Cache("U26_STATUS","X3_CBOX")
+
+	// alimento o array de dados
+	aOpcao	:= StrToKarr( cOpcao, ";" )
+
+	// pego os dados a posicao do tipo de servico para buscar a descricao conforme na X3_CBOX
+	nPos 	:= aScan( aOpcao, { |x| SubStr( x, 1, 1 ) == cStatus } )
+
+	// verifico se encontrei o tipo de servico
+	If nPos > 0
+
+		// pego o array de opcao
+		cRetorno := aOpcao[nPos]
+
+	EndIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} Confirmar
+Funcao para confirmar a geracao da taxa de manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 31/08/2020
+@param cTrbManutencao, character, alias de manutencao
+@param oTempManutencao, object, objeto do alias temporario
+/*/
+Static Function Confirmar( cTrbManutencao, oTempManutencao )
+
+	Local aDadosFin                 as Character
+	Local cCodigoProvisionamento    as Character
+	Local cQuery                    as Character
+	Local cGeracao                  as Character
+	Local cDiaVenci                 as Character
+	Local cFormaPagamento           as Character
+	Local cProximaManutencao		as Character
+	Local dDataVencto               as Date
+	Local lContinua                 as Logical
+	Local lUsaPrimVencto		    as Logical
+	Local lReajuste                 as Logical
+	Local lRetorno                  as Logical
+	Local nRegra                    as Numeric
+	Local nDifMeses                 as Numeric
+	Local nValCobAdic				as Numeric
+	Local nValorTaxa				as Numeric
+	Local nCobAdic					as Numeric
+
+	Local oRegraTaxaManutencao      as Object
+
+	// atribuo valor as variaveis
+	aDadosFin               := {}
+	cDiaVenci               := ""
+	cCodigoProvisionamento  := ""
+	cQuery                  := ""
+	cGeracao                := ""
+	cFormaPagamento         := ""
+	cProximaManutencao		:= ""
+	dDataVencto             := Stod("")
+	lUsaPrimVencto          := SuperGetMv("MV_XPRIMVC",.F.,.F.)
+	lContinua               := .T.
+	lRetorno                := .T.
+	lReajuste               := .F.
+	nDifMeses               := 0
+	nRegra                  := 0
+	nValCobAdic				:= 0
+	nCobAdic				:= 0
+	oRegraTaxaManutencao    := Nil
+
+	// verifico se os alias tem dados
+	If Select( cTrbManutencao ) > 0
+
+		If Select("TMPGER") > 0
+			TMPGER->( DbCloseArea() )
+		EndIf
+
+		// query para pegar os registros marcados
+		cQuery := " SELECT TR_STATUS, TR_CONTRA, TR_CODIGO, U00_FORPG, U00_FPTAXA, U00_TXMANU, U00_ADIMNT, TR_VLREAJ, TR_CONTRA, "
+		cQuery += " TR_INDICE, TR_REGRA, TR_TXINDI, TR_TXREAJ, TR_PROMAN, U00_DIAVEN, U00_PRIMVE, TR_VLDESC "
+		cQuery += " FROM " + oTempManutencao:GetRealName() + " TMP "
+		cQuery += " INNER JOIN " + RetSqlName("U00") + " U00 ON U00.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+		cQuery += " AND U00.U00_CODIGO = TMP.TR_CONTRA "
+		cQuery += " WHERE TMP.D_E_L_E_T_ = ' '   "
+		cQuery += " AND TMP.TR_MARK = 'T' "
+
+		// executo a query e crio o alias temporario
+		MPSysOpenQuery( cQuery, 'TMPGER' )
+
+		While TMPGER->(!Eof())
+
+			// zero as variaveis do reajuste
+			aDadosFin               := {}
+			cDiaVenci               := ""
+			cCodigoProvisionamento  := ""
+			cQuery                  := ""
+			cGeracao                := ""
+			cFormaPagamento         := ""
+			cProximaManutencao		:= ""
+			dDataVencto             := Stod("")
+			nDifMeses               := 0
+			nRegra                  := 0
+			nValCobAdic				:= 0
+			nCobAdic				:= 0
+			oRegraTaxaManutencao    := Nil
+
+			BEGIN TRANSACTION
+
+				// inicio o objeto da classe
+				oRegraTaxaManutencao    := RegraTaxaManutencao():New( TMPGER->TR_REGRA )
+
+				// vejo se a forma de pagamento da taxa de manutencao esta preeenchida
+				if !Empty(TMPGER->U00_FPTAXA)
+					cFormaPagamento := TMPGER->U00_FPTAXA
+				else // se nao, pego a forma de pagamento do contrato
+					cFormaPagamento := TMPGER->U00_FORPG
+				endIf
+
+				// pego a posicao da regra
+				nRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| x[1] == TMPGER->TR_REGRA .And. AllTrim(x[3]) == AllTrim(cFormaPagamento) } )
+
+				// caso tenha encontrado uma regra
+				if nRegra > 0
+
+					// salva na memoria da classe a regra que estou utilizando
+					oRegraTaxaManutencao:nRegraMemoria := nRegra
+
+					// pego o dia do vencimento
+					if oRegraTaxaManutencao:aRegras[nRegra, 7] > 0
+
+						// dia de vencimento
+						cDiaVenci   := StrZero( oRegraTaxaManutencao:aRegras[nRegra, 7], 2 )
+
+					else // caso eu utilizo a data de vencimento do contrato
+
+						// verifico se estou usando o primeiro vencimento
+						If lUsaPrimVencto
+
+							// verifico se o primeiro vencimento esta preenchido
+							cDiaVenci :=  iif( !Empty(TMPGER->U00_PRIMVE), SubStr( TMPGER->U00_PRIMVE, 7, 2 ), TMPGER->U00_DIAVEN )
+
+						Else // uso o dia do vencimento do contrato
+							cDiaVenci :=  TMPGER->U00_DIAVEN
+						Endif
+
+					endIf
+
+					// verifico o como gera
+					if oRegraTaxaManutencao:aRegras[nRegra, 6] $ "1/3"
+
+						// pego o primeiro vencimento
+						dDataVencto := Stod( AnoMes( dDataBase ) + cDiaVenci )
+
+					elseIf oRegraTaxaManutencao:aRegras[nRegra, 6] == "2" // verifico o como gera
+
+						// pego o mes de geracao
+						cGeracao    := oRegraTaxaManutencao:aRegras[nRegra, 13]
+
+						// pego o primeiro vencimento - Ano da Database + Mes de Geracao + o dia de vencimento
+						dDataVencto := Stod( cValToChar(Year( dDataBase )) + StrZero( Val(cGeracao), 2) + cDiaVenci )
+
+					endIf
+
+					// caso a data de vencimento
+					if dDataVencto < dDataBase
+
+						// pego a difernenca de meses entre as datas de vencimento e data base
+						nDifMeses := DateDiffMonth( dDataVencto, dDataBase )
+
+						// atualizo a data do vencimento
+						dDataVencto := MonthSum( dDataVencto, nDifMeses )
+
+					endIf
+
+					// jogo o primeiro vencimento para o mes seguinte
+					dDataVencto := MonthSum( dDataVencto, 1 )
+
+					// pego o valor da taxa de manutencao
+					nValorTaxa := TMPGER->TR_VLREAJ
+
+					// pego os dados do financeiro
+					aDadosFin := oRegraTaxaManutencao:RetDadosFinRegra( TMPGER->TR_CONTRA, @nValorTaxa, dDataVencto,;
+						nRegra, cDiaVenci, @nCobAdic, @nValCobAdic )
+
+					// valido que e um reajuste
+					lReajuste := .T.
+
+					cProximaManutencao  := oRegraTaxaManutencao:RetProxReajuste( nRegra, lReajuste, dDataVencto )
+
+					if !Empty(cProximaManutencao)
+
+						// gero o provinamento da regra
+						lContinua := oRegraTaxaManutencao:ProvisionaRegra( TMPGER->TR_CONTRA, TMPGER->TR_INDICE, TMPGER->TR_REGRA,;
+							oRegraTaxaManutencao:aRegras[nRegra, 6], cFormaPagamento, TMPGER->TR_TXINDI, nValorTaxa,;
+							TMPGER->TR_TXREAJ, cProximaManutencao, aDadosFin, @cCodigoProvisionamento, lReajuste,;
+							TMPGER->U00_TXMANU + TMPGER->U00_ADIMNT, TMPGER->TR_VLDESC, .F., oRegraTaxaManutencao:aRegras[nRegra, 15],;
+							nCobAdic, nValCobAdic )
+					else
+						lContinua := .F.
+					endIf
+
+					// verifico se devo continuar
+					if lContinua
+
+						// efetivo a geracao do financeiro
+						lContinua := oRegraTaxaManutencao:EfetivaRegra( cCodigoProvisionamento, lReajuste )
+
+						// verifico se devo continuar
+						if lContinua
+
+							U26->( DbSetOrder(1) )
+							if U26->( MsSeek( xFilial("U26")+TMPGER->TR_CODIGO ) )
+
+								if U26->( RecLock("U26", .F.) )
+									U26->U26_STATUS := "3" // finalizada
+									U26->( MsUnLock() )
+								endIf
+
+							endIf
+
+						endIf
+
+					endIf
+
+				endIf
+
+				if !lContinua
+					DisarmTransaction()
+					BREAK
+				endIf
+
+			END TRANSACTION
+
+			if !lContinua
+				EXIT
+			endIf
+
+			// limpo o objeto
+			FreeObj(oRegraTaxaManutencao)
+			oRegraTaxaManutencao := Nil
+
+			TMPGER->( DbSkip() )
+		EndDo
+
+		If Select("TMPGER") > 0
+			TMPGER->( DbCloseArea() )
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ValidaValorRegra
+Valida alteracao da taxa de manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/27/2024
+@param cCodidoTaxa, character, codigo da taxa de manutencao atual
+@param cFormaPagamento, character, forma de pagamento 
+@param cRegraAtual, character, regra de manutencao
+@param nValorAtual, numeric, valor atual da taxa
+@param oRegraTaxaManutencao, object, objeto da regra de manutencao
+@return numeric, valor da taxa
+/*/
+Static Function ValidaValorRegra(cCodigoTaxa, cFormaPagamento, cRegraAtual, nValorAtual, oRegraTaxaManutencao, nValorDesconto)
+
+	Local aArea 			As Array
+	Local aAreaU26			As Array
+	Local nRetorno			As Numeric
+	Local nPosRegra			As Numeric
+
+	Default nValorAtual			:= 0
+	Default nValorDesconto		:= 0
+
+	// atribui valor das variaveis
+	aArea		:= GetArea()
+	aAreaU26	:= U26->(GetArea())
+	nRetorno 	:= nValorAtual
+
+	// posicionamento na taxa de manutencao atual
+	U26->(DbSetOrder(1))
+	If U26->(MsSeek(xFilial("U26")+cCodigoTaxa))
+
+		// pego os dados da regra
+		nPosRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| AllTrim(x[1]) == AllTrim(cRegraAtual) .and. AllTrim(x[3]) == AllTrim(cFormaPagamento)  } )
+
+		If nPosRegra > 0
+
+			// pego o valor de desconto conforme a regra
+			If oRegraTaxaManutencao:aRegras[nPosRegra, 16] == "1" // percentual
+				nValorDesconto := nValorAtual * (oRegraTaxaManutencao:aRegras[nPosRegra, 4] / 100)
+			Else
+				nValorDesconto := oRegraTaxaManutencao:aRegras[nPosRegra, 4]
+			EndIf
+
+			// verifico se devo atualizar o valor do desconto sobre a taxa
+			If oRegraTaxaManutencao:aRegras[nPosRegra, 21] == "1"
+				If U26->U26_VLDESC > 0
+					If U26->U26_VLDESC > nValorDesconto
+						nRetorno := nValorAtual + (U26->U26_VLDESC - nValorDesconto)
+					Else
+						nRetorno := nValorAtual - (nValorDesconto - U26->U26_VLDESC)
+					EndIf
+				Else
+					nRetorno := nValorAtual - nValorDesconto
+				EndIf
+			Else // nao atualizo o valor desconto, somente quando existe alteracao de regra ou forma de pagamento
+				If AllTrim(U26->U26_REGRA) <> AllTrim(cRegraAtual) .Or. AllTrim(U26->U26_FORPG) <> AllTrim(cFormaPagamento) // verifico se existe alteracao
+					nRetorno := nValorAtual - nValorDesconto
+				EndIf
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(nRetorno)

@@ -1,0 +1,902 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} AlteraFormaPagManutencao
+description
+@type function
+@version 
+@author g.sampaio
+@since 24/10/2020
+@param cCodContrato, character, param_description
+@param cRegra, character, param_description
+@param cFormaPag, character, param_description
+@return return_type, return_description
+/*/
+User Function RCPGE055(cCodContrato, cRegra, cOldForPg, cFormaPag)
+
+	Local cQuery 			:= ""
+	Local cTipoMnt			:= SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+	Local cStatusManutencao	:= ""
+	Local lFinanceiro		:= .F.
+	Local lContinua			:= .T.
+	Local nPosRegra			:= 0
+	Local nValorTotal		:= 0
+	Local nSaldoManutencao	:= 0
+	Local oRegraManutencao	:= Nil
+
+	Default cCodContrato	:= ""
+	Default cRegra			:= ""
+	Default cOldForPg		:= ""
+	Default cFormaPag		:= ""
+
+	// verifico se o alias esta em uso
+	if Select("TRBU26") > 0
+		TRBU26->(DbCloseArea())
+	endIf
+
+	// query de consulta
+	cQuery := " SELECT U26.U26_CODIGO, U26.U26_CONTRA, U26.U26_FORPG, U26.U26_STATUS "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " WHERE U26.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_STATUS <> '3' " // diferente de finalizado
+	cQuery += " AND U26.U26_CONTRA = '" + cCodContrato + "'"
+
+	MPSysOpenQuery(cQuery, "TRBU26")
+
+	// verifico se existem dados
+	if TRBU26->(!Eof())
+		cCodManutencao 		:= TRBU26->U26_CODIGO
+		cStatusManutencao	:= TRBU26->U26_STATUS
+	endIf
+
+	// verifico se o alias esta em uso
+	if Select("TRBU26") > 0
+		TRBU26->(DbCloseArea())
+	endIf
+
+	// se o status da manutencao for diferente de provisionado
+	if cStatusManutencao <> "1"
+
+		// pego os dados financeiros
+		RetDadosFin( cCodContrato, @nValorTotal, @nSaldoManutencao )
+
+		// verifico se ja existe alguma baixa
+		if nValorTotal > 0 .And. nSaldoManutencao > 0 .And. nValorTotal <> nSaldoManutencao
+
+			// pergunto ao usuário se deseja alterar a forma de pagamento do ciclo atual
+			if MsgYesNo("Deseja alterar a forma de pagamento da taxa de manutenção no Ciclo Atual?")
+
+				// abro a tela de atualizacao da taxa de mantuencao
+				lContinua := AtualizaTaxaManutencao(cCodContrato, cRegra, cOldForPg, cFormaPag, .F.)
+
+			endIf
+
+		else
+
+			// pergunto ao usuario se deseja alterar os titulos ja no ciclo atual
+			if MsgYesNo("Não existem baixas das taxas de manutenção ou que estejam vencidas no financeiro, deseja alterar a forma de pagamento e parcelas da taxa de manutenção no Ciclo Atual?")
+
+				// abro a tela de atualizacao da taxa de mantuencao
+				lContinua := AtualizaTaxaManutencao(cCodContrato, cRegra, cOldForPg, cFormaPag, .T.)
+
+			endIf
+
+		endIf
+
+	else
+
+		U26->(DbSetOrder(1))
+		if U26->( MsSeek( xFilial("U26")+cCodManutencao ) )
+
+			U27->(DbSetOrder(1))
+			if U27->( MsSeek( xFilial("U27")+U26->U26_CODIGO ) )
+
+				while U27->(!Eof()) .And. U27->U27_FILIAL == xFilial("U27") .And. U27->U27_CODIGO == U26->U26_CODIGO
+
+					// excluo o registro do provisionamento
+					if U27->(Reclock("U27",.F.))
+						U27->(DbDelete())
+						U27->(MsUnlock())
+					else
+						U27->(DisarmTransaction())
+					endif
+
+					U27->(DbSkip())
+				endDo
+
+			endif
+
+		endIf
+
+		// altero a forma de pagamento na taxa de manutencao
+		if U26->(Reclock("U26",.F.))
+			U26->(DbDelete())
+			U26->(MsUnlock())
+		else
+			U26->(DisarmTransaction())
+		endIf
+
+		// inicio a classe de regra de taxa de manutencao
+		oRegraManutencao := RegraTaxaManutencao():New(cRegra)
+
+		// executo a validacao da regra e gero o novo provisionamento da regra de manutencao
+		lContinua := oRegraManutencao:ValidaRegra(cCodContrato)
+
+	endIf
+
+	// verifico se deu tudo certo
+	if lContinua
+		MsgInfo("Taxa de Manutenção atualizada com sucesso!")
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AtualizaTaxaManutencao
+description
+@type function
+@version 1.0
+@author g.sampaio
+@since 24/10/2020
+@param cCodContrato, character, param_description
+@param cRegra, character, param_description
+@param cFormaPag, character, param_description
+@param lAtuCiclo, logical, param_description
+@return return_type, return_description
+/*/
+Static Function AtualizaTaxaManutencao(cCodContrato, cRegra, cOldForPg, cFormaPag, lAtuCiclo)
+
+	Local lRetorno				as Logical
+	Local oButton1				as Object
+	Local oButton2				as Object
+	Local oGroup1				as Object
+	Local oSay1					as Object
+	Local oDlgTaxaManutencao	as Object
+
+	Default cCodContrato		:= ""
+	Default cRegra				:= ""
+	Default cOldForPg			:= ""
+	Default cFormaPag			:= ""
+	Default lAtuCiclo			:= .F.
+
+	// atribuo valor das variaveis
+	lRetorno			:= .T.
+	oButton1			:= Nil
+	oButton2			:= Nil
+	oGroup1				:= Nil
+	oSay1				:= Nil
+	oDlgTaxaManutencao 	:= Nil
+
+	DEFINE MSDIALOG oDlgTaxaManutencao TITLE "Taxas de manutenção" FROM 000, 000  TO 300, 500 COLORS 0, 16777215 PIXEL
+
+	@ 002, 003 GROUP oGroup1 TO 146, 247 PROMPT "" OF oDlgTaxaManutencao COLOR 0, 16777215 PIXEL
+	@ 015, 007 SAY oSay1 PROMPT "Taxas de manutenção a serem alterados no financeiro dentro ciclo atual" SIZE 174, 007 OF oDlgTaxaManutencao COLORS 0, 16777215 PIXEL
+
+	// montro o browse de taxa de manutencao
+	BrowseTaxaManutencao(cCodContrato, @oDlgTaxaManutencao)
+
+	if lAtuCiclo
+
+		@ 130, 170 BUTTON oButton1 PROMPT "Atualiza Forma Pagamento" SIZE 070, 012 OF oDlgTaxaManutencao PIXEL ACTION (FWMsgRun(,{|oSay| lRetorno := AtuTaxa(cCodContrato, cRegra, cOldForPg, cFormaPag, @oDlgTaxaManutencao) },"Aguarde","Atualizando as parcelas da taxa de manutenção geradas..."))
+
+	else
+
+		@ 130, 170 BUTTON oButton1 PROMPT "Altera Forma Pagamento" SIZE 070, 012 OF oDlgTaxaManutencao PIXEL ACTION (FWMsgRun(,{|oSay| lRetorno := AltTaxa(cCodContrato, cRegra, cOldForPg, cFormaPag, @oDlgTaxaManutencao) },"Aguarde","Alterando as parcelas da taxa de manutenção geradas..."))
+
+	endIf
+
+	@ 130, 120 BUTTON oButton2 PROMPT "Cancelar" SIZE 040, 012 OF oDlgTaxaManutencao PIXEL ACTION (lRetorno := .F.,oDlgTaxaManutencao:End())
+
+	ACTIVATE MSDIALOG oDlgTaxaManutencao CENTERED
+
+Return(lRetorno)
+
+/*/{Protheus.doc} BrowseTaxaManutencao
+description
+@type function
+@version 
+@author g.sampaio
+@since 24/10/2020
+@return return_type, return_description
+/*/
+Static Function BrowseTaxaManutencao(cCodContrato, oDlgTaxaManutencao)
+
+	Local oBrwTaxaManutencao
+	Local aBrwTaxaManutencao := {}
+	Local oTituloAberto 	:= LoadBitmap( GetResources(), "BR_VERDE")
+	Local oTituloBaixado 	:= LoadBitmap( GetResources(), "BR_VERMELHO")
+	Local cTipoMnt			:= SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+
+	if Select("TRBTAX") > 0
+		TRBTAX->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " CASE WHEN SE1.E1_SALDO > 0 THEN 'A' ELSE 'B' END STATUSCTR, "
+	cQuery += " SE1.E1_XFORPG FORPG, "
+	cQuery += " U27.U27_PREFIX PREFIXO, "
+	cQuery += " U27.U27_NUM NUMERO, "
+	cQuery += " U27.U27_PARCEL PARCELA, "
+	cQuery += " U27.U27_TIPO TIPO, "
+	cQuery += " U27.U27_VALOR VALOR_TAXA, "
+	cQuery += " U27.R_E_C_N_O_ RECNOU27 "
+	cQuery += " FROM " + RetSqlName("U27") + " U27 "
+	cQuery += " INNER JOIN " + RetSqlName("U26") + " U26 ON U26.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_FILIAL   = '" + xFilial("U26") + "' "
+	cQuery += " AND U26.U26_CODIGO   = U27.U27_CODIGO "
+	cQuery += " AND U26.U26_STATUS  NOT IN ('3','5')
+	cQuery += " AND U26.U26_CONTRA = '" + cCodContrato + "' "
+	cQuery += " INNER JOIN " + RetSqlName("SE1") + " SE1 ON SE1.D_E_L_E_T_ = ' '
+	cQuery += " AND SE1.E1_PREFIXO 	= U27.U27_PREFIX "
+	cQuery += " AND SE1.E1_NUM 		= U27.U27_NUM "
+	cQuery += " AND SE1.E1_PARCELA 	= U27.U27_PARCEL "
+	cQuery += " AND SE1.E1_TIPO 	= U27.U27_TIPO "
+	cQuery += " AND SE1.E1_TIPO = '" + cTipoMnt + "' "
+	cQuery += " AND SE1.E1_XCONTRA 	= '" + cCodContrato + "' "
+	cQuery += " WHERE U27.D_E_L_E_T_ = ' ' "
+
+	TcQuery cQuery New Alias "TRBTAX"
+
+	// percorro os dados gerados da consulta
+	while TRBTAX->(!Eof())
+
+		// alimento o browse de ciclo atual
+		Aadd(aBrwTaxaManutencao,{;
+			TRBTAX->STATUSCTR,;
+			TRBTAX->FORPG,;
+			TRBTAX->PREFIXO,;
+			TRBTAX->NUMERO,;
+			TRBTAX->PARCELA,;
+			TRBTAX->TIPO,;
+			TRBTAX->VALOR_TAXA,;
+			TRBTAX->RECNOU27})
+
+		TRBTAX->( DbSkip() )
+	endDo
+
+	@ 028, 006 LISTBOX oBrwTaxaManutencao Fields HEADER "","Forma Pg.","Prefixo","Numero","Parcela","Tipo","Valor","Recno U27" SIZE 236, 095 OF oDlgTaxaManutencao PIXEL ColSizes 50,50
+	oBrwTaxaManutencao:SetArray(aBrwTaxaManutencao)
+	oBrwTaxaManutencao:bLine := {|| {;
+		iif(aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 1]=="A",oTituloAberto,oTituloBaixado),;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 2],;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 3],;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 4],;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 5],;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 6],;
+		TransForm(aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 7],"@E 999,999.99"),;
+		aBrwTaxaManutencao[oBrwTaxaManutencao:nAt, 8]}}
+
+	if Select("TRBTAX") > 0
+		TRBTAX->(DbCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AtuTaxa
+Funcao para atualizar a taxa de manutencao, gerando um novo ciclo 
+com base na alteracao da forma de pagamento
+@type function
+@version 
+@author g.sampaio
+@since 27/10/2020
+@param cCodContrato, character, param_description
+@param cRegra, character, param_description
+@param cFormaPag, character, param_description
+@param oDlgTaxaManutencao, object, param_description
+@return return_type, return_description
+/*/
+Static Function AtuTaxa(cCodContrato, cRegra, cOldForPg, cFormaPag, oDlgTaxaManutencao)
+
+	Local aArea 			as Array
+	Local aAreaSE1			as Array
+	Local aAreaU26			as Array
+	Local aAreaU27			as Array
+	Local aTitulos			as Array
+	Local aDadosFin			as Array
+	Local cCodManutencao	as Character
+	Local cStatusAnterior	as Character
+	Local cMVForBol			as Character
+	Local lContinua			as Logical
+	Local lUsaPrimVencto	as Logical
+	Local lRecorrencia		as Logical
+	Local nConta			as Numeric
+	Local nValorTaxa		as Numeric
+	Local oRegraManutencao	as Object
+	Local oVirtusFin		as Object
+	Local cOrigem			as Character
+	Local cOrigemDesc		as Character
+	Local dPrimVencimento	as Character
+
+	Default cCodContrato 	:= ""
+	Default cRegra			:= ""
+	Default cOldForPg		:= ""
+	Default cFormaPag		:= ""
+
+	// atribuo valor
+	aArea 				:= GetArea()
+	aAreaSE1			:= SE1->( GetArea() )
+	aAreaU26			:= U26->( GetArea() )
+	aAreaU27			:= U27->( GetArea() )
+	aTitulos			:= {}
+	aDadosFin			:= {}
+	cCodManutencao		:= ""
+	cStatusAnterior		:= ""
+	cMVForBol			:= Alltrim( SuperGetMv("MV_XFORBOL", .F., "BO") )
+	lContinua			:= .T.
+	lRecorrencia		:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	lUsaPrimVencto	    := SuperGetMv("MV_XPRIMVC",.F.,.F.)
+	nConta				:= 0
+	nValorTaxa			:= 0
+	oRegraManutencao	:= Nil
+	cOrigem				:= "RCPGE055"
+	cOrigemDesc			:= "Atualizacao Forma Pagto Taxa Manutencao"
+	dPrimVencimento		:= Stod("")
+
+	U00->(DbSetOrder(1)) //U00_FILIAL+U00_CODIGO
+	if U00->(MsSeek(xFilial("U00")+cCodContrato))
+
+		// dados dos titulos a serem alterados
+		aTitulos := RetDadosFin(cCodContrato)
+
+		//pega o primeiro vencimento do reajuste ja gerado, pois a alteracao de ciclo iniciara neste mesmo periodo.
+		if Len(aTitulos) > 0
+			dPrimVencimento := Stod(aTitulos[1,4])
+		endif
+
+		// inicio a classe da taxa de manutencao
+		oRegraManutencao := RegraTaxaManutencao():New(cRegra)
+
+		// inicio a classe financeira do virtus
+		oVirtusFin	:= VirtusFin():New()
+
+		BEGIN TRANSACTION
+
+			U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+			if lRecorrencia .And. U60->(MsSeek(xFilial("U60") + cOldForPg))
+
+				//verifico se o contrato esta em recorrencia, caso nao esteja arquivo o cliente na Vindi
+				if !U60->(MsSeek(xFilial("U60") + U00->U00_FORPG))
+
+					// Envia arquivamento do cliente para Vindi
+					lContinua := U_UVIND20("C", cCodContrato, U00->U00_CLIENT, U00->U00_LOJA, cOrigem, cOrigemDesc)
+
+					//se o contrato estiver em recorrencia, apenas excluo as parcelas da manutencao
+				else
+					lContinua := U_UExcTitulosVindi(cCodContrato,.T.,"RCPGE055","Alt. Forma Pagamento Manutencao")
+
+				endif
+
+			endif
+
+			if lContinua
+				// percorro os titulos para atualizacao dos dados
+				for nConta := 1 to Len(aTitulos)
+
+					// pego o codigo da manutencao
+					if Empty(cCodManutencao)
+						cCodManutencao	:= aTitulos[nConta, 1]
+					endIf
+
+					// verifico se tem recno no financeiro
+					if aTitulos[nConta, 2]
+
+						// posiciono nos titulos
+						SE1->( DbGoTo(aTitulos[nConta, 2]) )
+
+						// se a forma de pagamento anterior está vinculada a um método de pagamento Vindi
+						if !Empty(cOldForPg) .And. cOldForPg == cMVForBol
+
+							// Se a forma de pagamento do título era boleto
+							// deve ser feita a exclusão do bordero
+							lContinua := oVirtusFin:ExcBordTit(SE1->(Recno()))
+
+						endif
+
+						if lContinua
+
+							// excluo o titulo no financeiro
+							lContinua := oVirtusFin:ExcluiTituloFin(SE1->(Recno()))
+
+						endIf
+
+					endIf
+
+					if lContinua
+
+						// posiciono no historico de titulos
+						U27->( DbGoTo(aTitulos[nConta, 3]) )
+
+						// excluo a forma de pagamento do titulo
+						if U27->(Reclock("U27",.F.))
+							U27->( DbDelete() )
+							U27->(MsUnlock())
+						endIf
+
+					endIf
+
+				next nConta
+
+				// posiciono no codigo da manutencao atual
+				U26->(DbSetOrder(1))
+				if lContinua .And. U26->( MsSeek( xFilial("U26")+cCodManutencao ) )
+
+					// atualizo o status da taxa de manutencao para encerrada
+					if U26->( Reclock("U26",.F.) )
+						U26->U26_STATUS := "3" // taxa de manutencao finalizada
+						U26->( MsUnlock() )
+					endIf
+
+				endIf
+
+				// pego os dados do contrato
+				U00->(DbSetOrder(1))
+				if lContinua .And. U00->( MsSeek( xFilial("U00")+cCodContrato ) )
+
+					// gero a nova regra de manutencao
+					lContinua := oRegraManutencao:ValidaRegra( U00->U00_CODIGO, dPrimVencimento)
+
+				endIf
+
+			endif
+
+		END TRANSACTION
+
+		// verifico se esta tudo certo e fecho o dialog
+		if lContinua
+			oDlgTaxaManutencao:End()
+		endIf
+
+	endif
+
+	RestArea(aAreaU27)
+	RestArea(aAreaU26)
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} AtuTaxa
+Atualizo a forma de pagamento da taxa de manutencao
+@type function
+@version 
+@author g.sampaio
+@since 26/10/2020
+@param cCodContrato, character, param_description
+@param cRegra, character, param_description
+@param cFormaPag, character, param_description
+@return return_type, return_description
+/*/
+Static Function AltTaxa(cCodContrato, cRegra, cOldForPg, cFormaPag, oDlgTaxaManutencao)
+
+	Local aArea 			as Array
+	Local aAreaSE1			as Array
+	Local aAreaU26			as Array
+	Local aAreaU27			as Array
+	Local aTitulos			as Array
+	Local aDadosFin			as Array
+	Local cCodManutencao	as Character
+	Local cStatusAnterior	as Character
+	Local lContinua			as Logical
+	Local nConta			as Numeric
+	Local oRegraManutencao	as Object
+	Local oVirtusFin		as Object
+
+	Default cCodContrato 	:= ""
+	Default cRegra			:= ""
+	Default cOldForPg		:= ""
+	Default cFormaPag		:= ""
+
+	// atribuo valor
+	aArea 				:= GetArea()
+	aAreaSE1			:= SE1->( GetArea() )
+	aAreaU26			:= U26->( GetArea() )
+	aAreaU27			:= U27->( GetArea() )
+	aTitulos			:= {}
+	aDadosFin			:= {}
+	cCodManutencao		:= ""
+	cStatusAnterior		:= ""
+	lContinua			:= .T.
+	nConta				:= 0
+	oRegraManutencao	:= Nil
+
+	// dados dos titulos a serem alterados
+	aTitulos := RetDadosFin(cCodContrato)
+
+	// inicio a classe da taxa de manutencao
+	oRegraManutencao := RegraTaxaManutencao():New(cRegra)
+
+	// inicio a classe financeira do virtus
+	oVirtusFin	:= VirtusFin():New()
+
+	BEGIN TRANSACTION
+
+		// percorro os titulos para atualizacao dos dados
+		for nConta := 1 to Len(aTitulos)
+
+			// pego o codigo da manutencao
+			if Empty(cCodManutencao)
+				cCodManutencao	:= aTitulos[nConta, 1]
+			endIf
+
+			// posiciono no historico de titulos
+			U27->( DbGoTo(aTitulos[nConta, 3]) )
+
+			// pego os dados do financeiro no historico atual
+			aAdd(aDadosFin,{ U27->U27_PREFIX, U27->U27_NUM, U27->U27_PARCEL, U27->U27_TIPO, U27->U27_VALOR, U27->U27_VENC })
+
+			// excluo a forma de pagamento do titulo
+			if U27->(Reclock("U27",.F.))
+				U27->( DbDelete() )
+				U27->(MsUnlock())
+			endIf
+
+			//cPrefixo, cCodContrato, cParcela, cTipo, nValorParcela, dDataVencto
+		next nConta
+
+		// posiciono no codigo da manutencao atual
+		U26->(DbSetOrder(1))
+		if U26->( MsSeek( xFilial("U26")+cCodManutencao ) )
+
+			// pego o status anterior
+			cStatusAnterior	:= U26->U26_STATUS
+
+			// atualizo o status da taxa de manutencao para encerrada
+			if U26->( Reclock("U26",.F.) )
+				U26->U26_STATUS := "3" // taxa de manutencao finalizada
+				U26->( MsUnlock() )
+			endIf
+
+			// limpo a variavel de codigo de manutencao
+			cCodManutencao	:= ""
+
+			// gero uma nova taxa de manutencao
+			lContinua := oRegraManutencao:ProvisionaRegra(cCodContrato, U26->U26_TPINDI, cRegra, U26->U26_CGERA, cFormaPag,;
+				U26->U26_INDICE, U26->U26_TAXA, U26->U26_VLADIC, U26->U26_PROMAN, aDadosFin, @cCodManutencao )
+
+		endIf
+
+		// caso deu tudo certo no novo provisionamento
+		if lContinua
+
+			// atualizo os dados da nova manutencao
+			if !Empty(cCodManutencao)
+
+				// posiciono no codigo da manutencao atual
+				U26->(DbSetOrder(1))
+				if U26->( MsSeek( xFilial("U26")+cCodManutencao ) )
+
+					// atualizo o status da taxa de manutencao para encerrada
+					if U26->( Reclock("U26",.F.) )
+						U26->U26_STATUS := cStatusAnterior // coloco a nova manutencao no status anterior
+						U26->( MsUnlock() )
+					endIf
+
+				endIf
+
+			endIf
+
+			// pego os dados do contrato
+			U00->(DbSetOrder(1))
+			if U00->( MsSeek( xFilial("U00")+cCodContrato ) )
+
+				// altero a forma de pagamento
+				lContinua := AlteraFormaPgto("C", U00->U00_CODIGO, U00->U00_CLIENT, U00->U00_LOJA, cOldForPg, U00->U00_FPTAXA, aTitulos)
+
+			endIf
+
+		endIf
+
+	END TRANSACTION
+
+	// verifico se esta tudo certo e fecho o dialog
+	if lContinua
+		oDlgTaxaManutencao:End()
+	endIf
+
+	RestArea(aAreaU27)
+	RestArea(aAreaU26)
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} RetDadosFin
+description
+@type function
+@version 
+@author g.sampaio
+@since 26/10/2020
+@return return_type, return_description
+/*/
+Static Function RetDadosFin(cCodContrato, nValorTotal, nSaldoManutencao)
+
+	Local aRetorno 				as Array
+	Local cTipoMnt				as Character
+
+	Default cCodContrato		:= ""
+	Default nValorTotal			:= 0
+	Default nSaldoManutencao	:= 0
+
+	// atribuo valor as variaveis
+	aRetorno	:= {}
+	cTipoMnt	:= SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+
+	if Select("TRBFIN") > 0
+		TRBFIN->(DbCloseArea())
+	endIf
+
+	// query para consultar o saldo em aberto e valor
+	cQuery := " SELECT "
+	cQuery += " U26.U26_CODIGO CODIGO,"
+	cQuery += " SE1.E1_VALOR + SE1.E1_ACRESC - SE1.E1_DECRESC VALOR,"
+	cQuery += " SE1.E1_SALDO + SE1.E1_SDACRES - SE1.E1_SDDECRE SALDO,"
+	cQuery += " SE1.R_E_C_N_O_ RECSE1, "
+	cQuery += " U27.R_E_C_N_O_ RECU27, "
+	cQuery += " SE1.E1_VENCTO VENCIMENTO "
+	cQuery += " FROM " + RetSqlName("U27") + " U27 "
+	cQuery += " INNER JOIN " + RetSqlName("U26") + " U26 ON U26.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_FILIAL   = '" + xFilial("U26") + "' "
+	cQuery += " AND U26.U26_CODIGO   = U27.U27_CODIGO "
+	cQuery += " AND U26.U26_STATUS  <> '3' "
+	cQuery += " AND U26.U26_CONTRA 	= '" + cCodContrato + "' "
+	cQuery += " LEFT JOIN " + RetSqlName("SE1") + " SE1 ON SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE1.E1_FILIAL   = '" + xFilial("SE1") + "' "
+	cQuery += " AND SE1.E1_PREFIXO 	= U27.U27_PREFIX "
+	cQuery += " AND SE1.E1_NUM 		= U27.U27_NUM "
+	cQuery += " AND SE1.E1_PARCELA 	= U27.U27_PARCEL "
+	cQuery += " AND SE1.E1_TIPO 	= U27.U27_TIPO "
+	cQuery += " AND SE1.E1_XCONTRA 	= '" + cCodContrato + "' "
+	cQuery += " AND SE1.E1_TIPO 	= '" + cTipoMnt + "' "
+	cQuery += " WHERE U27.D_E_L_E_T_ = ' ' "
+	cQuery += " ORDER BY VENCIMENTO ASC "
+
+	TcQuery cQuery New Alias "TRBFIN"
+
+	while TRBFIN->(!Eof())
+
+		// alimento os totalizadores
+		nValorTotal 		+= TRBFIN->VALOR // incremento o valor
+		nSaldoManutencao	+= TRBFIN->SALDO // incremento o saldo
+
+		// alimento os recnos
+		if TRBFIN->VALOR == TRBFIN->SALDO
+			aAdd( aRetorno, {TRBFIN->CODIGO, TRBFIN->RECSE1, TRBFIN->RECU27, TRBFIN->VENCIMENTO } )
+		endIf
+
+		TRBFIN->(DbSkip())
+	endDo
+
+	if Select("TRBFIN") > 0
+		TRBFIN->(DbCloseArea())
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} AlteraFormaPgto
+description
+@type function
+@version 
+@author g.sampaio
+@since 26/10/2020
+@param cCodModulo, character, param_description
+@param cContrato, character, param_description
+@param cCodCli, character, param_description
+@param cLoja, character, param_description
+@param cOldForPg, character, param_description
+@param cNewForPg, character, param_description
+@return return_type, return_description
+/*/
+Static Function AlteraFormaPgto(cCodModulo, cContrato, cCodCli, cLoja, cOldForPg, cNewForPg, aTitulos)
+
+	Local aArea			:= GetArea()
+	Local aAreaU60		:= U60->(GetArea())
+	Local lContinua		:= .T.
+	Local lRecorrencia	:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	Local cOrigem		:= "RCPGE055"
+	Local cOrigemDesc	:= "Alteracao Forma Pagto Taxa Manutencao"
+
+	BEGIN TRANSACTION
+
+		// se a forma de pagamento anterior está vinculada a um método de pagamento Vindi
+		if !Empty(cOldForPg)
+
+			U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+			if lRecorrencia .And. U60->(MsSeek(xFilial("U60") + cOldForPg))
+
+				U00->(DbSetOrder(1)) //U00_FILIAL+U00_CODIGO
+
+				if U00->(MsSeek(xFilial("U00")+cContrato))
+
+					//verifico se o contrato esta em recorrencia, caso nao esteja arquivo o cliente na Vindi
+					if !U60->(MsSeek(xFilial("U60") + U00->U00_FORPG))
+
+						// Envia arquivamento do cliente para Vindi
+						lContinua := U_UVIND20(cCodModulo, cContrato, cCodCli, cLoja, cOrigem, cOrigemDesc)
+
+						//se o contrato estiver em recorrencia, apenas excluo as parcelas da manutencao
+					else
+						lContinua := U_UExcTitulosVindi(cContrato,.T.,cOrigem,cOrigemDesc)
+
+					endif
+
+				endif
+
+			endif
+
+		endif
+
+
+		// se a nova forma de pagamento estiver vinculada a um metodo de pagamento VINDI.
+		if lContinua .And. lRecorrencia
+
+			// forma de pagamento
+			if !Empty(cNewForPg)
+
+				U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+				if U60->(MsSeek(xFilial("U60") + cNewForPg))
+
+					// se o metodo de pagamento estiver ativo
+					if U60->U60_STATUS == "A"
+
+						// verifico se ja existe perfil de cliente
+						If U_NaoExistCliRecor(cCodCli, cLoja, cContrato)
+
+							// tela para preenchimento do perfil de pagamento
+							FWMsgRun(,{|oSay| lContinua := U_UIncPerfil()},'Aguarde...','Abrindo Perfil de Pagamento...')
+
+						EndIf
+
+					endif
+
+				endif
+
+				if lContinua
+
+					// função que atualiza a forma de pagamento dos títulos a receber
+					lContinua := AtualizaTitulos(cCodModulo, cContrato, cOldForPg, cNewForPg, aTitulos, lRecorrencia)
+
+				Else
+
+					DisarmTransaction()
+
+				endif
+
+			endIf
+
+		else//Nao é titulo da vindi
+
+			// forma de pagamento
+			if !Empty(cNewForPg)
+
+				// função que atualiza a forma de pagamento dos títulos a receber
+				lContinua := AtualizaTitulos(cCodModulo, cContrato, cOldForPg, cNewForPg, aTitulos, lRecorrencia)
+
+				if !lContinua
+
+					DisarmTransaction()
+
+				endif
+
+			endif
+
+		endIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU60)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} IncFatVindi
+Função que inclui as Faturas na Vindi
+
+@type function
+@version 
+@author Wellington Gonçalves
+@since 12/03/2019
+@param cCodModulo, character, param_description
+@param cContrato, character, param_description
+@param cForPgto, character, param_description
+@return return_type, return_description
+/*/
+Static Function IncFatVindi(cCodModulo, cContrato, cForPgto, aTitulos)
+
+	Local aArea 		:= GetArea()
+	Local aAreaSE1 		:= SE1->(GetArea())
+	Local nTitulos		:= 0
+	Local oVindi		:= NIL
+	Local cOrigem		:= "RCPGE055"
+	Local cOrigemDesc	:= "Alteracao para Recorrencia"
+
+	Default cCodModulo	:= ""
+	Default cContrato	:= ""
+	Default cForPgto	:= ""
+	Default aTitulos	:= {}
+
+	// percorro os titulos da taxa de manutencao
+	for nTitulos := 1 to Len(aTitulos)
+
+		// posiciono no titulo
+		SE1->( DbGoTo(aTitulos[nTitulos, 2]) )
+
+		// crio o objeto de integracao com a vindi
+		oVindi := IntegraVindi():New()
+
+		// envia exclusão do título na vindi
+		oVindi:IncluiTabEnvio(cCodModulo, "3", "I", 1, SE1->E1_FILIAL + SE1->E1_PREFIXO + SE1->E1_NUM + SE1->E1_PARCELA + SE1->E1_TIPO,/*aProc*/,cOrigem,cOrigemDesc)
+
+	next nTitulos
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AtualizaTitulos
+Função que atualiza a forma de pagamento dos titulos	
+
+@type function
+@version 
+@author Wellington Gonçalves
+@since 12/03/2019 
+@param cCodModulo, character, param_description
+@param cContrato, character, param_description
+@param cOldForPg, character, param_description
+@param cNewForPg, character, param_description
+@return return_type, return_description
+/*/
+Static Function AtualizaTitulos(cCodModulo,cContrato,cOldForPg,cNewForPg,aTitulos, lRecorrencia)
+
+	Local aArea 			:= GetArea()
+	Local aAreaSE1			:= SE1->(GetArea())
+	Local cMVForBol			:= Alltrim( SuperGetMv("MV_XFORBOL", .F., "BO") )
+	Local lRetorno			:= .T.
+	Local nTitulos			:= 0
+	Local oVirtusFin		:= Nil
+
+	Default cCodModulo		:= ""
+	Default cContrato		:= ""
+	Default cOldForPg		:= ""
+	Default cNewForPg		:= ""
+	Default aTitulos		:= {}
+	Default lRecorrencia	:= .T.
+
+	// inicio a classe financeiro do Virtus ERP
+	oVirtusFin := VirtusFin():New()
+
+	// percorro os titulos
+	for nTitulos := 1 to Len(aTitulos)
+
+		// posiciono no titulo
+		SE1->( DbGoTo( aTitulos[nTitulos, 2] ) )
+
+		// Se a forma de pagamento do título era boleto
+		If AllTrim(SE1->E1_XFORPG) == cMVForBol
+
+			// Se a forma de pagamento do título era boleto
+			// deve ser feita a exclusão do bordero
+			oVirtusFin:ExcBordTit(SE1->(Recno()))
+
+		EndIf
+
+		// atualizo a forma de pagamento do titulo
+		If RecLock("SE1", .F.)
+			SE1->E1_XFORPG	:= cNewForPg //-- Atualiza a forma de pagamento
+			SE1->(MsUnLock())
+		EndIf
+
+	next nTitulos
+
+	// verifico se esta tudo e é titulo de recorrencia
+	if lRecorrencia
+
+		// função que altera a forma de pagamento dos títulos em aberto
+		// envia a inclusao das faturas para vindi com a nova forma de pagamento
+		IncFatVindi(cCodModulo, cContrato, cNewForPg, aTitulos)
+
+	endIf
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lRetorno)

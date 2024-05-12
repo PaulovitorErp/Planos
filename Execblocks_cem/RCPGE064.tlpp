@@ -1,0 +1,74 @@
+#Include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE064
+Consulta específica Multi seleção de tipos de quadras
+de cemiterio
+U08MRK
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/03/2021
+@return logical, retorno verdadeiro
+/*/
+User Function RCPGE064()
+
+	Local cTitulo	:= "Quadras"
+	Local cMvParDef	:= ""
+	Local cVarIni	:= ""
+	Local nX		:= 1
+	Local nTamCod	:= TamSX3("U08_CODIGO")[1]
+	Local aDados	:= {}
+
+	Static cMvRetor	:= ""
+
+	// verifico se a variavel ja tem conteudo
+	If !Empty(cMvRetor)
+
+		// limpo o conteudo da variavel
+		cMvRetor := ""
+
+	EndIf
+
+	U08->(DbSetOrder(1)) // U08_FILIAL + U08_CODIGO
+	If U08->(MsSeek(xFilial("U08")))
+
+		While U08->(!Eof()) .AND. U08->U08_FILIAL == xFilial("U08")
+
+			aadd(aDados, AllTrim(U08->U08_CODIGO) + " - " + AllTrim(U08->U08_DESC))
+			cMvParDef += U08->U08_CODIGO
+			U08->(DbSkip())
+
+		Enddo
+
+	Endif
+
+	If F_Opcoes(@cVarIni, cTitulo, aDados, cMvParDef, 12, 49, .F., nTamCod, 36)
+
+		For nX := 1 To Len(cVarIni) Step nTamCod
+
+			If substr(cVarIni, nX, nTamCod) # Replicate("*",nTamCod)
+
+				If !Empty(cMvRetor)
+					cMvRetor += ";"
+				EndIf
+
+				cMvRetor += substr(cVarIni,nX,nTamCod)
+
+			EndIf
+
+		Next nX
+
+	EndIf
+
+Return(.T.)
+
+/*/{Protheus.doc} RCPGE64A
+Funcao para retorno da consulta especifica
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/03/2020
+@return character, retornas quadras selecionadas
+/*/
+User Function RCPGE64A()
+Return(cMvRetor)

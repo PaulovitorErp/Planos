@@ -1,0 +1,257 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+/*/{Protheus.doc} RCPGE049
+funcao para impressao do termo de transferencia de cessionario
+
+(antigo CPGA001T)
+@type function
+@version 
+@author g.sampaio
+@since 08/09/2020
+@return return_type, return_description
+/*/
+User Function RCPGE049(cCodContrato)
+
+	Local aArea			:= GetArea()
+	Local aAreaU00		:= U00->( GetArea() )
+	Local lRet
+
+	Local cQry 			:= ""
+	Local aDados		:= {}
+	Local nI
+
+	Local aCampos		:= {{"OK","C",002,0},{"U19_CODIGO","C",TamSX3("U19_CODIGO")[1],0},{"U19_DATA","D",8,0},;
+		{"U19_CLIANT","C",TamSX3("U19_CLIANT")[1],0},{"U19_LOJANT","C",TamSX3("U19_LOJANT")[1],0},;
+		{"U19_NOMANT","C",TamSX3("U19_NOMANT")[1],0},{"U19_CLIATU","C",TamSX3("U19_CLIATU")[1],0},;
+		{"U19_LOJATU","C",TamSX3("U19_LOJATU")[1],0},{"U19_NOMATU","C",TamSX3("U19_NOMATU")[1],0}}
+
+	Local aCampos2		:= {{"OK","","",""},{"U19_CODIGO","","Codigo",""},{"U19_DATA","","Data",""},{"U19_CLIANT","","Cliente ant",""},;
+		{"U19_LOJANT","","Loja",""},{"U19_NOMANT","","Nome",""},{"U19_CLIATU","","Cliente atua",""},;
+		{"U19_LOJATU","","Loja",""},{"U19_NOMATU","","Nome",""}}
+
+	Local oBut1, oBut2
+
+	Private oSay1, oSay2, oSay3, oSay4, oSay5
+
+	Private oMark
+	Private cMarca	 	:= "mk"
+	Private lImpFechar	:= .F.
+	Private oTable 		:= FWTemporaryTable():New("TRBU19")
+	Private cAlias		:= ""
+
+	Static oDlgImpT
+
+	//Inserindo campos no alias temporario
+	oTable:SetFields(aCampos)
+
+	//---------------------
+	//Criação dos índices
+	//---------------------
+	oTable:AddIndex("01", { "U19_CODIGO"	} )
+	oTable:AddIndex("02", { "OK"	} )
+
+	//---------------------------------------------------------------
+	//tabela criado no espaço temporário do DB
+	//---------------------------------------------------------------
+	oTable:Create()
+	//------------------------------------
+
+	// pego o alias temporario da tabela
+	cAlias := oTable:GetAlias()
+
+	//Validação para o Gerador de Termos
+	lRegSel	:= .F.
+
+	U00->( DbSetOrder(1) )
+	if U00->( MsSeek( xFilial("U00")+cCodContrato ) )
+
+		If Select("QRYU19") > 0
+			QRYU19->(DbCloseArea())
+		Endif
+
+		cQry := "SELECT U19.U19_CODIGO, U19.U19_DATA, U19.U19_CLIANT, U19.U19_LOJANT, U19.U19_NOMANT, U19.U19_CLIATU, U19.U19_LOJATU, U19.U19_NOMATU"
+		cQry += " FROM "+RetSqlName("U19")+" U19"
+		cQry += " WHERE U19.D_E_L_E_T_ 	<> '*'"
+		cQry += " AND U19.U19_FILIAL 	= '"+xFilial("U19")+"'"
+		cQry += " AND U19.U19_CONTRA 	= '"+U00->U00_CODIGO+"'"
+		cQry += " ORDER BY 1 DESC"
+
+		cQry := ChangeQuery(cQry)
+		TcQuery cQry NEW Alias "QRYU19"
+
+		While QRYU19->(!EOF())
+
+			AAdd(aDados,{QRYU19->U19_CODIGO, QRYU19->U19_DATA, QRYU19->U19_CLIANT, QRYU19->U19_LOJANT, QRYU19->U19_NOMANT, QRYU19->U19_CLIATU,;
+				QRYU19->U19_LOJATU, QRYU19->U19_NOMATU})
+
+			QRYU19->(DbSkip())
+		EndDo
+
+		If Select("QRYU19") > 0
+			QRYU19->(DbCloseArea())
+		Endif
+
+		If Len(aDados) > 0
+
+			For nI := 1 to Len(aDados)
+
+				(cAlias)->(DbAppend())
+				(cAlias)->OK 			:= "  "
+				(cAlias)->U19_CODIGO	:= aDados[nI][1]
+				(cAlias)->U19_DATA	:= SToD(aDados[nI][2])
+				(cAlias)->U19_CLIANT 	:= aDados[nI][3]
+				(cAlias)->U19_LOJANT	:= aDados[nI][4]
+				(cAlias)->U19_NOMANT	:= aDados[nI][5]
+				(cAlias)->U19_CLIATU	:= aDados[nI][6]
+				(cAlias)->U19_LOJATU	:= aDados[nI][7]
+				(cAlias)->U19_NOMATU	:= aDados[nI][8]
+
+			Next
+		Else
+			MsgInfo("Nenhuma Transferência selecionada.","Atenção")
+
+			(cAlias)->(DbAppend())
+			(cAlias)->OK			:= "  "
+			(cAlias)->U19_CODIGO 	:= Space(TamSX3("U19_CODIGO")[1])
+			(cAlias)->U19_DATA		:= CToD("")
+			(cAlias)->U19_CLIANT 	:= Space(TamSX3("U19_CLIANT")[1])
+			(cAlias)->U19_LOJANT 	:= Space(TamSX3("U19_LOJANT")[1])
+			(cAlias)->U19_NOMANT 	:= Space(TamSX3("U19_NOMANT")[1])
+			(cAlias)->U19_CLIATU 	:= Space(TamSX3("U19_CLIATU")[1])
+			(cAlias)->U19_LOJATU 	:= Space(TamSX3("U19_LOJATU")[1])
+			(cAlias)->U19_NOMATU 	:= Space(TamSX3("U19_NOMATU")[1])
+
+		Endif
+
+		(cAlias)->(DbGoTop())
+
+		DEFINE MSDIALOG oDlgImpT TITLE "Transferência - IMPRESSÃO" From 000,000 TO 450,700 COLORS 0, 16777215 PIXEL
+
+		//Cabeçalho
+		@ 005, 005 SAY oSay1 PROMPT "Contrato:" SIZE 070, 007 OF oDlgImpT COLORS 0, 16777215 PIXEL
+		@ 005, 030 SAY oSay2 PROMPT U00->U00_CODIGO SIZE 200, 007 OF oDlgImpT COLORS 0, 16777215 PIXEL
+
+		//Browse
+		oMark := MsSelect():New(cAlias,"OK","",aCampos2,,@cMarca,{015,005,205,348})
+		oMark:bMark 				:= {||MarcaImpT((cAlias)->U19_CODIGO,(cAlias)->(Recno()))}
+		oMark:oBrowse:LHASMARK    	:= .T.
+
+		//Linha horizontal
+		@ 198, 005 SAY oSay3 PROMPT Repl("_",342) SIZE 342, 007 OF oDlgImpT COLORS CLR_GRAY, 16777215 PIXEL
+
+		@ 208, 163 BUTTON oBut1 PROMPT "Imprimir - em vida" SIZE 070, 010 OF oDlgImpT ACTION ImpTVida() PIXEL
+		@ 208, 240 BUTTON oBut2 PROMPT "Imprimir - falecido" SIZE 070, 010 OF oDlgImpT ACTION ImpTFale() PIXEL
+		@ 208, 317 BUTTON oBut3 PROMPT "Fechar" SIZE 030, 010 OF oDlgImpT ACTION {||lRet := .F.,FechImpT()} PIXEL
+
+		ACTIVATE MSDIALOG oDlgImpT CENTERED VALID lImpFechar //impede o usuario fechar a janela atraves do [X]
+
+	endIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*****************************************/
+Static Function MarcaImpT(cCod,nRecTRBU19)
+/*****************************************/
+
+	(cAlias)->(DbGoTop())
+
+	While (cAlias)->(!EOF())
+
+		If (cAlias)->U19_CODIGO <> cCod
+			RecLock(cAlias,.F.)
+			(cAlias)->OK := "  "
+			(cAlias)->(MsUnlock())
+		Endif
+
+		If !Empty((cAlias)->OK) .And. !Empty((cAlias)->U19_CODIGO)
+			lRegSel := .T.
+		Endif
+
+		(cAlias)->(DbSkip())
+	EndDo
+
+	(cAlias)->(DbGoTop())
+	(cAlias)->(DbGoTo(nRecTRBU19))
+
+	oMark:oBrowse:Refresh()
+
+Return
+
+/*************************/
+Static Function ImpTVida()
+/*************************/
+
+	Local nCont := 0
+
+	(cAlias)->(DbGoTop())
+
+	While (cAlias)->(!EOF())
+
+		If (cAlias)->OK == "mk" .And. !Empty((cAlias)->U19_CODIGO)
+
+			nCont++
+			if !U_UTILE28B(U00->U00_CODIGO, "RCPGE049", (cAlias)->U19_CODIGO )
+				U_RCPGR022(U00->U00_CODIGO,(cAlias)->U19_CODIGO)
+			endIf
+		Endif
+
+		(cAlias)->(DbSkip())
+	EndDo
+
+	If nCont == 0
+		MsgInfo("Nenhum registro selecionado.","Atenção")
+	Endif
+
+	(cAlias)->(DbGoTop())
+	oMark:oBrowse:Refresh()
+
+Return
+
+/*************************/
+Static Function ImpTFale()
+/*************************/
+
+	Local nCont := 0
+
+	(cAlias)->(DbGoTop())
+
+	While (cAlias)->(!EOF())
+
+		If (cAlias)->OK == "mk" .And. !Empty((cAlias)->U19_CODIGO)
+
+			nCont++
+			if !U_UTILE28B(U00->U00_CODIGO, "RCPGE049", (cAlias)->U19_CODIGO )
+				U_RCPGR023(U00->U00_CODIGO,(cAlias)->U19_CODIGO)
+			endIf
+
+		Endif
+
+		(cAlias)->(DbSkip())
+	EndDo
+
+	If nCont == 0
+		MsgInfo("Nenhum registro selecionado.","Atenção")
+	Endif
+
+	(cAlias)->(DbGoTop())
+	oMark:oBrowse:Refresh()
+
+Return
+
+/*************************/
+Static Function FechImpT()
+/*************************/
+
+	lImpFechar := .T.
+
+	If Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	Endif
+
+	oDlgImpT:End()
+
+Return(Nil)

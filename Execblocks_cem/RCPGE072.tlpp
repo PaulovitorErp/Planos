@@ -1,0 +1,531 @@
+#Include "PROTHEUS.CH"
+#Include "TOPCONN.CH"
+
+#Define P_PEDIDO 1
+#Define P_SERVICO 2
+#Define P_DESCRICAO 3
+#Define P_VALOR 4
+#Define P_FILIAL 5
+#Define P_DESCFIL 6
+
+#Define T_PREFIXO 2
+#Define T_NUMERO 3
+#Define T_PARCELA 4
+#Define T_TIPO 5
+#Define T_FILIAL 7 
+
+
+
+/*/{Protheus.doc} RCPGE072
+Rotina de Apontamento x Pedidos - Apto Cemiterio
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+/*/
+User Function RCPGE072()                        
+
+Local oBtnVisualPV  := NIL
+Local oBtnExcPV     := NIL
+Local oBtnDocSaida  := NIL
+Local oSair         := NIL
+Local oGroup1       := NIL
+Local oGroup2       := NIL
+Local oDlg          := NIL
+Local oPedidos      := NIL
+Local oTitulos      := NIL
+
+  DEFINE MSDIALOG oDlg TITLE "Apontamento x Pedido(s)" FROM 000, 000  TO 500, 590 COLORS 0, 16777215 PIXEL
+
+    @ 018, 002 GROUP oGroup1 TO 125, 294 PROMPT "Pedidos do Apontamento" OF oDlg COLOR 0, 16777215 PIXEL
+    
+    @ 004, 236 BUTTON oBtnVisualPV PROMPT "Visualizar Pedido" SIZE 057, 012 Action(VisualizaPV(oPedidos)) OF oDlg PIXEL
+    
+    @ 233, 134 BUTTON oBtnDocSaida PROMPT "Faturar OS" SIZE 057, 012 Action(DocSaidaGera(oPedidos)) OF oDlg PIXEL
+    @ 233, 196 BUTTON oBtnExcPV PROMPT "Excluir Faturamento" SIZE 055, 012 Action(ExcFaturamento(oPedidos,oTitulos),oDlg:End()) OF oDlg PIXEL
+    @ 233, 258 BUTTON oSair PROMPT "Sair" SIZE 037, 012 Action(oDlg:End()) OF oDlg PIXEL
+    
+    @ 125, 002 GROUP oGroup2 TO 230, 294 PROMPT "Titulos x Apontamento" OF oDlg COLOR 0, 16777215 PIXEL
+
+    MontaPedidoGrid(@oPedidos,oDlg)
+
+
+    MontaTituloGrid(@oTitulos,oDlg)
+
+
+  ACTIVATE MSDIALOG oDlg CENTERED
+
+Return
+
+/*/{Protheus.doc} MontaGrid
+Monta Grid de Pedidos x Apontamento
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+@param oPedidos, object, Objeto GRID dos pedidos
+
+/*/
+Static Function MontaPedidoGrid(oPedidos,oDlg)
+
+Local aPedidos      := {}
+Local cQuery        := ""
+Local cDescFilial   := ""
+
+cQuery := " SELECT 
+cQuery += " UZT_PEDIDO PEDIDO,
+cQuery += " UZT_SERVIC SERVICO,
+cQuery += " SB1.B1_DESC DESCRICAO,
+cQuery += " UZT.UZT_VALOR VALOR,
+cQuery += " UZT.UZT_FILFAT FILIAL_FAT
+cQuery += " FROM 
+cQuery += RetSQLName("UZT") + " UZT "
+cQuery += " INNER JOIN 
+cQuery += RetSQLName("SB1") + " SB1 "
+cQuery += " ON UZT.D_E_L_E_T_ = ' '
+cQuery += " AND SB1.D_E_L_E_T_ = ' ' 
+cQuery += " AND UZT.UZT_SERVIC = SB1.B1_COD
+cQuery += " WHERE "
+cQuery += " UZT.UZT_FILIAL = '" + xFilial("UZT") + "' "
+cQuery += " AND UZT.UZT_APONTA = '" + UJV->UJV_CODIGO + "' "
+cQuery += " AND UZT.UZT_CHAVET = '' "
+
+// verifico se nao existe este alias criado
+If Select("QRYUZT") > 0
+    QRYUZT->(DbCloseArea())
+EndIf
+
+	// crio o alias temporario
+TcQuery cQuery New Alias "QRYUZT"
+
+if QRYUZT->(!Eof())    
+
+    While QRYUZT->(!Eof())
+	    
+        cDescFilial := FWFilialName(cEmpAnt, QRYUZT->FILIAL_FAT)
+
+        Aadd(aPedidos,{ QRYUZT->PEDIDO,;
+                        QRYUZT->SERVICO,;
+                        Alltrim(QRYUZT->DESCRICAO),;
+                        Transform(QRYUZT->VALOR,"@E 9,999,999,999,999.99"),;
+                        QRYUZT->FILIAL_FAT,;
+                        Alltrim(cDescFilial)})
+
+		QRYUZT->(DBSkip())
+	EndDo
+
+else
+    Aadd(aPedidos,{ "","","",0,"",""})
+endif
+
+@ 029, 006 LISTBOX oPedidos Fields HEADER "Pedido","Servico","Descricao","Valor","Filial","Descricao" SIZE 285, 089 OF oDlg PIXEL ColSizes 50,50
+oPedidos:SetArray(aPedidos)
+oPedidos:bLine := {|| {;
+    aPedidos[oPedidos:nAt,1],;
+    aPedidos[oPedidos:nAt,2],;
+    aPedidos[oPedidos:nAt,3],;
+    aPedidos[oPedidos:nAt,4],;
+    aPedidos[oPedidos:nAt,5],;
+    aPedidos[oPedidos:nAt,6];
+}}                    
+// DoubleClick event
+oPedidos:bLDblClick := {|| aPedidos[oPedidos:nAt,1] := !aPedidos[oPedidos:nAt,1],;
+oPedidos:DrawSelect()}
+
+
+Return
+
+/*/{Protheus.doc} MontaTituloGrid
+Monta Grid de Titulos x Apontamento
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+@param oTitulos, object, Objeto GRID dos Titulos
+
+/*/
+Static Function MontaTituloGrid(oTitulos,oDlg)
+
+Local aTitulos      := {}
+Local cQuery        := ""
+Local cDescFilial   := ""
+Local cPrefixo      := ""
+Local cNumero       := ""
+Local cParcela      := ""
+Local cTipo         := ""
+Local nTamPrefixo   := TamSX3("E1_PREFIXO")[1]
+Local nTamNumero    := TamSX3("E1_NUM")[1]
+Local nTamParcela   := TamSX3("E1_PARCELA")[1]
+Local nTamTipo      := TamSX3("E1_TIPO")[1]
+Local nPosIni       := 0 
+
+
+cQuery := " SELECT 
+cQuery += " UZT_CHAVET CHAVE,
+cQuery += " UZT_SERVIC SERVICO,
+cQuery += " SB1.B1_DESC DESCRICAO,
+cQuery += " UZT.UZT_VALOR VALOR,
+cQuery += " UZT.UZT_FILFAT FILIAL_FAT
+cQuery += " FROM 
+cQuery += RetSQLName("UZT") + " UZT "
+cQuery += " INNER JOIN 
+cQuery += RetSQLName("SB1") + " SB1 "
+cQuery += " ON UZT.D_E_L_E_T_ = ' '
+cQuery += " AND SB1.D_E_L_E_T_ = ' ' 
+cQuery += " AND UZT.UZT_SERVIC = SB1.B1_COD
+cQuery += " WHERE "
+cQuery += " UZT.UZT_FILIAL = '" + xFilial("UZT") + "' "
+cQuery += " AND UZT.UZT_APONTA = '" + UJV->UJV_CODIGO + "' "
+cQuery += " AND UZT.UZT_CHAVET <> '' "
+
+// verifico se nao existe este alias criado
+If Select("QRYUZT") > 0
+    QRYUZT->(DbCloseArea())
+EndIf
+
+	// crio o alias temporario
+TcQuery cQuery New Alias "QRYUZT"
+
+if QRYUZT->(!Eof())    
+
+    While QRYUZT->(!Eof())
+	    
+        cDescFilial := FWFilialName(cEmpAnt, QRYUZT->FILIAL_FAT)
+        
+        cPrefixo := SubStr(QRYUZT->CHAVE,1,nTamPrefixo)
+        
+        nPosIni := nTamPrefixo + 1
+
+        cNumero := SubStr(QRYUZT->CHAVE,nPosIni,nTamNumero)
+        
+        nPosIni += nTamNumero 
+
+        cParcela := SubStr(QRYUZT->CHAVE,nPosIni,nTamParcela)
+
+        nPosIni += nTamParcela 
+
+        cTipo := SubStr(QRYUZT->CHAVE,nPosIni,nTamTipo)
+
+        Aadd(aTitulos,{ cDescFilial,;
+                        cPrefixo,;
+                        cNumero,;
+                        cParcela,;
+                        cTipo,;
+                        Transform(QRYUZT->VALOR,"@E 9,999,999,999,999.99"),;
+                        PadR(Alltrim(QRYUZT->FILIAL_FAT),TamSX3("UZT_FILFAT")[1])})
+
+		QRYUZT->(DBSkip())
+	EndDo
+
+else
+    Aadd(aTitulos,{ "","","","","",0,""})
+endif
+
+@ 134, 006 LISTBOX oTitulos Fields HEADER "Desc. Filial","Prefixo","Numero","Parcela","Tipo","Valor","Filial" SIZE 285, 089 OF oDlg PIXEL ColSizes 50,50
+oTitulos:SetArray(aTitulos)
+oTitulos:bLine := {|| {;
+    aTitulos[oTitulos:nAt,1],;
+    aTitulos[oTitulos:nAt,2],;
+    aTitulos[oTitulos:nAt,3],;
+    aTitulos[oTitulos:nAt,4],;
+    aTitulos[oTitulos:nAt,5],;
+    aTitulos[oTitulos:nAt,6],;
+    aTitulos[oTitulos:nAt,7];
+}}                    
+// DoubleClick event
+oTitulos:bLDblClick := {|| aTitulos[oTitulos:nAt,1] := !aTitulos[oTitulos:nAt,1],;
+oTitulos:DrawSelect()}
+
+
+Return()
+/*/{Protheus.doc} VisualizaPV
+Funcao para Visualizar os pedidos do apontamento
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+@param oPedidos, object, Objeto Grid com os pedidos do apontamento
+/*/
+Static Function VisualizaPV(oPedidos)
+
+Local aArea := GetArea()
+Local aAreaUJV  := UJV->(GetArea())
+Local cFilBkp   := cFilAnt
+
+if !Empty(oPedidos:aArray[oPedidos:nAt,P_PEDIDO])
+    
+    cFilAnt := oPedidos:aArray[oPedidos:nAt,P_FILIAL]
+
+    U_UVirtusViewPV(oPedidos:aArray[oPedidos:nAt,P_PEDIDO])
+    
+else
+    MsgAlert("Apontamento nao possui pedido gerado!","Atencao")
+endif
+
+
+cFilAnt := cFilBkp
+
+RestArea(aArea)
+RestArea(aAreaUJV)
+
+Return()
+
+/*/{Protheus.doc} DocSaidaGera
+Funcao para gerar os Docs de Saida dos pedidos do Apontamento
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+@param oPedidos, object, Objeto Grid com os pedidos do apontamento
+/*/
+Static Function DocSaidaGera(oPedidos)
+
+Local aArea := GetArea()
+Local aAreaUJV  := UJV->(GetArea())
+Local cFilBkp   := cFilAnt
+Local nX        := 0 
+
+if !Empty(oPedidos:aArray[oPedidos:nAt,P_PEDIDO])
+
+    For nX := 1 To Len(oPedidos:aArray)
+    
+        cFilAnt := oPedidos:aArray[nX,P_FILIAL]
+
+        U_RCPGA39C(oPedidos:aArray[nX,P_PEDIDO])
+
+    Next nX
+
+else
+    MsgAlert("Apontamento nao possui pedido gerado!","Atencao")
+endif
+
+
+cFilAnt := cFilBkp
+
+RestArea(aArea)
+RestArea(aAreaUJV)
+
+Return()
+
+/*/{Protheus.doc} ExcPedidos
+Funcao para Exclusao dos pedidos do apontamento
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/1/2023
+@param oPedidos, object, Objeto Grid com os pedidos do apontamento
+/*/
+Static Function ExcFaturamento(oPedidos,oTitulos)
+
+Local aArea         := GetArea()
+Local aAreaUJV      := UJV->(GetArea())
+Local cFilBkp       := cFilAnt
+Local nX            := 0 
+Local nY            := 0 
+Local lRetorno      := .F.
+Local cPrefixo      := ""
+Local cTitulo       := ""
+Local cParcela      := ""
+Local cTipo         := ""
+Local cFilTitulo    := ""
+
+Begin Transaction 
+
+if !Empty(oPedidos:aArray[oPedidos:nAt,P_PEDIDO]) .Or. !Empty(oTitulos:aArray[oTitulos:nAt,T_PREFIXO])
+
+    For nX := 1 To Len(oPedidos:aArray)
+    
+        cFilAnt := oPedidos:aArray[nX,P_FILIAL]
+
+        // verifico se o campo de origem do apontamento existe
+        if UJV->(FieldPos("UJV_ORIGEM")) > 0
+
+            // caso a origem do apontamento for da transferencia de enderecos
+            if AllTrim(UJV->UJV_ORIGEM) == "RCPGA034"
+                lRetorno := .F.
+                Help( ,, 'Help',, 'O Apontamento foi gerado pela rotina de transferência de endereçamento, operação não permitida!', 1, 0 )
+            endIf
+
+        endIf
+
+        FWMsgRun(,{|oSay| lRetorno := U_EstornaLibPedido(oPedidos:aArray[nX,P_PEDIDO])},'Aguarde...','Estornando Pedido de Venda do Apontamento!')
+
+        if lRetorno
+            ExcHistoricoPV(UJV->UJV_CODIGO,cFilBkp,oPedidos:aArray[nX,P_PEDIDO]) 
+        endif
+
+        if !lRetorno
+            DisarmTransaction()
+            exit
+        endif
+
+    Next nX
+    
+    if lRetorno 
+
+        For nY := 1 To Len(oTitulos:aArray)
+
+            cFilTitulo  := oTitulos:aArray[nY,T_FILIAL]
+            cPrefixo    := oTitulos:aArray[nY,T_PREFIXO]
+            cTitulo     := oTitulos:aArray[nY,T_NUMERO]
+            cParcela    := oTitulos:aArray[nY,T_PARCELA]
+            cTipo       := oTitulos:aArray[nY,T_TIPO]
+
+            cFilAnt := oTitulos:aArray[nY,T_FILIAL]
+
+            // verifico se o campo de origem do apontamento existe
+            if UJV->(FieldPos("UJV_ORIGEM")) > 0
+
+                // caso a origem do apontamento for da transferencia de enderecos
+                if AllTrim(UJV->UJV_ORIGEM) == "RCPGA034"
+                    lRetorno := .F.
+                    Help( ,, 'Help',, 'O Apontamento foi gerado pela rotina de transferência de endereçamento, operação não permitida!', 1, 0 )
+                endIf
+
+            endIf
+
+            FWMsgRun(,{|oSay| lRetorno := EstornaTitulo(cFilTitulo,cPrefixo,cTitulo,cParcela,cTipo)},'Aguarde...','Estornando titulo(s) do apontamento!')
+
+            if lRetorno
+                ExcHistoricoTit(UJV->UJV_CODIGO,cFilBkp,cFilTitulo,cPrefixo,cTitulo,cParcela,cTipo) 
+            endif
+
+            if !lRetorno
+                DisarmTransaction()
+                exit
+            endif
+
+        Next nY
+    
+    endif
+
+
+    if lRetorno 
+        
+        RecLock("UJV",.F.)
+
+		UJV->UJV_PEDIDO := ""
+		UJV->UJV_STATUS := "E"
+
+	    UJV->(MsUnlock())
+
+        MsgInfo("Pedido(s) excluído(s) com sucesso!")
+
+    endif
+
+else
+    MsgAlert("Apontamento nao possui pedido gerado!","Atencao")
+endif
+
+End Transaction
+
+cFilAnt := cFilBkp
+
+RestArea(aArea)
+RestArea(aAreaUJV)
+
+Return()
+
+/*/{Protheus.doc} ExcHistoricoPV
+Funcao para deletar historico de pedidos do apontamento
+@type function
+@version 1.0  
+@author raphaelgarcia
+@since 8/3/2023
+@param cApontamento, character, Codigo do Apontamento
+@param cFilInc, character, Filial de Inclusao do Registro
+@param cPedido, character, Numero do Pedido
+/*/
+Static Function ExcHistoricoPV(cApontamento,cFilInc,cPedido)
+
+Local aArea := GetArea()
+Local aAreaUJV  := UJV->(GetArea())
+
+UZT->(DbSetOrder(2)) //UZT_FILIAL + UZT_APONTA + UZT_PEDIDO
+
+if UZT->(MsSeek(xFilial("UZT",cFilInc,)+cApontamento+cPedido))
+
+    Reclock("UZT",.F.)
+
+    UZT->(DbDelete())
+
+    UZT->(MsUnlock())
+
+endif
+
+RestArea(aArea)
+RestArea(aAreaUJV)
+
+Return()
+
+/*/{Protheus.doc} EstornaTitulo
+Funcao de exclusao de titulo
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 8/25/2023
+@param cFilTitulo, character, Filial do Titulo
+@param cPrefixo, character, Prefixo do Titulo
+@param cTitulo, character, Numero do Titulo
+@param cParcela, character, Parcela 
+@param cTipo, character, Tipo
+@return Logical, Titulo excluido sim ou nao 
+/*/
+Static Function EstornaTitulo(cFilTitulo,cPrefixo,cTitulo,cParcela,cTipo)
+
+Local aArea         := GetArea()
+Local aFin040       := {}
+Local lRet          := .T.
+Private lMsErroAuto := .F.
+
+
+SE1->(DbSetOrder(1)) //E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+
+if SE1->(MsSeek(xFilial("SE1")+cPrefixo+cTitulo+cParcela+cTipo))
+
+    // faço a exclusão do título a receber
+    AAdd(aFin040, {"E1_FILIAL"  , SE1->E1_FILIAL  	, Nil})
+    AAdd(aFin040, {"E1_PREFIXO" , SE1->E1_PREFIXO 	, Nil})
+    AAdd(aFin040, {"E1_NUM"     , SE1->E1_NUM	   	, Nil})
+    AAdd(aFin040, {"E1_PARCELA" , SE1->E1_PARCELA	, Nil})
+    AAdd(aFin040, {"E1_TIPO"    , SE1->E1_TIPO  	, Nil})
+
+    MSExecAuto({|x,y| Fina040(x,y)},aFin040,5)
+
+    If lMsErroAuto
+        MostraErro()
+        lRet := .F.
+    EndIf
+else 
+    lRet := .F.
+    MsgAlert("Titulo não encontrado - Chave: " + cFilTitulo + " - " + cPrefixo + " -  " + cTitulo + " " + cParcela + " ")
+endif
+
+RestArea(aArea)
+
+Return(lRet)
+
+
+Static Function ExcHistoricoTit(cApontamento,cFilBkp,cFilTitulo,cPrefixo,cTitulo,cParcela,cTipo) 
+
+Local aArea         := GetArea()
+Local cChaveTit     := ""
+
+UZT->(DbSetOrder(3))//UZT_FILIAL+UZT_APONTA+UZT_FILFAT+UZT_CHAVET
+
+cChaveTit := cPrefixo + cTitulo + cParcela + cTipo
+
+if UZT->(MsSeek(xFilial("UZT",cFilBkp)+cApontamento+cFilTitulo+cChaveTit))
+
+    RecLock("UZT",.F.)
+    
+    UZT->(DBDelete())
+    
+    UZT->(MsUnlock())
+
+endif
+
+RestArea(aArea)
+
+Return()
+

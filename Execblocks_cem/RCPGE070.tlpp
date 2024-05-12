@@ -1,0 +1,344 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} RCPGE070
+Rotina que faz o adiantamento de taxa de manutenção.
+
+@type function
+@version 12.1.33
+@author Pablo Nunes
+@since 01/11/2022
+@return logical, retorno logico se foi gerado ou não o adiantamento
+/*/
+User Function RCPGE070( cContrato )
+
+	Local lRet                  as logical
+	Local aParamBox             as Array
+	Local nQtdCiclos            as Numeric
+
+	Private aParam := Array(1)
+
+	lRet := .T.
+	aParamBox := {}
+	aParam[01] := 1
+
+	// abre pergunta do número de adiantamentos que deseja processar
+	aAdd(aParamBox, {1, "N. Adiantamento Tx Manut.", aParam[01], "@E 999", "mv_par01>0", "", "", 20, .F.})
+	If ParamBox(aParamBox,"PARÂMETROS",@aParam)
+		nQtdCiclos := aParam[01]
+		If MsgYesNo("Deseja gerar o adiantamento de "+cValToChar(nQtdCiclos)+" taxa(s) de manutenção(ões) para o contrato "+cContrato+"?") //Não tenha gerado PV contra o cliente
+			FWMsgRun(,{|oSay| lRet := ProcAdiantTxMnt( oSay, cContrato, nQtdCiclos ) },'Aguarde - Adiant. Taxa de Manutenção','Adiantamento de Taxa de Manutenção para o contrato ' + cContrato + '...')
+			If lRet
+				// mensagem para o usuario
+				MsgInfo( "Adiantamento de Taxa de Manutenção para o contrato " + cContrato + " realizado com sucesso!", "Atenção" )
+			EndIf
+		EndIf
+	EndIf
+
+Return lRet
+
+
+/*/{Protheus.doc} ProcAdiantTxMnt
+Processa as N parcelas de adiantamento de taxa de manutenção para o contrato
+
+@type function
+@version 12.1.33
+@author Pablo Nunes
+@since 03/11/2022
+@param cContrato, character, Código do Contrato
+@param nQtdCiclos, numeric, Numero de Parcelas
+@return logical, retorno lógico se foi gerado ou não...
+/*/
+Static Function ProcAdiantTxMnt( oSay, cContrato, nQtdCiclos )
+
+	Local aArea             	as Array
+	Local aAreaU00          	as Array
+	Local nX                    as Numeric
+	Local cMaxCodigo            as Character
+	Local nTaxaIndice           as Numeric
+	Local nTaxaReajuste         as Numeric
+	Local nValorReajuste        as Numeric
+
+	Local aDadosFin                 as Character
+	Local cCodigoProvisionamento    as Character
+	Local cGeracao                  as Character
+	Local cDiaVenci                 as Character
+	Local cFormaPagamento           as Character
+	Local cProximaManutencao		as Character
+	Local cAnoMesUltCiclo			as Character
+	Local dDataVencto               as Date
+	Local lContinua                 as Logical
+	Local lUsaPrimVencto		    as Logical
+	Local lReajuste                 as Logical
+	Local nRegra                    as Numeric
+	Local nDifMeses                 as Numeric
+	Local nCobAdic				  	as Numeric
+	Local nValCobAdic			  	as Numeric
+	Local nDesconto					as Numeric
+	Local oRegraTaxaManutencao      as Object
+
+	// atribuo valores as variaveis
+	aArea := GetArea()
+	aAreaU00 := U00->( GetArea() )
+
+	nX := 0
+	cMaxCodigo := ""
+	nTaxaIndice := 0
+	nTaxaReajuste := 0
+	nValorReajuste := 0
+
+	aDadosFin            	:= {}
+	cDiaVenci            	:= ""
+	cCodigoProvisionamento	:= ""
+	cQuery               	:= ""
+	cGeracao             	:= ""
+	cFormaPagamento      	:= ""
+	cProximaManutencao		:= ""
+	cAnoMesUltCiclo			:= ""
+	dDataVencto          	:= Stod("")
+	lUsaPrimVencto       	:= SuperGetMv("MV_XPRIMVC",.F.,.F.)
+	lContinua            	:= .T.
+	lReajuste            	:= .F.
+	nDifMeses            	:= 0
+	nRegra               	:= 0
+	nCobAdic				:= 0
+	nValCobAdic				:= 0
+	nDesconto				:= 0
+	oRegraTaxaManutencao 	:= Nil
+
+	// posiciono no cadastro de contrato
+	U00->( DbSetOrder(1) ) //U00_FILIAL+U00_CODIGO
+	If U00->( MSSeek( xFilial("U00") + cContrato ) )
+
+		cMaxCodigo := RetMaxCodigoU26( cContrato )
+
+		If Empty(cMaxCodigo)
+
+			lContinua := .F.
+			MsgAlert("Não existe taxa de manutenção vigente para o contrato [" + cContrato + "], para gerar o adiantamento.", "Atenção")
+
+		Else
+
+			BEGIN TRANSACTION
+
+				For nX := 1 to nQtdCiclos
+
+					// mensagem na barra de processamento
+					oSay:cCaption := 'Adiantamento de Taxa de Manutenção... ['+cValToChar(nX)+' de '+cValToChar(nQtdCiclos)+']'
+					ProcessMessages()
+
+					If Empty(cMaxCodigo)
+						cMaxCodigo := RetMaxCodigoU26( cContrato )
+					EndIf
+
+					U26->( DbSetOrder(1) ) //U26_FILIAL+U26_CODIGO
+					If lContinua .And. U26->( DbSeek( xFilial("U26") + cMaxCodigo ) )
+
+						//pego o ultimo ciclo, pois a proxima parcela deve ser gerado apos o ultimo ciclo gerado
+						cAnoMesUltCiclo	:= SubStr(U26->U26_PROMAN,3,4) + SubStr(U26->U26_PROMAN,1,2)
+
+						// inicio o objeto da classe
+						oRegraTaxaManutencao := RegraTaxaManutencao():New( U00->U00_REGRA )
+
+						// vejo se a forma de pagamento da taxa de manutencao esta preeenchida
+						If !Empty(U00->U00_FPTAXA)
+							cFormaPagamento := U00->U00_FPTAXA
+						Else // se nao, pego a forma de pagamento do contrato
+							cFormaPagamento := U00->U00_FORPG
+						EndIf
+
+						// pego a posicao da regra
+						nRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| x[1] == U00->U00_REGRA .And. AllTrim(x[3]) == AllTrim(cFormaPagamento) } )
+
+						// caso tenha encontrado uma regra
+						If nRegra > 0
+
+							If U26->U26_STATUS <> "1"
+
+								// pego o dia do vencimento
+								If oRegraTaxaManutencao:aRegras[nRegra, 7] > 0
+
+									// dia de vencimento
+									cDiaVenci := StrZero( oRegraTaxaManutencao:aRegras[nRegra, 7], 2 )
+
+								Else // caso eu utilizo a data de vencimento do contrato
+
+									// verifico se estou usando o primeiro vencimento
+									If lUsaPrimVencto
+
+										// verifico se o primeiro vencimento esta preenchido
+										cDiaVenci :=  iif( !Empty(U00->U00_PRIMVE), SubStr( Dtos(U00->U00_PRIMVE), 7, 2 ), U00->U00_DIAVEN )
+
+									Else // uso o dia do vencimento do contrato
+										cDiaVenci :=  U00->U00_DIAVEN
+									EndIf
+
+								EndIf
+
+								// verifico o como gera
+								If oRegraTaxaManutencao:aRegras[nRegra, 6] $ "1/3"
+
+									// pego o primeiro vencimento
+									dDataVencto := Stod( cAnoMesUltCiclo + cDiaVenci )
+
+								ElseIf oRegraTaxaManutencao:aRegras[nRegra, 6] == "2" // verifico o como gera
+
+									// pego o mes de geracao
+									cGeracao := oRegraTaxaManutencao:aRegras[nRegra, 12]
+
+									// pego o primeiro vencimento - Ano da Database + Mes de Geracao + o dia de vencimento
+									dDataVencto := Stod( cAnoMesUltCiclo + StrZero( Val(cGeracao), 2) + cDiaVenci )
+
+								EndIf
+
+							EndIf
+
+							// caso a data de vencimento
+							If dDataVencto < dDataBase
+
+								// pego a difernenca de meses entre as datas de vencimento e data base
+								nDifMeses := DateDiffMonth( dDataVencto, dDataBase )
+
+								// atualizo a data do vencimento
+								dDataVencto := MonthSum( dDataVencto, nDifMeses )
+
+							EndIf
+
+							// jogo o primeiro vencimento para o mes seguinte
+							dDataVencto := MonthSum( dDataVencto, 1 )
+
+							//------------------------------------------------------
+							// calculo das taxas de reajuste e valores de reajuste
+							nTaxaIndice := 0
+
+							// taxa atual do indice
+							//If U26->U26_STATUS <> "1" //1-Provisionada
+							oRegraTaxaManutencao:RetValorIndice( U00->U00_INDMAN, @nTaxaIndice, .T. )
+							//EndIf
+
+							// taxa do reajuste
+							nTaxaReajuste := 0 //U26->U26_TAXA  * (nTaxaIndice / 100)
+
+							// valor do reajuste
+							nValorReajuste := U26->U26_TAXA + nTaxaReajuste
+							//------------------------------------------------------
+
+							// pego os dados do financeiro
+							aDadosFin := oRegraTaxaManutencao:RetDadosFinRegra( U00->U00_CODIGO, @nValorReajuste, dDataVencto,;
+								nRegra, cDiaVenci, @nCobAdic, @nValCobAdic )
+
+							// valido que e um reajuste
+							lReajuste := .F. // taxa de antecipação não possui reajuste
+
+							cProximaManutencao := oRegraTaxaManutencao:RetProxReajuste( nRegra, lReajuste, YearSum(dDataVencto, 1 ) )
+
+							If !Empty(cProximaManutencao)
+
+								// gero o provinamento da regra
+								lContinua := oRegraTaxaManutencao:ProvisionaRegra( U00->U00_CODIGO, U00->U00_INDMAN, U00->U00_REGRA,;
+									oRegraTaxaManutencao:aRegras[nRegra, 6], cFormaPagamento, nTaxaIndice, nValorReajuste, nTaxaReajuste,;
+									cProximaManutencao, aDadosFin, @cCodigoProvisionamento, lReajuste, U00->U00_TXMANU + U00->U00_ADIMNT,;
+									Nil, Nil, oRegraTaxaManutencao:aRegras[nRegra, 15], nCobAdic, nValCobAdic)
+
+							Else
+								lContinua := .F.
+							EndIf
+
+							// verifico se devo continuar
+							If lContinua
+
+								// efetivo a geracao do financeiro
+								lContinua := oRegraTaxaManutencao:EfetivaRegra( cCodigoProvisionamento, lReajuste )
+
+								// verifico se devo continuar
+								If lContinua
+
+									//If U26->( MsSeek( xFilial("U26")+TMPGER->TR_CODIGO ) )
+									U26->( DbSetOrder(1) ) //U26_FILIAL+U26_CODIGO
+									U26->( DbSeek( xFilial("U26") + cMaxCodigo ) )
+
+									If U26->( RecLock("U26", .F.) )
+										U26->U26_STATUS := "3" // finalizado
+										U26->( MsUnLock() )
+									EndIf
+
+								EndIf
+
+							EndIf
+
+						Else
+							lContinua := .F. // não regra de manutenção
+							MsgAlert("Regra ["+U00->U00_REGRA+"] de Taxa de Manutenção não encontrada, para a forma de pagamento da taxa de manutencao ["+cFormaPagamento+"].", "Atenção")
+						EndIf
+
+					Else
+						lContinua := .F. // não encontrado a U26 - HIST TAXA DE MANUTENCAO
+					EndIf
+
+					// limpo o objeto
+					FreeObj(oRegraTaxaManutencao)
+					oRegraTaxaManutencao := Nil
+
+					cMaxCodigo := "" // limpo o codigo
+
+					If !lContinua
+						DisarmTransaction()
+						BREAK
+					EndIf
+
+				Next nX
+
+			END TRANSACTION
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} RetMaxCodigoU26
+Retorna o ultimo histórico de taxa de manutenção gerada para determinado contrato.
+@type function
+@version 12.1.33
+@author Pablo Nunes
+@since 03/11/2022
+@param cContrato, character, código do contrato
+@return character, código do histórico
+/*/
+Static Function RetMaxCodigoU26( cContrato )
+
+	Local cCodRet := Space(TamSX3("U26_CODIGO")[1])
+	Local cQry := ""
+
+	// verifico se não existe este alias criado
+	If Select("QRYU26") > 0
+		QRYU26->(DbCloseArea())
+	EndIf
+
+	cQry := "SELECT MAX(U26.U26_CODIGO) as VIGENTE "
+	cQry += " FROM " + RetSqlName("U26") + " U26 "
+	cQry += " WHERE U26.D_E_L_E_T_ = ' ' "
+	cQry += " AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQry += " AND U26.U26_CONTRA = '" + cContrato + "'"
+	cQry += " AND U26.U26_STATUS <> '3' "
+
+	// função que converte a query genérica para o protheus
+	cQry := ChangeQuery(cQry)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "QRYU26") // Cria uma nova area com o resultado do query
+
+	// se existir contratos a serem reajustados
+	If QRYU26->(!Eof())
+		cCodRet := QRYU26->VIGENTE
+	EndIf
+
+	// verifico se não existe este alias criado
+	If Select("QRYU26") > 0
+		QRYU26->(DbCloseArea())
+	EndIf
+
+Return(cCodRet)

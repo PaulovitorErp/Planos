@@ -1,0 +1,768 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+#DEFINE P_QUADRA 		1	// posicao da quadra no array de jazigos
+#DEFINE P_MODULO 		2	// posicao da modulo no array de jazigos
+#DEFINE P_JAZIGO 		3	// posicao da jazigo no array de jazigos
+#DEFINE P_OSSARIO 		4	// posicao da ossario no array de jazigos
+#DEFINE P_CAPACIDADE 	5	// posicao da capacidade no array de jazigos
+#DEFINE P_VINCULO 		6	// posicao da vinculo no array de jazigos
+
+User Function RCPGE065()
+Return(Nil)
+
+/*/{Protheus.doc} OssuarioVinculado
+Classe para executar a funcionalidade de
+vinculo do jazigo com o ossuario
+@type class
+@version 1.0 
+@author g.sampaio
+@since 14/04/2021
+/*/	
+	Class OssuarioVinculado
+
+		Public Data aJazigos 			as Array
+		Public Data aOssuarios 			as Array
+		Public Data cQuadra  			as Character
+		Public Data cModulo  			as Character
+		Public Data cJazigo  			as Character
+		Public Data lJazigoVinculado  	as Logical
+
+		Public Method New() Constructor	            // Método Construtor
+		Public Method VinculaOssuario()             // Método para fazer o vinculo do jazigo com ossuario
+		Public Method DesvinculaOssuario()			// Método para retirar o vinculo do jazigo com ossuario
+		Public Method IncluiOssuario()              // Método para cadastro do ossuario vinculado
+		Public Method ExcluiOssuario()              // Método para excluir do ossuario vinculado
+		Public Method Jazigos()      				// Método para retornar os jazigos sem vinculo com o ossuário
+		Public Method Ossuarios()					// Método para retornar os ossuarios de jazigo
+		Public Method OssuarioUsado()      			// Método para validar se o endereço tem ossuario vinculado
+
+	EndClass
+
+/*/{Protheus.doc} OssuarioVinculado::New
+Metodo construtor da Classe OssuarioVinculado
+@type method
+@version 1.0
+@author g.sampaio
+@since 13/04/2021
+@param cParamQuadra, character, Codigo da Quadra
+@param cParamModulo, character, Codigo do Modulo
+@param cParamJazigo, character, Codigo do Jazigo
+/*/
+Method New(lJazigos, cParamQuadra, cParamModulo, cParamJazigo, lVinculado) Class OssuarioVinculado
+
+	Default lJazigos		:= .T.
+	Default cParamQuadra    := ""
+	Default cParamModulo    := ""
+	Default cParamJazigo    := ""
+	Default lVinculado		:= .F.
+
+	::aJazigos 			:= {}
+	::aOssuarios 		:= {}
+	::cQuadra  			:= ""
+	::cModulo  			:= ""
+	::cJazigo  			:= ""
+	::lJazigoVinculado  := .F.
+
+	if !Empty(cParamQuadra)
+		::cQuadra := cParamQuadra
+	endIf
+
+	if !Empty(cParamModulo)
+		::cModulo := cParamModulo
+	endIf
+
+	if !Empty(cParamJazigo)
+		::cJazigo := cParamJazigo
+	endIf
+
+	lJazigoVinculado := lVinculado
+
+	// pego os jazigos disponveis
+	if lJazigos
+		::Jazigos()
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} OssuarioVinculado::Jazigos
+Metodo para encontrar os jazigos disponiveis
+@type method
+@version 1.0 
+@author g.sampaio
+@since 13/04/2021
+@param lVinculaQuadra, logical, busco os jazigos disponiveis com quadra que vinculo ao ossario
+@param lVinculaModulo, logical, busco os jazigos disponiveis com quadra que vinculo ao ossario
+@param lVinculaJazigo, logical, busco os jazigos disponiveis com quadra que vinculo ao ossario
+/*/
+Method Jazigos( lVinculaQuadra, lVinculaModulo, lVinculaJazigo ) Class OssuarioVinculado
+
+	Local cQuery                as Character
+	Local cChaveJazigo          as Character
+	Local nPos                  as Numeric
+	Local nCapacidadeOssario    as Numeric
+	Local nCapacidadeDefault    as Numeric
+
+	Default lVinculaQuadra  := .F.
+	Default lVinculaModulo  := .F.
+	Default lVinculaJazigo  := .F.
+
+	// atribuo o valor da variavel
+	cQuery              := ""
+	cChaveJazigo        := ""
+	nPos                := 0
+	nCapacidadeOssario  := 0
+	nCapacidadeDefault  := SuperGetMV("MV_XCPJOSS",.F.,4)
+
+	if SelecT("TRBJAZ") > 0
+		TRBJAZ->(DBCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " 	U10.U10_QUADRA QUADRA, "
+	cQuery += "	    U10.U10_MODULO MODULO, "
+	cQuery += "	    U10.U10_CODIGO JAZIGO, "
+	cQuery += "	    U08.U08_CAPOSS QD_CAPOSS, "
+	cQuery += "	    U09.U09_CAPOSS MD_CAPOSS, "
+	cQuery += "	    U10.U10_CAPOSS JZ_CAPOSS,"
+	cQuery += "	    U10.U10_VINOSS VINOSS,"
+	cQuery += "	    U10.U10_OSSARI JAZ_OSSARIO"
+	cQuery += " FROM " + RetSqlName("U08") + " U08 "
+	cQuery += " INNER JOIN " + RetSqlName("U09") + " U09 ON U09.D_E_L_E_T_ = ' '
+	cQuery += " AND U09.U09_QUADRA = U08.U08_CODIGO "
+
+	if !Empty(::cModulo)
+		cQuery += " AND U09.U09_CODIGO = '" + ::cModulo + "' "
+		cQuery += " AND U09.U09_VINOSS = '1' "
+	elseIf lVinculaModulo
+		cQuery += " AND U09.U09_VINOSS = '1' "
+	endIf
+
+	cQuery += " INNER JOIN " + RetSqlName("U10") + " U10 ON U10.D_E_L_E_T_ = ' '
+	cQuery += " AND U10.U10_QUADRA = U09.U09_QUADRA "
+	cQuery += " AND U10.U10_MODULO = U09.U09_CODIGO "
+	if ::lJazigoVinculado
+		cQuery += " AND U10.U10_OSSARI <> ' ' "
+	else
+		cQuery += " AND U10.U10_OSSARI = ' ' "
+	endIf
+
+	if !Empty(::cJazigo)
+		cQuery += " AND U10.U10_CODIGO = '" + ::cJazigo + "' "
+		cQuery += " AND U10.U10_VINOSS = '1' "
+	elseIf lVinculaJazigo
+		cQuery += " AND U10.U10_VINOSS = '1' "
+	endIf
+
+	cQuery += " WHERE U08.D_E_L_E_T_ = ' ' "
+
+	if !Empty(::cQuadra)
+		cQuery += " AND U08.U08_CODIGO = '" + ::cQuadra + "' "
+
+		if !lVinculaJazigo .And. !lVinculaModulo
+			cQuery += " AND U08.U08_VINOSS = '1' "
+		endIf
+	elseIf lVinculaQuadra
+		cQuery += " AND U08.U08_VINOSS = '1' "
+	endIf
+
+	TcQuery cQuery New Alias "TRBJAZ"
+
+	while TRBJAZ->(!Eof())
+
+		// chave do jazigo Quadra + Modulo + Jazigo
+		cChaveJazigo := PADL(TRBJAZ->QUADRA,TamSX3('U10_QUADRA')[1]) + PADL(TRBJAZ->MODULO,TamSX3('U10_MODULO')[1]) + PADL(TRBJAZ->JAZIGO,TamSX3('U10_CODIGO')[1])
+
+		// verifico se ja existe o jazigo no array
+		nPos := AScan(::aJazigos,{|x| x[1]+x[2]+x[3] == cChaveJazigo })
+
+		if nPos == 0
+
+			if TRBJAZ->JZ_CAPOSS > 0
+				nCapacidadeOssario := TRBJAZ->JZ_CAPOSS
+			elseIf TRBJAZ->MD_CAPOSS > 0
+				nCapacidadeOssario := TRBJAZ->MD_CAPOSS
+			elseIf TRBJAZ->QD_CAPOSS > 0
+				nCapacidadeOssario := TRBJAZ->QD_CAPOSS
+			else
+				nCapacidadeOssario := nCapacidadeDefault
+			endIf
+
+			// alimento os jazigos disponiveis para vincular
+			aAdd( ::aJazigos, { PADL(TRBJAZ->QUADRA,TamSX3('U10_QUADRA')[1]),;
+				PADL(TRBJAZ->MODULO,TamSX3('U10_MODULO')[1]),;
+				PADL(TRBJAZ->JAZIGO,TamSX3('U10_CODIGO')[1]),;
+				PADL(TRBJAZ->JAZ_OSSARIO,TamSX3('U10_OSSARI')[1]),;
+				nCapacidadeOssario,;
+				TRBJAZ->VINOSS })
+
+		endIf
+
+		TRBJAZ->(DBSkip())
+	endDo
+
+	if SelecT("TRBJAZ") > 0
+		TRBJAZ->(DBCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} OssuarioVinculado::Ossuarios
+Metodo para retornar os ossuarios vinculados
+aos jazigos
+@type method
+@version 1.0 
+@author g.sampaio
+@since 14/04/2021
+@param lNaoExiste, logical, verifica se existem oussarios com jazigos que ja foram deletados
+/*/
+Method Ossuarios(lNaoExiste) Class OssuarioVinculado
+
+	Local cQuery As Character
+
+	Default lNaoExiste	:= .F.
+
+	::aOssuarios := {}
+
+	if Select("TRBOSS") > 0
+		TRBOSS->(DbCloseArea())
+	endIf
+
+	// atribuo valor as variaveis
+	cQuery := ""
+
+	cQuery := " SELECT
+	cQuery += " 	U13.U13_QUADRA QUADRA, "
+	cQuery += "	    U13.U13_MODULO MODULO, "
+	cQuery += "	    U13.U13_JAZIGO JAZIGO, "
+	cQuery += "	    U13.U13_CODIGO JAZ_OSSARIO"
+	cQuery += " FROM " + RetSqlName("U13") + " U13 "
+	cQuery += " WHERE U13.D_E_L_E_T_ = ' ' "
+
+	if !Empty(::cQuadra)
+		cQuery += " AND U13.U13_QUADRA = '" + ::cQuadra + "' "
+	endIf
+
+	if !Empty(::cModulo)
+		cQuery += " AND U13.U13_MODULO = '" + ::cModulo + "' "
+	endIf
+
+	if !Empty(::cJazigo)
+		cQuery += " AND U13.U13_JAZIGO = '" + ::cJazigo + "' "
+	endIf
+
+	cQuery += " AND U13.U13_QUADRA <> ' ' "
+	cQuery += " AND U13.U13_TPOSS = '2' "
+	if lNaoExiste
+		cQuery += " AND NOT EXISTS ( "
+	else
+		cQuery += " AND EXISTS ( "
+	endIf
+	cQuery += " SELECT U10.U10_CODIGO FROM " + RetSqlName("U10") + " U10 "
+	cQuery += " WHERE U10.D_E_L_E_T_ =  ' ' "
+	cQuery += " AND U10.U10_QUADRA = U13.U13_QUADRA "
+	cQuery += " AND U10.U10_MODULO = U13.U13_MODULO "
+	cQuery += " AND U10.U10_CODIGO = U13.U13_JAZIGO "
+	cQuery += " )"
+
+	TcQuery cQuery New Alias "TRBOSS"
+
+	while TRBOSS->(!Eof())
+
+		aAdd( ::aOssuarios, {TRBOSS->QUADRA, TRBOSS->MODULO, TRBOSS->JAZIGO, TRBOSS->JAZ_OSSARIO})
+
+		TRBOSS->(DBSkip())
+	endDo
+
+	if Select("TRBOSS") > 0
+		TRBOSS->(DbCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} OssuarioVinculado::VinculaOssuario
+Funcao para realizar o vinculo do jazigo
+com o ossuario, a partir da seguinte hierarquia
+
+Jazigos da Quadra, Modulo, Jazigo do Metodo Construtor
+
+(Sempre considerando)
+=> Se não houver jazigos:
+===> Pego os Jazigos disponiveis, para os modulos com U09_VINOSS = '1'
+===> Pego os Jazigos disponiveis, para os jazigos com U10_VINOSS = '1'
+
+@type method
+@version 1.0  
+@author g.sampaio
+@since 13/04/2021
+/*/
+Method VinculaOssuario() Class OssuarioVinculado
+
+	Local lRetorno	as Logical
+	Local lContinua	as Logical
+	Local nItem as Numeric
+	
+	// atribuo valor as variaveis
+	lContinua 	:= .T.
+	lRetorno	:= .F.
+	nItem 		:= 0
+
+	// verifico se tem jazigos para a quadra
+	if Len(::aJazigos) == 0 .And. Empty(::cModulo) .And. Empty(::cJazigo)
+
+		// pego os jazigos disponveis para o modulo
+		::Jazigos(/*lVinculaQuadra*/ .F., /*1lVinculaModulo*/ .T.)
+
+		// pego os jazigos disponveis para o modulo
+		::Jazigos(/*lVinculaQuadra*/ .F., /*1lVinculaModulo*/ .F., /*lVinculaJazigo*/ .T.)
+
+	EndIf
+
+	// verifico se encontrou jazigos para vincular ao ossario
+	if Len(::aJazigos) > 0
+
+		for nItem := 1 To Len(::aJazigos)
+
+			// vou incluir o ossuario para o jazigo
+			lContinua := ::IncluiOssuario(::aJazigos[nItem, P_QUADRA], ::aJazigos[nItem, P_MODULO], ::aJazigos[nItem, P_JAZIGO], ::aJazigos[nItem, P_CAPACIDADE])
+
+			if !lContinua
+				Exit
+			endIf
+
+		next nItem
+
+		if lContinua
+			lRetorno := .T.
+		endIf
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} OssuarioVinculado::ValEnderecamento
+Valida se o ossario vinculado ao jazigo
+está endereçado e valida a operacao
+@type method
+@version 1.0 
+@author g.sampaio
+@since 13/04/2021
+@param cQuadra, character, Codigo da Quadra
+@param cModulo, character, Codigo do Modulo
+@param cJazigo, character, Codigo do Jazigo
+@param cOssuario, character, Codigo do Ossuario Vinculado
+@return logical, valida se existe ou não endereçamento para o ossuario vinculado
+/*/
+Method OssuarioUsado( cQuadra, cModulo, cJazigo, lEnderecado, cOssuario ) Class OssuarioVinculado
+
+	Local aArea			:= GetArea()
+	Local cQuery 		:= ""
+	Local lRetorno		:= .T.
+
+	Default cQuadra     := ""
+	Default cModulo     := ""
+	Default cJazigo     := ""
+	Default lEnderecado	:= .T.
+	Default cOssuario   := ""
+
+	if Select("TRBOSS") > 0
+		TRBOSS->(DBCloseArea())
+	endIf
+
+	cQuery := " SELECT
+	cQuery += " 	U10.U10_QUADRA QUADRA,
+	cQuery += " 	U10.U10_MODULO MODULO,
+	cQuery += " 	U10.U10_CODIGO JAZIGO,
+	cQuery += " 	U13.U13_CODIGO OSSARIO_VINC
+	cQuery += " FROM " + RetSqlName("U08") + " U08
+	cQuery += " INNER JOIN " + RetSqlName("U09") + " U09 ON U09.D_E_L_E_T_ = ' '
+	cQuery += " AND U09.U09_QUADRA = U08.U08_CODIGO
+	cQuery += " INNER JOIN " + RetSqlName("U10") + " U10 ON U10.D_E_L_E_T_ = ' '
+	cQuery += " AND U10.U10_QUADRA = U09.U09_QUADRA
+	cQuery += " AND U10.U10_MODULO = U09.U09_CODIGO
+	cQuery += " AND (U10.U10_VINOSS = '1' OR U10.U10_OSSARI <> ' ')
+	cQuery += " INNER JOIN " + RetSqlName("U13") + " U13 ON U13.D_E_L_E_T_ = ' '
+	cQuery += " AND U13.U13_CODIGO = U10.U10_OSSARI
+	cQuery += " AND U13.U13_QUADRA = U10.U10_QUADRA
+	cQuery += " AND U13.U13_MODULO = U10.U10_MODULO
+	cQuery += " AND U13.U13_JAZIGO = U10.U10_CODIGO
+
+	if lEnderecado
+		cQuery += " INNER JOIN " + RetSqlName("U04") + " U04 ON U04.D_E_L_E_T_ = ' '
+		cQuery += " AND U04.U04_OSSARI = U13.U13_CODIGO
+		cQuery += " AND U04.U04_QUEMUT <> ' '
+	endIf
+
+	cQuery += " WHERE U08.D_E_L_E_T_ = ' '"
+
+	if !Empty(cQuadra)
+		cQuery += " AND U10.U10_QUADRA = '" + cQuadra + "' "
+	endIf
+
+	if !Empty(cModulo)
+		cQuery += " AND U10.U10_MODULO = '" + cModulo + "' "
+	endIf
+
+	if !Empty(cJazigo)
+		cQuery += " AND U10.U10_CODIGO = '" + cJazigo + "' "
+	endIf
+
+	if !Empty(cOssuario)
+		cQuery += " AND U13.U13_CODIGO = '" + cOssuario + "' "
+	endIf
+
+	TcQuery cQuery New Alias "TRBOSS"
+
+	if TRBOSS->(!Eof())
+		lRetorno := .F.
+	endIf
+
+	if Select("TRBOSS") > 0
+		TRBOSS->(DBCloseArea())
+	endIf
+
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} OssuarioVinculado::IncluiOssuario
+Funcao para incluir os dados do Ossuario Vinculado
+ao Jazigo
+@type method
+@version 1.0  
+@author g.sampaio
+@since 13/04/2021
+@param cQuadraOssuario, character, Codigo da Quadra do Ossuario
+@param cModuloOssuario, character, Codigo da Modulo do Ossuario
+@param cJazigoOssuario, character, Codigo da Jazigo do Ossuario
+@param nCapacidadeOssario, numeric, CCapacidade do Ossuario
+/*/
+Method IncluiOssuario( cQuadraOssuario, cModuloOssuario, cJazigoOssuario, nCapacidadeOssario ) Class OssuarioVinculado
+
+	Local aArea             	as Array
+	Local aAreaU10          	as Array
+	Local aAreaU13          	as Array
+	Local aAreaU14          	as Array
+	Local lRetorno				as Logical
+	Local nCapacidadeNicho  	as Numeric
+	Local nCapacidadeDefault	as Numeric
+	Local nItem 				as Numeric
+
+	Default cQuadraOssuario     := ""
+	Default cModuloOssuario     := ""
+	Default cJazigoOssuario     := ""
+	Default nCapacidadeOssario  := 0
+
+	// atribuo valor as variaveis
+	aArea               := GetArea()
+	aAreaU10            := U10->(GetArea())
+	aAreaU13            := U13->(GetArea())
+	aAreaU14            := U14->(GetArea())
+	lRetorno			:= .F.
+	nCapacidadeDefault  := SuperGetMV("MV_XCPJOSS",.F.,4)
+	nCapacidadeNicho    := SuperGetMV("MV_XCPNOSS",.F.,1)	
+
+	// verifico se a capacidade do ossuario esta preenchida no parametro
+	if nCapacidadeOssario == 0
+		nCapacidadeOssario := nCapacidadeDefault
+	endIf
+
+	U10->(DbSetOrder(1))
+	if U10->(MsSeek(xFilial("U10")+cQuadraOssuario+cModuloOssuario+cJazigoOssuario)) .And. Empty(U10->U10_OSSARI)
+
+		cCodigoOssario := ProxCodigoOssario()
+
+		BEGIN TRANSACTION
+
+			//=======================================
+			// Crio o osssuario vinculado ao jazigo
+			//=======================================
+			U13->(DBSetOrder(1))
+			if !U13->(MsSeek(xFilial("U13")+cCodigoOssario))
+				if U13->(Reclock("U13",.T.))
+					U13->U13_FILIAL := xFilial("U13")
+					U13->U13_CODIGO := cCodigoOssario
+					U13->U13_STATUS := "S"
+					U13->U13_DESC   := U10->U10_DESC
+					U13->U13_QUADRA := U10->U10_QUADRA
+					U13->U13_MODULO := U10->U10_MODULO
+					U13->U13_JAZIGO := U10->U10_CODIGO
+					U13->U13_TPOSS  := "2"
+					U13->(MsUnlock())
+
+					//==================================================
+					// Crio os nichos do osssuario vinculado ao jazigo
+					//==================================================
+					for nItem := 1 To nCapacidadeOssario
+
+						if U14->(Reclock("U14",.T.))
+							U14->U14_FILIAL := xFilial("U14")
+							U14->U14_OSSARI := cCodigoOssario
+							U14->U14_CODIGO := StrZero(nItem, TamSX3("U14_CODIGO")[1])
+							U14->U14_STATUS := "S"
+							U14->U14_DESC   := "NICHO JAZIGO " + StrZero(nItem, TamSX3("U14_CODIGO")[1])
+							U14->U14_CAPACI := nCapacidadeNicho
+							U14->(MsUnlock())
+						else
+							U14->(DisarmTransaction())
+						endIf
+
+					next nItem
+
+					//==================================================
+					// Gravos os dados do osssuario vinculado ao jazigo
+					//==================================================
+					If U10->(Reclock("U10",.F.))
+						U10->U10_OSSARI := cCodigoOssario
+						if U10->U10_VINOSS <> "1"
+							U10->U10_VINOSS := "1"
+						endIf
+						U10->(MsUnlock())
+					else
+						U10->(DisarmTransaction())
+					endIf
+
+					lRetorno := .T.
+
+				else
+					U13->(DisarmTransaction())
+				endIf
+			endIf
+
+		END TRANSACTION
+
+	endIf
+
+	RestArea(aAreaU14)
+	RestArea(aAreaU13)
+	RestArea(aAreaU10)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} OssuarioVinculado::ExcluiOssuario
+Funcao para excluir os dados de ossuario vinculado
+@type method
+@version 1.0 
+@author g.sampaio
+@since 14/04/2021
+@param cQuadraOssuario, character, Codigo da Quadra do Ossuario
+@param cModuloOssuario, character, Codigo da Modulo do Ossuario
+@param cJazigoOssuario, character, Codigo da Jazigo do Ossuario
+@param cOssuarioVinculado, character, Codigo do Ossuario Vinculado
+@return return_type, return_description
+/*/
+Method ExcluiOssuario( cQuadraOssuario, cModuloOssuario, cJazigoOssuario, cOssuarioVinculado ) Class OssuarioVinculado
+
+	Local aArea             as Array
+	Local aAreaU10          as Array
+	Local aAreaU13          as Array
+	Local aAreaU14          as Array
+
+	Default cQuadraOssuario     := ""
+	Default cModuloOssuario     := ""
+	Default cJazigoOssuario     := ""
+	Default cOssuarioVinculado	:= ""
+
+	// atribuo valor as variaveis
+	aArea               := GetArea()
+	aAreaU10            := U10->(GetArea())
+	aAreaU13            := U13->(GetArea())
+	aAreaU14            := U14->(GetArea())
+
+	cCodigoOssario := ProxCodigoOssario()
+
+	BEGIN TRANSACTION
+
+		U10->(DbSetOrder(1))
+		if U10->(MsSeek(xFilial("U10")+cQuadraOssuario+cModuloOssuario+cJazigoOssuario))
+
+			if Empty(cOssuarioVinculado) .And. !Empty(U10->U10_OSSARI)
+				cOssuarioVinculado := U10->U10_OSSARI
+			endIf
+
+			//==================================================
+			// Limpo os os dados do osssuario vinculado ao jazigo
+			//==================================================
+			If U10->(Reclock("U10",.F.))
+				U10->U10_OSSARI := ""
+				U10->U10_VINOSS := "2"
+				U10->(MsUnlock())
+			else
+				U10->(DisarmTransaction())
+			endIf
+
+		endIf
+
+		//=======================================
+		// deleto o osssuario vinculado ao jazigo
+		//=======================================
+		U13->(DBSetOrder(1))
+		if U13->(MsSeek(xFilial("U13")+cOssuarioVinculado))
+
+			U14->(DbSetOrder(1))
+			if U14->(MsSeek(xFilial("U14")+U13->U13_CODIGO))
+				while U14->(!Eof()) .And. U14->U14_FILIAL == xFilial("U14") .And. U14->U14_CODIGO == U13->U13_CODIGO
+					if U14->(Reclock("U14",.T.))
+						U14->(DBDelete())
+						U14->(MsUnlock())
+					else
+						U14->(DisarmTransaction())
+					endIf
+					U14->(DBSkip())
+				endDo
+			endIf
+
+			if U13->(Reclock("U13",.T.))
+				U13->(DBDelete())
+				U13->(MsUnlock())
+			else
+				U13->(DisarmTransaction())
+			endIf
+		endIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU14)
+	RestArea(aAreaU13)
+	RestArea(aAreaU10)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} OssuarioVinculado::DesvinculaOssuario
+Metodo para desvincular o ossuario do jazigo
+@type method
+@version 1.0  
+@author g.sampaio
+@since 14/04/2021
+/*/
+Method DesvinculaOssuario() Class OssuarioVinculado
+
+	Local nItem as Numeric
+
+	// atribuo valor as variaveis
+	nItem := 0
+
+	// verifico se tem jazigos para a quadra
+	if Len(::aJazigos) == 0
+
+		// pego os jazigos disponveis para o modulo
+		::Jazigos(/*lVinculaQuadra*/ .F., /*1lVinculaModulo*/ .T.)
+
+		// pego os jazigos disponveis para o modulo
+		::Jazigos(/*lVinculaQuadra*/ .F., /*1lVinculaModulo*/ .F., /*lVinculaJazigo*/ .T.)
+
+	EndIf
+
+	// verifico se encontrou jazigos para vincular ao ossario
+	if Len(::aJazigos) > 0
+
+		for nItem := 1 To Len(::aJazigos)
+
+			if ::aJazigos[nItem, P_VINCULO] == "2" .And. !Empty(::aJazigos[nItem, P_OSSARIO])
+
+				// valido se o ossuario esta enderecado
+				if ::OssuarioUsado(::aJazigos[nItem, P_QUADRA], ::aJazigos[nItem, P_MODULO], ::aJazigos[nItem, P_JAZIGO], .T., ::aJazigos[nItem, P_OSSARIO])
+
+					// vou incluir o ossuario para o jazigo
+					::ExcluiOssuario(::aJazigos[nItem, P_QUADRA], ::aJazigos[nItem, P_MODULO], ::aJazigos[nItem, P_JAZIGO], ::aJazigos[nItem, P_OSSARIO])
+
+				else // tratamento de excessão
+
+					U10->(DBSetOrder(1))
+					if U10->(MsSeek(xFilial("U10")+::aJazigos[nItem, P_QUADRA]+::aJazigos[nItem, P_MODULO]+::aJazigos[nItem, P_JAZIGO]))
+
+						BEGIN TRANSACTION
+
+							if U10->(Reclock("U10",.F.))
+								U10->U10_VINOSS := "1"
+								U10->(MsUnlock())
+							else
+								U10->(DisarmTransaction())
+							endIf
+
+						END TRANSACTION
+
+					endIf
+
+				endIf
+
+			endIf
+
+		next nItem
+
+		// verifico os ossuarios vinculados ao jazigo
+		::Ossuarios(.T.)
+
+		if Len(::aOssuarios) > 0
+
+			for nItem := 1 To Len(::aOssuarios)
+
+				// valido se o ossuario esta enderecado
+				if ::OssuarioUsado(::aOssuarios[nItem, P_QUADRA], ::aOssuarios[nItem, P_MODULO], ::aOssuarios[nItem, P_JAZIGO], .T., ::aOssuarios[nItem, P_OSSARIO])
+
+					// vou incluir o ossuario para o jazigo
+					::ExcluiOssuario(::aOssuarios[nItem, P_QUADRA], ::aOssuarios[nItem, P_MODULO], ::aOssuarios[nItem, P_JAZIGO], ::aOssuarios[nItem, P_OSSARIO])
+
+				endIf
+
+			next nItem
+
+		endIf
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ProxCodigoOssario
+Funcao para retornar o proximo codigo de ossario
+a ser utilizado.
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/04/2021
+@return Characteracter, retorna o codigo a ser utilizado no ossario
+/*/
+Static Function ProxCodigoOssario()
+
+	Local cCodigo           as Character
+	Local cRetorno          as Character
+	Local cQuery            as Character
+	Local nTamCmpU13_CODIGO as Numeric
+
+	// atribuo valor as variaveis
+	cRetorno            := ""
+	nTamCmpU13_CODIGO   := TamSX3("U13_CODIGO")[1]
+	cCodigo		        := StrZero(0,nTamCmpU13_CODIGO)
+
+	if Select("TRBU13") > 0
+		TRBU13->(DBCloseArea())
+	endIf
+
+	cQuery := " SELECT MAX(U13.U13_CODIGO) MAXCOD FROM " + RetSqlName("U13") + " U13 "
+	cQuery += " WHERE U13.D_E_L_E_T_ = ' ' "
+	cQuery += " AND LEN(U13.U13_CODIGO) = " + cValToChar(nTamCmpU13_CODIGO) + " "
+
+	TcQuery cQuery New Alias "TRBU13"
+
+	if TRBU13->(!Eof())
+		if !Empty(TRBU13->MAXCOD)
+			cCodigo := AllTrim(TRBU13->MAXCOD)
+		endIf
+	endIf
+
+	cRetorno := Soma1(cCodigo)
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( "U13"+xFilial("SEE")+cRetorno )
+		// gero um novo nosso numero
+		cRetorno := Soma1(cRetorno)
+	EndDo
+
+	if Select("TRBU13") > 0
+		TRBU13->(DBCloseArea())
+	endIf
+
+Return(cRetorno)

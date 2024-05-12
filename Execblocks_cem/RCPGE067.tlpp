@@ -1,0 +1,108 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+/*/{Protheus.doc} RCPGE067
+Validacao do ponto de entrada A010TOK
+para verificar se o produto pode ser alterado
+@type function
+@version 1.0 
+@author g.sampaio
+@since 06/05/2021
+@param cCodProduto, character, codigo do produto
+@param cTipoCemAtual, character, tipo de cemiterio
+@return logical, retorna 
+/*/
+User Function RCPGE067(cCodProduto, cTipoCemAtual)
+
+	Local aArea         as Array
+	Local aAreaSB1      as Array
+	Local lRetorno      as Logical
+	Local lCemiterio    as Logical
+
+	Default cCodProduto     := ""
+	Default cTipoCemAtual   := ""
+
+	// atribuo valor as variaveis
+	aArea       := GetArea()
+	aAreaSB1    := SB1->(GetArea())
+	lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	lRetorno	:= .T.
+
+	if lCemiterio
+
+		SB1->(DBSetOrder(1))
+		if SB1->(MsSeek(xFilial("SB1")+cCodProduto))
+
+			// verifico se o campo ja esta preenchido
+			if !Empty(SB1->B1_XTPCEM)
+
+				// verifico se o conteudo esta diferente
+				if AllTrim(SB1->B1_XTPCEM) <> AllTrim(cTipoCemAtual)
+
+					lRetorno := ValidaContrato(SB1->B1_XTPCEM, SB1->B1_COD)
+
+				endIf
+
+			endIf
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ValidaContrato
+Valida se o produto esta vinculado no contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/05/2021
+@param cTipoCemiterio, character, tipo do produto cemiterio
+@param cCodigoProduto, character, codigo do produto
+@return logical, retorno se pode realizar a alteracao no produto
+/*/
+Static Function ValidaContrato(cTipoCemiterio, cCodigoProduto)
+
+	Local cQuery as Character
+
+	Default cTipoCemiterio  := ""
+	Default cCodigoProduto  := ""
+
+	// atribuo valor as variaveis
+	cQuery := ""
+
+	if Select("TRBCTR") > 0
+		TRBCTR->(DbCloseArea())
+	EndIf
+
+	// tipo cemiterio 1=produto/3=Construcao/4=terrreno nos itens do contrato de cemiterio
+	if cTipoCemiterio $ "1/3/4"
+		cQuery := " SELECT COUNT(*) CONTA_PRODUTO FROM " + RetSqlName("U01") + " U06 "
+		cQuery += " WHERE U01.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U01.U01_FILIAL = '" + xFilial("U01") + "' "
+		cQuery += " AND U01.U01_PRODUT = '" + cCodigoProduto + "' "
+
+	elseIf cTipoCemiterio == "2" // servicos habilitados de contrato
+		cQuery := " SELECT COUNT(*) CONTA_PRODUTO FROM " + RetSqlName("U37") + " U37 "
+		cQuery += " WHERE U37.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U37.U37_FILIAL = '" + xFilial("U37") + "' "
+		cQuery += " AND U37.U37_SERVIC = '" + cCodigoProduto + "' "
+
+	endIf
+
+	TcQuery cQuery New Alias "TRBCTR"
+
+	If TRBCTR->(!Eof())
+		// mensagem para o usuario
+		lRetorno := .F.
+		Help(,,'Help - TIPOCEMITERIO',,"Não é permitido a alteracao do tipo cemitério, o produto já está em uso em contratos de cemitério!" ,1,0)
+	endIf
+
+	if Select("TRBCTR") > 0
+		TRBCTR->(DbCloseArea())
+	EndIf
+
+Return(lRetorno)

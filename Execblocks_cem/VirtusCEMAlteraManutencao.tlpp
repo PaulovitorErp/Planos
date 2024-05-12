@@ -1,0 +1,1380 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} VirtusCEMAlteraManutencao
+Funcao para alterar a taxa de manutencao do contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@param cCodigoContrato, character, codigo do contrato
+/*/
+User Function VirtusCEMAlteraManutencao(cCodigoContrato)
+
+	Local aArea						As Array
+	Local aAreaU00					As Array
+	Local cRegra 					As Character
+	Local cDescriRegra 				As Character
+	Local cIndice 					As Character
+	Local cDescriIndice 			As Character
+	Local cCessionario 				As Character
+	Local cProximaManutencao 		As Character
+	Local cTipoEndereco 			As Character
+	Local cFormaPag 				As Character
+	Local cDescriFormaPag 			As Character
+	Local cCSSButtonAzul			As Character
+	Local cCSSButtonVermelho		As Character
+	Local cCSSButtonVerde			As Character
+	Local cCSSButtonOrange			As Character
+	Local cCSSGet					As Character
+	Local cContFormaPag				As Character
+	Local cContRegra				As Character
+	Local cContIndice				As Character
+	Local cCodigoManutencao			As Character
+	Local cFormaPGGet 				As Character
+	Local cRegraGet 				As Character
+	Local dDataCadastro 			As Date
+	Local dUltimaManutencao 		As Date
+	Local lProximoCiclo				As Logical
+	Local lContinua					As Logical
+	Local nDesconto					As Numeric
+	Local nValorManutencao 			As Numeric
+	Local nCobrancaAdicional 		As Numeric
+	Local oBtnConfirmar				As Object
+	Local oBtnCancelar 				As Object
+	Local oBtnCicloTaxa 			As Object
+	Local oBtnAdiantarTaxa 			As Object
+	Local oGetContrato 				As Object
+	Local oGetRegra 				As Object
+	Local oGetDescriRegra 			As Object
+	Local oGetIndice 				As Object
+	Local oGetDescriIndice 			As Object
+	Local oGetCobAdicional 			As Object
+	Local oGetCessionario 			As Object
+	Local oGetDataCadastro 			As Object
+	Local oGetUltimaManutencao 		As Object
+	Local oGetProximaManutencao 	As Object
+	Local oGetValorManutencao 		As Object
+	Local oGetTipoEndereco 			As Object
+	Local oGetFormaPagamento 		As Object
+	Local oGetDescriFormaPagamento	As Object
+	Local oGrpManutencao 			As Object
+	Local oGrpDados 				As Object
+	Local oGrpBotoes 				As Object
+	Local oSayContrato 				As Object
+	Local oSayRegra 				As Object
+	Local oSayDescriRegra 			As Object
+	Local oSayIndice 				As Object
+	Local oSayDescriIndice 			As Object
+	Local oSayCobAdicional 			As Object
+	Local oSayCessionario 			As Object
+	Local oSayDataCadastro 			As Object
+	Local oSayUltimaManutencao 		As Object
+	Local oSayProximaManutencao 	As Object
+	Local oSayValorManutencao 		As Object
+	Local oSayTipoEndereco 			As Object
+	Local oSayFormaPagamento 		As Object
+	Local oSayDescriFormaPagamento 	As Object
+	Local oDlgManutencao 			As Object
+	Local oSayDesconto 				As Object
+	Local oGetDesconto 				As Object
+	Local oButtonVirtus 			As Object
+	Local oVirtusFin				As Object
+
+	//atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaU00			:= U00->(GetArea())
+	oButtonVirtus		:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cCSSButtonAzul		:= oButtonVirtus:CSSButtonBlue()
+	cCSSButtonVermelho	:= oButtonVirtus:CSSButtonRed()
+	cCSSButtonVerde		:= oButtonVirtus:CSSButtonGreen()
+	cCSSButtonOrange	:= oButtonVirtus:CSSButtonOrange()
+	cCSSGet				:= oButtonVirtus:CSSGet(Nil, 6)
+	lContinua			:= .T.
+	nDesconto			:= 0
+	cContFormaPag		:= ""
+	cContRegra			:= ""
+	cContIndice			:= ""
+
+	Default cCodigoContrato	:= ""
+
+	// inicio a classe financeira do virtus
+	oVirtusFin	:= VirtusFin():New()
+
+	U00->(DBSetOrder(1))
+	If U00->(MsSeek(xFilial("U00")+cCodigoContrato))
+
+		If U00->U00_STATUS == "P" //Pré-cadastro
+			MsgInfo("O Contrato se encontra pré-cadastrado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		ElseIf U00->U00_STATUS == "C" //Cancelado
+			MsgInfo("O Contrato se encontra Cancelado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		ElseIf U00->U00_STATUS == "S" //Suspenso
+			MsgInfo("O Contrato se encontra Suspenso, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		ElseIf ExigTxManu(U00->U00_PLANO) .And. U00->U00_TXMANU <= 0 //contrato sem taxa de manutencao
+			MsgAlert("O Contrato não possui valor de taxa de manutenção definido, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		ElseIf !oVirtusFin:ContratoAdimplente(cCodigoContrato, "C")
+			MsgAlert("O Contrato está inadimplente, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		EndIf
+
+		If lContinua .And. ValidaManutencao(cCodigoContrato, @dUltimaManutencao, @cProximaManutencao, @cCodigoManutencao)
+
+			// preenche variaveis do contrato e taxa manutencao
+			cCessionario 		:= U00->U00_NOMCLI
+			dDataCadastro		:= U00->U00_DATA
+
+			If U26->(FieldPos("U26_COBADI")) > 0
+				nValorManutencao	:= Round((U00->U00_TXMANU + U00->U00_ADIMNT) * (1 + (U26->U26_COBADI/100)), 2)
+			Else
+				nValorManutencao	:= Round(U00->U00_TXMANU + U00->U00_ADIMNT, 2)
+			EndIf
+
+			cTipoEndereco		:= "JAZIGO"
+			cProximaManutencao 	:= SubStr(cProximaManutencao, 1, 2) + "/" + SubStr(cProximaManutencao, 3, 4)
+
+			// preenche variaveis de dados da taxa de manutencao
+			cFormaPGGet			:= U00->U00_FPTAXA
+			cFormaPag			:= U00->U00_FPTAXA
+			cRegraGet			:= U00->U00_REGRA
+			cRegra				:= U00->U00_REGRA
+			nCobrancaAdicional	:= 0
+			nDesconto			:= 0
+			cIndice				:= U00->U00_INDMAN
+
+			// funcoes para preencher
+			ValidaForma(U00->U00_FPTAXA, @cDescriFormaPag)
+			ValidaRegra(U00->U00_REGRA, @cDescriRegra, @nCobrancaAdicional, @nDesconto, U00->U00_FPTAXA)
+			ValidaIndice(U00->U00_INDMAN, @cDescriIndice)
+
+			// conteudo origianl
+			cContFormaPag		:= U00->U00_FPTAXA
+			cContRegra			:= U00->U00_REGRA
+			cContIndice			:= U00->U00_INDMAN
+
+			// code blocks
+			bValidForma 	:= {|| ValidaForma(cFormaPag, @cDescriFormaPag, cRegra, @nDesconto, @oGetFormaPagamento, @oGetDescriFormaPagamento, @oDlgManutencao, @oBtnCicloTaxa, cContFormaPag, @cFormaPGGet, @lProximoCiclo) }
+			bValidRegra 	:= {|| ValidaRegra(cRegra, @cDescriRegra, @nCobrancaAdicional, @nDesconto, cFormaPag, @oGetRegra, @oGetDescriRegra, @oDlgManutencao, @oBtnCicloTaxa, cContRegra, @cRegraGet, @lProximoCiclo) }
+			bValidIndice 	:= {|| ValidaIndice(cIndice, @cDescriIndice, @oGetIndice, @oGetDescriIndice, @oDlgManutencao, cContIndice) }
+
+			DEFINE MSDIALOG oDlgManutencao TITLE "Altera Taxa de Manutenção" FROM 000, 000  TO 400, 732 COLORS 0, 16777215 PIXEL
+
+			oDlgManutencao:lEscClose := .F. //desabilita fechar a janela ao pressinar esc.
+			oDlgManutencao:lCentered := .T. //abre a janela centralizado.
+
+			@ 002, 002 GROUP oGrpManutencao TO 070, 367 PROMPT "Taxa de Manutenção" OF oDlgManutencao COLOR 0, 16777215 PIXEL
+
+			@ 012, 010 SAY oSayContrato PROMPT "Contrato" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 022, 010 MSGET oGetContrato VAR cCodigoContrato WHEN .F. SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 012, 080 SAY oSayCessionario PROMPT "Cessionário" SIZE 034, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 022, 080 MSGET oGetCessionario VAR cCessionario WHEN .F. SIZE 199, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 012, 290 SAY oSayDataCadastro PROMPT "Data de Cadastro" SIZE 052, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 022, 290 MSGET oGetDataCadastro VAR dDataCadastro WHEN .F. SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON
+
+			@ 042, 010 SAY oSayUltimaManutencao PROMPT "Última Manutenção" SIZE 051, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 052, 010 MSGET oGetUltimaManutencao VAR dUltimaManutencao WHEN .F. SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON
+
+			@ 042, 080 SAY oSayProximaManutencao PROMPT "Proxima Manutenção" SIZE 056, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 052, 080 MSGET oGetProximaManutencao VAR cProximaManutencao WHEN .F. SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 042, 145 SAY oSayValorManutencao PROMPT "Valor (R$)" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 052, 145 MSGET oGetValorManutencao VAR nValorManutencao PICTURE "@E 999,999.99" WHEN .F. SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON
+
+			@ 042, 215 SAY oSayTipoEndereco PROMPT "Tipo Endereço" SIZE 045, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 052, 215 MSGET oGetTipoEndereco VAR cTipoEndereco WHEN .F. SIZE 136, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 070, 002 GROUP oGrpDados TO 170, 367 PROMPT "Dados" OF oDlgManutencao COLOR 0, 16777215 PIXEL
+
+			@ 080, 010 SAY oSayFormaPagamento PROMPT "Forma de Pagamento" SIZE 057, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 090, 010 MSGET oGetFormaPagamento VAR cFormaPag F3 "24" PICTURE "@!" SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON VALID(Eval(bValidForma))
+
+			@ 080, 080 SAY oSayDescriFormaPagamento PROMPT "Descrição" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 090, 080 MSGET oGetDescriFormaPagamento VAR cDescriFormaPag WHEN .F. SIZE 165, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 110, 010 SAY oSayRegra PROMPT "Regra Manutenção" SIZE 062, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 120, 010 MSGET oGetRegra VAR cRegra F3 "U79" PICTURE "@!" SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON VALID(Eval(bValidRegra))
+
+			@ 110, 080 SAY oSayDescriRegra PROMPT "Descrição" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 120, 080 MSGET oGetDescriRegra VAR cDescriRegra WHEN .F. SIZE 165, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 110, 255 SAY oSayCobAdicional PROMPT "Cob. Adicional" SIZE 075, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 120, 255 MSGET oGetCobAdicional VAR nCobrancaAdicional PICTURE "@E 999,999.99" WHEN .F. SIZE 040, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON
+
+			@ 110, 305 SAY oSayDesconto PROMPT "Desconto" SIZE 075, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 120, 305 MSGET oGetDesconto VAR nDesconto PICTURE "@E 999,999.99" WHEN .F. SIZE 040, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON
+
+			@ 140, 010 SAY oSayIndice PROMPT "Indice" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 150, 010 MSGET oGetIndice VAR cIndice F3 "U22" PICTURE "@!" SIZE 060, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL HASBUTTON VALID(Eval(bValidIndice))
+
+			@ 140, 080 SAY oSayDescriIndice PROMPT "Descrição" SIZE 025, 007 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+			@ 150, 080 MSGET oGetDescriIndice VAR cDescriIndice WHEN .F. SIZE 165, 010 OF oDlgManutencao COLORS 0, 16777215 PIXEL
+
+			@ 172, 002 GROUP oGrpBotoes TO 195, 367 OF oDlgManutencao COLOR 0, 16777215 PIXEL
+
+			@ 178, 015 BUTTON oBtnAdiantarTaxa PROMPT "Adiantar" SIZE 037, 012 OF oDlgManutencao PIXEL ACTION (AdiantarManutencao(U00->U00_CODIGO, @oDlgManutencao))
+			@ 178, 070 BUTTON oBtnCicloTaxa PROMPT "Ciclo" SIZE 037, 012 OF oDlgManutencao PIXEL ACTION (CicloManutencao(U00->U00_CODIGO, cRegra, cFormaPag))
+			@ 178, 260 BUTTON oBtnCancelar PROMPT "Cancelar" SIZE 037, 012 OF oDlgManutencao PIXEL ACTION (oDlgManutencao:End())
+			@ 178, 315 BUTTON oBtnConfirmar PROMPT "Confirmar" SIZE 037, 012 OF oDlgManutencao PIXEL ACTION (ConfirmaAlteracao(U00->U00_CODIGO, cCodigoManutencao, cRegra, cFormaPag, cIndice, cContRegra, cContRegra, cContIndice, @oDlgManutencao, lProximoCiclo))
+
+			// altero a estilizacao dos componentes
+			//------------------------------------
+			// botoes
+			//------------------------------------
+			oBtnCicloTaxa:lVisible := .F.
+			oBtnCicloTaxa:SetCSS(cCSSButtonVerde)
+			oBtnAdiantarTaxa:SetCSS(cCSSButtonOrange)
+			oBtnCancelar:SetCSS(cCSSButtonVermelho)
+			oBtnConfirmar:SetCSS(cCSSButtonAzul)
+
+			//------------------------------------
+			// get
+			//------------------------------------
+			oGetContrato:SetCSS(cCSSGet)
+			oGetCessionario:SetCSS(cCSSGet)
+			oGetDataCadastro:SetCSS(cCSSGet)
+			oGetUltimaManutencao:SetCSS(cCSSGet)
+			oGetProximaManutencao:SetCSS(cCSSGet)
+			oGetValorManutencao:SetCSS(cCSSGet)
+			oGetTipoEndereco:SetCSS(cCSSGet)
+			oGetFormaPagamento:SetCSS(cCSSGet)
+			oGetDescriFormaPagamento:SetCSS(cCSSGet)
+			oGetRegra:SetCSS(cCSSGet)
+			oGetDescriRegra:SetCSS(cCSSGet)
+			oGetCobAdicional:SetCSS(cCSSGet)
+			oGetIndice:SetCSS(cCSSGet)
+			oGetDescriIndice:SetCSS(cCSSGet)
+			oGetDesconto:SetCSS(cCSSGet)
+
+			ACTIVATE MSDIALOG oDlgManutencao CENTERED
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function ValidaManutencao(cCodigoContrato As Character, dUltimaManutencao As Date, cProximaManutencao As Character, cCodigoManutencao As Character)
+
+	Local cQuery	As Character
+	Local lRetorno	As Logical
+
+	Default cCodigoContrato		:= ""
+	Default dUltimaManutencao	:= StoD("")
+	Default cProximaManutencao 	:= ""
+	Default cCodigoManutencao	:= ""
+
+	// atribui valor as variaveis
+	lRetorno := .F.
+
+	// query de consulta
+	cQuery := " SELECT MAX(U26.R_E_C_N_O_) AS RECU26 "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " WHERE U26.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += " AND U26.U26_STATUS <> '3' " // diferente de finalizado
+	cQuery += " AND U26.U26_CONTRA = '" + cCodigoContrato + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBU26")
+
+	If TRBU26->(!Eof())
+		If TRBU26->RECU26 > 0
+			U26->(DBGoTo(TRBU26->RECU26))
+			dUltimaManutencao 	:= U26->U26_DATA
+			cProximaManutencao	:= U26->U26_PROMAN
+			cCodigoManutencao	:= U26->U26_CODIGO
+			lRetorno := .T.
+		EndIf
+	Else
+		MsgAlert("O contrato não possui taxa de manutenção ativa!", "Taxa Manutenção")
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ValidaForma
+description
+@type function
+@version 1.0 
+@author g.sampaio
+@since 2/25/2024
+@param cFormaPag, character, param_description
+@param cDescriFormaPag, character, param_description
+@param cRegra, character, param_description
+@param nDesconto, numeric, param_description
+@param oGetFormaPagamento, object, param_description
+@param oGetDescriFormaPagamento, object, param_description
+@param oDlgManutencao, object, param_description
+@param oBtnCicloTaxa, object, param_description
+@param cContFormaPag, character, param_description
+@param cFormaPGGet, character, param_description
+@return variant, return_description
+/*/
+Static Function ValidaForma(cFormaPag, cDescriFormaPag, cRegra, nDesconto, oGetFormaPagamento, oGetDescriFormaPagamento, oDlgManutencao,;
+		oBtnCicloTaxa, cContFormaPag, cFormaPGGet, lProximoCiclo)
+
+	Local cCSSVerde				As Character
+	Local lRetorno				As Logical
+	Local oVirtusEstiloCSS		As Object
+	Local oRegraTaxaManutencao	As Object
+
+	Default cFormaPag					:= ""
+	Default cDescriFormaPag				:= ""
+	Default cRegra						:= ""
+	Default nDesconto					:= 0
+	Default oGetFormaPagamento			:= Nil
+	Default oGetDescriFormaPagamento	:= Nil
+	Default oDlgManutencao				:= Nil
+	Default oBtnCicloTaxa				:= Nil
+	Default	cContFormaPag				:= ""
+	Default cFormaPGGet					:= ""
+	Default lProximoCiclo				:= .F.
+
+	// atribui valores das variaveis
+	lRetorno 			:= .T.
+	oVirtusEstiloCSS	:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cCSSVerde			:= oVirtusEstiloCSS:CSSGetGreen(Nil, 6)
+
+	// verifico se a forma dee pagamento esta preenchida
+	If !Empty(cFormaPag) .And. AllTrim(cFormaPag) <> AllTrim(cFormaPGGet)
+
+		cDescriFormaPag	:= Posicione("SX5",1,xFilial("SX5") + "24" + cFormaPag,"X5_DESCRI")
+
+		If !Empty(cDescriFormaPag)
+
+			If !Empty(cContFormaPag) .And. AllTrim(cFormaPag) <> AllTrim(cContFormaPag) .And. !Empty(cFormaPGGet)
+
+				U79->(DBSetOrder(1))
+				If U79->(MsSeek(xFilial("U79")+cRegra))
+
+					If AllTrim(U79->U79_ALTCIC) <> "1" // altero no ciclo atual
+
+						// proximo ciclo
+						lProximoCiclo := .T.
+
+						// mensagem para o usuario
+						Help( ,, 'Help - VirtusCEMAlteraManutencao',, 'A alteração da forma de pagamento da taxa de manutenção será feita no próximo ciclo!', 1, 0 )
+
+					Else
+
+						// altera no ciclo atual
+						lProximoCiclo := .F.
+
+					EndIf
+
+					// altero a forma de pagamento da taxa de manutencao
+					lRetorno := CicloManutencao(U00->U00_CODIGO, cRegra, cFormaPag)
+
+					oRegraTaxaManutencao := RegraTaxaManutencao():New(cRegra, Nil, cFormaPag)
+					nDesconto := oRegraTaxaManutencao:aRegras[1, 4] // desconto
+
+				EndIf
+
+				If lRetorno
+
+					oGetFormaPagamento:SetCSS(cCSSVerde)
+					oGetDescriFormaPagamento:SetCSS(cCSSVerde)
+					oBtnCicloTaxa:lVisible := .T.
+
+					If oGetFormaPagamento <> Nil
+						oGetFormaPagamento:Refresh()
+					EndIf
+
+					If oGetDescriFormaPagamento <> Nil
+						oGetDescriFormaPagamento:Refresh()
+					EndIf
+
+					If oDlgManutencao <> Nil
+						oDlgManutencao:Refresh()
+					EndIf
+
+					// atualizo o ger atual
+					cFormaPGGet := cFormaPag
+
+				EndIf
+
+			EndIf
+
+		Else
+			lRetorno := .F.
+			MsgAlert("Forma de Pagamento preenchida é inválida!")
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ValidaRegra
+description
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/25/2024
+@param cRegra, character, param_description
+@param cDescriRegra, character, param_description
+@param nCobrancaAdicional, numeric, param_description
+@param nDesconto, numeric, param_description
+@param cFormaPag, character, param_description
+@param oGetRegra, object, param_description
+@param oGetDescriRegra, object, param_description
+@param oDlgManutencao, object, param_description
+@param oBtnCicloTaxa, object, param_description
+@param cContRegra, character, param_description
+@param cRegraGet, character, param_description
+@return variant, return_description
+/*/
+Static Function ValidaRegra(cRegra, cDescriRegra, nCobrancaAdicional, nDesconto, cFormaPag, oGetRegra, oGetDescriRegra, oDlgManutencao, oBtnCicloTaxa, cContRegra, cRegraGet, lProximoCiclo)
+
+	Local cQuery			As Character
+	Local cCSSVerde			As Character
+	Local lRetorno			As Logical
+	Local oVirtusEstiloCSS	As Object
+
+	Default cRegra						:= ""
+	Default cDescriRegra				:= ""
+	Default nCobrancaAdicional			:= 0
+	Default nDesconto					:= 0
+	Default cFormaPag					:= ""
+	Default oGetRegra					:= Nil
+	Default oGetDescriRegra				:= Nil
+	Default oDlgManutencao				:= Nil
+	Default oBtnCicloTaxa				:= Nil
+	Default	cContRegra					:= ""
+	Default cRegraGet					:= ""
+	Default lProximoCiclo				:= .F.
+
+	// atribui valores das variaveis
+	cQuery				:= ""
+	lRetorno 			:= .T.
+	oVirtusEstiloCSS	:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cCSSVerde			:= oVirtusEstiloCSS:CSSGetGreen(Nil, 6)
+
+	// verifico se a forma dee pagamento esta preenchida
+	If !Empty(cRegra) .And. AllTrim(cRegra) <> AllTrim(cRegraGet)
+
+		cQuery := " SELECT "
+		cQuery += " 	U79.U79_CODIGO 	AS CODIGO, "
+		cQuery += " 	U79.U79_DESCRI 	AS DESCRI, "
+		cQuery += " 	U79.U79_COBADI	AS COBRANCA_ADICIONAL, "
+		cQuery += " 	U79.U79_ALTCIC	AS ALTERA_CICLO, "
+		cQuery += " 	U80.U80_FORMA 	AS FORMA_PAG, "
+		cQuery += " 	U80.U80_TPDESC	AS TIPO_DESCONTO, "
+		cQuery += " 	U80.U80_DESC 	AS VALOR_DESCONTO "
+		cQuery += " FROM " + RetSQLName("U79") + " U79 "
+		cQuery += " INNER JOIN " + RetSQLName("U80") + " U80 ON U80.D_E_L_E_T_ = '' "
+		cQuery += " AND U80.U80_CODIGO = U79.U79_CODIGO "
+		cQuery += " WHERE U79.D_E_L_E_T_ = '' "
+		cQuery += " AND U79.U79_CODIGO = '" + AllTrim(cRegra) + "' "
+		cQuery += " AND U80.U80_FORMA = '" + AllTrim(cFormaPag) + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBREG")
+
+		If TRBREG->(!Eof())
+			cDescriRegra 		:= AllTrim(TRBREG->DESCRI)
+			nCobrancaAdicional	:= TRBREG->COBRANCA_ADICIONAL
+			nDesconto			:= TRBREG->VALOR_DESCONTO
+
+			If !Empty(cRegraGet) .And. AllTrim(TRBREG->ALTERA_CICLO) <> "1" // altero no ciclo atual
+
+				// proximo ciclo
+				lProximoCiclo := .T.
+
+				Help( ,, 'Help - VirtusCEMAlteraManutencao',, 'A alteração da forma de pagamento da taxa de manutenção será feita no próximo ciclo!', 1, 0 ) // mensagem para o usuario
+			Else
+
+				// altera no ciclo atual
+				lProximoCiclo := .F.
+
+			EndIf
+
+			If !Empty(cRegraGet)
+				lRetorno := CicloManutencao(U00->U00_CODIGO, cRegra, cFormaPag) // altero a forma de pagamento da taxa de manutencao
+			EndIf
+
+		Else
+			lRetorno := .F.
+			MsgAlert("Regra de Manutenção preenchida é inválida!")
+		EndIf
+
+		If lRetorno .And. !Empty(cContRegra) .And. AllTrim(cRegra) <> AllTrim(cContRegra) .And. !Empty(cRegraGet)
+
+			oGetRegra:SetCSS(cCSSVerde)
+			oGetDescriRegra:SetCSS(cCSSVerde)
+			oBtnCicloTaxa:lVisible := .T.
+
+			If oGetRegra <> Nil
+				oGetRegra:Refresh()
+			EndIf
+
+			If oGetDescriRegra <> Nil
+				oGetDescriRegra:Refresh()
+			EndIf
+
+			If oDlgManutencao <> Nil
+				oDlgManutencao:Refresh()
+			EndIf
+
+			// atualizo a variavel get
+			cRegraGet := cRegra
+
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+Static Function ValidaIndice(cIndice, cDescriIndice, oGetIndice, oGetDescriIndice, oDlgManutencao, cContIndice)
+
+	Local cCSSVerde			As Character
+	Local lRetorno			As Logical
+	Local oVirtusEstiloCSS	As Object
+
+	Default cIndice						:= ""
+	Default cDescriIndice				:= ""
+	Default oGetIndice					:= Nil
+	Default oGetDescriIndice			:= Nil
+	Default oDlgManutencao				:= Nil
+	Default	cContIndice					:= ""
+
+	// atribui valores das variaveis
+	lRetorno 			:= .T.
+	oVirtusEstiloCSS	:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cCSSVerde			:= oVirtusEstiloCSS:CSSGetGreen(Nil, 6)
+
+	// verifico se a forma dee pagamento esta preenchida
+	If !Empty(cIndice)
+
+		cDescriIndice	:= Posicione("U22",1,xFilial("U22") + cIndice, "U22_DESC")
+
+		If !Empty(cDescriIndice)
+
+			If !Empty(cContIndice) .And. AllTrim(cIndice) <> AllTrim(cContIndice)
+
+				oGetIndice:SetCSS(cCSSVerde)
+				oGetDescriIndice:SetCSS(cCSSVerde)
+
+				If oGetIndice <> Nil
+					oGetIndice:Refresh()
+				EndIf
+
+				If oGetDescriIndice <> Nil
+					oGetDescriIndice:Refresh()
+				EndIf
+
+				If oDlgManutencao <> Nil
+					oDlgManutencao:Refresh()
+				EndIf
+
+			EndIf
+
+		Else
+			lRetorno := .F.
+			MsgAlert("Indice prenchido é inválido!")
+		EndIf
+
+	Else
+		lRetorno := .F.
+	EndIf
+
+Return(lRetorno)
+
+Static Function ConfirmaAlteracao(cCodigoContrato, cCodigoManutencao, cRegra, cFormaPag, cIndice, cContFormaPag, cContRegra, cContIndice, oDlgManutencao, lProximoCiclo)
+
+	Local aArea					As Array
+	Local aAreaU26				As Array
+	Local aAreaU00				As Array
+	Local cProximaManutencao	As Character
+	Local lContinua				As Logical
+	Local lAlteraRegra			As Logical
+	Local nPosRegra				As Numeric
+	Local nQtdParcelas			As Numeric
+	Local oRegraTaxaManutencao	As Object
+
+	Default cCodigoContrato		:= ""
+	Default cCodigoManutencao	:= ""
+	Default cRegra				:= ""
+	Default cFormaPag			:= ""
+	Default cIndice				:= ""
+	Default cContFormaPag		:= ""
+	Default cContRegra			:= ""
+	Default cContIndice			:= ""
+	Default oDlgManutencao		:= Nil
+	Default lProximoCiclo		:= .F.
+
+	aArea 					:= GetArea()
+	aAreaU00				:= U00->(GetArea())
+	aAreaU26				:= U26->(GetArea())
+	lContinua				:= .T.
+	lAlteraRegra			:= .F.
+
+	BEGIN TRANSACTION
+
+		U00->(DbSetOrder(1))
+		If U00->(MsSeek(xFilial("U00")+cCodigoContrato))
+
+			If U00->(RecLock("U00", .F.))
+
+				If !Empty(cFormaPag) .And. AllTrim(cFormaPag) <> AllTrim(cContFormaPag)
+					U00->U00_FPTAXA := cFormaPag
+					If !lProximoCiclo
+						lAlteraRegra := .T.
+					EndIf
+				EndIf
+
+				If !Empty(cRegra) .And. AllTrim(cRegra) <> AllTrim(cContRegra)
+					U00->U00_REGRA	:= cRegra
+					If !lProximoCiclo
+						lAlteraRegra := .T.
+					EndIf
+				EndIf
+
+				If !Empty(cIndice) .And. AllTrim(cIndice) <> AllTrim(cContIndice)
+					U00->U00_INDMAN	:= cIndice
+				EndIf
+
+				U00->(MsUnlock())
+			Else
+				U00->(DisarmTransaction())
+			EndIf
+
+			// altero os da regra de manutencao
+			If lAlteraRegra .And. RegraVigente(U00->U00_CODIGO)
+
+				// inicio o objeto de regras
+				oRegraTaxaManutencao	:= RegraTaxaManutencao():New(U00->U00_REGRA)
+
+				// proxima manutencao
+				cProximaManutencao := U26->U26_PROMAN
+
+				// verifico se encontro a regra compativel com a forma de pagamento escolhiada
+				nPosRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| AllTrim(x[1]) == AllTrim(U00->U00_REGRA) .and. AllTrim(x[3]) == AllTrim(U00->U00_FPTAXA)  } )
+
+				If !Empty(cProximaManutencao)
+					nQtdParcelas := Round(DateDiffMonth(dDataBase, StoD(SubStr(cProximaManutencao,3,4) + SubStr(cProximaManutencao,1,2) + "01")) / oRegraTaxaManutencao:aRegras[nPosRegra, 10], 0)
+
+					If nQtdParcelas > 0 .And. nQtdParcelas < oRegraTaxaManutencao:aRegras[nPosRegra, 09]
+						oRegraTaxaManutencao:aRegras[nPosRegra, 09] := nQtdParcelas
+					EndIf
+
+				EndIf
+
+				// processamento da alteracao da taxa de
+				FWMsgRun(,{|oSay| lContinua	:= oRegraTaxaManutencao:AlteraDadosManutencao(cCodigoContrato, cCodigoManutencao, cRegra, cFormaPag, cIndice, cContFormaPag)},'Aguarde...','Alterando a Taxa de Manutenção conforme os dados da Regra de Manutenção...')
+
+			EndIf
+
+			if !lContinua
+				DisarmTransaction()
+				BREAK
+			Else
+				MsgInfo("Dados da Taxa de Manutenção alterados com sucesso!")
+				oDlgManutencao:End()
+			endIf
+
+		EndIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU00)
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AdiantarManutencao
+Funcao para Adiantar Manutencao
+@type function
+@version 1.-
+@author g.sampaio
+@since 2/25/2024
+@param cCodigoContrato, character, codigo do contrato
+@param oDlgManutencao, object, objeto da tela
+@return variant, return_description
+/*/
+Static Function AdiantarManutencao(cCodigoContrato, oDlgManutencao)
+
+	Local lContinua	As Logical
+
+	// chamo a funcao de adiantar manutencao
+	lContinua := U_RCPGE070(cCodigoContrato)
+
+	If lContinua
+		oDlgManutencao:End() // fecho a tela
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RCPGE053
+Tela para exbir ao usuario o ciclo atual e novo ciclo da taxa de manutenção
+//ExistCpo("U79") .And. iif(!INCLUI,U_RCPGE053(),.T.)
+@type function
+@version 1.0
+@author g.sampaio
+@since 08/10/2020
+/*/
+Static Function CicloManutencao(cCodigoContrato, cRegraManutencaoAtual, cFormaPagamentoAtual)
+
+	Local aArea						as Array
+	Local aAreaU26					as Array
+	Local aParcelas					as Array
+	Local aDadosProxCiclo			as Array
+	Local cFormaPagamento			as Character
+	Local cRegraManutencao			as Character
+	Local cRegraTaxaManutencao		as Character
+	Local cRegraProximoCiclo		as Character
+	Local cQtdParcelasAtual			as Character
+	Local cFormaPagamentoTaxa		as Character
+	Local cGeracao					as Character
+	Local cDiaVenci					as Character
+	Local cDescriTela				as Character
+	Local cCSSButtonAzul			as Character
+	Local cCSSButtonVermelho		as Character
+	Local cProximaManutencao		as Character
+	Local cTipoTaxa					as Character
+	Local dDataVencto				as Date
+	Local lRetorno					as Logical
+	Local lAtivaRegra				as Logical
+	Local lContinua					as Logical
+	Local nPosRegra					as Numeric
+	Local nValorDesconto			as Numeric
+	Local nVlrNovaTaxa				as Numeric
+	Local nQtdParcelas				as Numeric
+	Local oVirtusEstiloCSS			As Object
+	Local oButton1					as Object
+	Local oButton2					as Object
+	Local oGroupCicloAtual			as Object
+	Local oGroupProxCiclo			as Object
+	Local oGroupCabecalho			as Object
+	Local oSayDescricao				as Object
+	Local oDlgAlteraFormaPag		as Object
+	Local oFont1 					as Object
+	Local oRegraTaxaManutencao		as Object
+	Local oVirtusFin				as Object
+
+	Default cCodigoContrato 		:= ""
+	Default cRegraManutencaoAtual	:= ""
+	Default cRegraManutencao 		:= ""
+	Default cFormaPagamentoAtual 	:= ""
+	Default cFormaPagamento			:= ""
+
+	// atribuo valor as variaveis
+	aArea					:= GetArea()
+	aAreaU26				:= U26->(GetArea())
+	aParcelas				:= {}
+	aDadosProxCiclo			:= {}
+	cRegraTaxaManutencao	:= ""
+	cGeracao				:= ""
+	cDiaVenci				:= ""
+	dDataVencto				:= stod("")
+	lRetorno				:= .T.
+	lContinua				:= .T.
+	lAtivaRegra	       	 	:= SuperGetMv("MV_XREGCEM",,.F.)	// parametro para ativacao da regra
+	nPosRegra				:= 0
+	nValorDesconto			:= 0
+	nVlrNovaTaxa			:= 0
+	oButton1				:= Nil
+	oButton2				:= Nil
+	oGroupCicloAtual		:= Nil
+	oGroupProxCiclo			:= Nil
+	oGroupCabecalho			:= Nil
+	oSayDescricao			:= Nil
+	oDlgAlteraFormaPag		:= Nil
+	oFont1 					:= TFont():New("MS Sans Serif",,016,,.T.,,,,,.F.,.F.)
+	oRegraTaxaManutencao	:= Nil
+	oVirtusEstiloCSS		:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	oVirtusFin				:= VirtusFin():New() // inicio a classe financeira do virtus
+	cCSSButtonAzul			:= oVirtusEstiloCSS:CSSButtonBlue()
+	cCSSButtonVermelho		:= oVirtusEstiloCSS:CSSButtonRed()
+
+	cFormaPagamento 	:= U00->U00_FPTAXA
+	cRegraManutencao	:= U00->U00_REGRA
+
+	// verifico se a forma de pagamento da taxa atual é diferente da atual OU Regra de Tx Manutencao
+	if lAtivaRegra .And. (!Empty(cFormaPagamentoAtual) .And.;
+			(AllTrim(cFormaPagamentoAtual) <> AllTrim(cFormaPagamento)) .Or.;
+			(!Empty(cRegraManutencaoAtual) .And. AllTrim(cRegraManutencaoAtual) <> AllTrim(cRegraManutencao)))
+
+		//permite alteracao de forma apenas para contratos adimplentes
+		if oVirtusFin:ContratoAdimplente(cCodigoContrato,"C")
+
+			// valido se existe manutencao ativa para o contrato
+			if RegraVigente(cCodigoContrato)
+
+				// inicio a classe de regra de manutencao
+				oRegraTaxaManutencao := RegraTaxaManutencao():New(U26->U26_REGRA)
+
+				// verifico se encontro a regra compativel com a forma de pagamento escolhiada
+				nPosRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| AllTrim(x[1]) == AllTrim(U26->U26_REGRA) .and. AllTrim(x[3]) == AllTrim(U26->U26_FORPG)  } )
+
+				// regra da taxa de maanutencao
+				cRegraTaxaManutencao 		:= U26->U26_REGRA + " - " + Posicione("U79", 1, xFilial("U79")+U26->U26_REGRA, "U79_DESCRI")
+				cTipoTaxa := Iif(Posicione("U79", 1, xFilial("U79")+U26->U26_REGRA, "U79_VLTAXA") == "1", "Valor da Parcela", "Valor Total da Taxa")
+
+				//=================================================================
+				// CONFIGURACOES DA REGRA ATUAL
+				//=================================================================
+
+				cFormaPagamentoTaxa		:= AllTrim(U26->U26_FORPG) + " - " + Posicione("SX5", 1, xFilial("SX5")+ "24" + U26->U26_FORPG , "X5_DESCRI")
+
+				if nPosRegra > 0
+					cQtdParcelasAtual			:= cValToChar(oRegraTaxaManutencao:aRegras[nPosRegra, 09])
+					cIntervaloAtual				:= cValToChar(oRegraTaxaManutencao:aRegras[nPosRegra, 10]) + iif(oRegraTaxaManutencao:aRegras[nPosRegra, 10] > 1," Meses"," Mês")
+				else
+					cQtdParcelasAtual			:= "0"
+					cIntervaloAtual				:= "0"
+				endIf
+
+				// pego o valor atual da taxa
+				nVlrNovaTaxa := U26->U26_TAXA
+
+				// pego a proxima manutencao
+				cProximaManutencao := U26->U26_PROMAN
+
+				cValorTaxaAtual				:= AllTrim(TransForm(U26->U26_TAXA, "@E 999,999.99"))
+
+				// pego as informacoes do financeiro
+				aParcelas 					:= RetValoresTaxa(U00->U00_CODIGO)
+
+				if Len(aParcelas) > 0
+
+					cQtdParcelasAtual			:= cValToChar(aParcelas[1] + aParcelas[3])
+					cParcPagasAtual				:= AllTrim(cValToChar(aParcelas[1]))
+					cValorPagoAtual				:= AllTrim(TransForm(aParcelas[2], "@E 999,999.99"))
+					cParcAbertoAtual			:= AllTrim(cValToChar(aParcelas[3]))
+					cValorAbertoAtual			:= AllTrim(TransForm(aParcelas[4], "@E 999,999.99"))
+					nVlrNovaTaxa				:= aParcelas[4]
+
+				EndIf
+
+				//=================================================================
+				// CONFIGURACOES DA REGRA PROXIMO CICLO
+				//=================================================================
+
+				//limpo o objeto para criar de acordo com a nova regra atribuida
+				FreeObj(oRegraTaxaManutencao)
+
+				oRegraTaxaManutencao := RegraTaxaManutencao():New(cRegraManutencaoAtual)
+
+				cRegraProximoCiclo	:= cRegraManutencaoAtual + " - " + Posicione("U79", 1, xFilial("U79")+cRegraManutencaoAtual, "U79_DESCRI")
+				cFormaPagamentoProx := AllTrim(cFormaPagamentoAtual) + " - " + Posicione("SX5", 1, xFilial("SX5")+ "24" + cFormaPagamentoAtual , "X5_DESCRI")
+
+				// zero a posicao da regra
+				nPosRegra := 0
+				nPosRegra := aScan( oRegraTaxaManutencao:aRegras, { |x| AllTrim(x[1]) == AllTrim(cRegraManutencaoAtual) .and. AllTrim(x[3]) == AllTrim(cFormaPagamentoAtual)  } )
+
+				// valor da taxa de manutencao
+				nVlrNovaTaxa := U00->U00_TXMANU + U00->U00_ADIMNT
+				
+				if nPosRegra > 0
+
+					// dados financeiros do proximo ciclo
+					// valido se o ciclo é diferente de 12 meses
+					if oRegraTaxaManutencao:aRegras[nPosRegra, 14] > 0 .And. oRegraTaxaManutencao:aRegras[nPosRegra, 14] <> 12
+						// pego o valor da taxa
+						nVlrNovaTaxa := oRegraTaxaManutencao:RetValorCiclo( U00->U00_TXMANU + U00->U00_ADIMNT, nPosRegra)
+					EndIf
+
+					If !Empty(cProximaManutencao)
+						nQtdParcelas := Round(DateDiffMonth(dDataBase, StoD(SubStr(cProximaManutencao,3,4) + SubStr(cProximaManutencao,1,2) + "01")) / oRegraTaxaManutencao:aRegras[nPosRegra, 10], 0)
+
+						If nQtdParcelas > 0 .And. nQtdParcelas < oRegraTaxaManutencao:aRegras[nPosRegra, 09]
+							oRegraTaxaManutencao:aRegras[nPosRegra, 09] := nQtdParcelas
+						Else
+							nQtdParcelas := cValToChar(oRegraTaxaManutencao:aRegras[nPosRegra, 09])
+						EndIf
+					Else
+						nQtdParcelas := cValToChar(oRegraTaxaManutencao:aRegras[nPosRegra, 09])
+					EndIf
+
+					// quantidade de parcelas para ser exibida na tela
+					cQtdParcelasProx := cValToChar(nQtdParcelas)
+
+					cIntervaloProx	 := cValToChar(oRegraTaxaManutencao:aRegras[nPosRegra, 10]) + iif(oRegraTaxaManutencao:aRegras[nPosRegra, 10] > 1," Meses"," Mês")
+
+					// pego o dia do vencimento
+					cDiaVenci	:= cValToChar( oRegraTaxaManutencao:aRegras[nPosRegra, 7] )
+
+					// verifico o como gera
+					if oRegraTaxaManutencao:aRegras[nPosRegra, 6] $ "1/3"
+
+						// pego o primeiro vencimento
+						dDataVencto := Stod( AnoMes( dDataBase ) + cDiaVenci )
+
+					elseIf oRegraTaxaManutencao:aRegras[nPosRegra, 6] == "2" // verifico o como gera
+
+						// pego o mes de geracao
+						cGeracao    := oRegraTaxaManutencao:aRegras[nPosRegra, 12]
+
+						// pego o primeiro vencimento - Ano da Database + Mes de Geracao + o dia de vencimento
+						dDataVencto := Stod( cValToChar(Year( dDataBase )) + StrZero( Val(cGeracao), 2) + cDiaVenci )
+
+					endIf
+
+					//valido o tipo de desconto e aplico nos valores do proximo ciclo
+					if oRegraTaxaManutencao:aRegras[nPosRegra, 16] == "1" //desconto
+						nValorDesconto := Round(nVlrNovaTaxa * (oRegraTaxaManutencao:aRegras[nPosRegra, 4] / 100), 2)
+					else //desconto real
+						nValorDesconto := oRegraTaxaManutencao:aRegras[nPosRegra, 4]
+					endif
+
+					// dados financeiros do proximo ciclo
+					aDadosProxCiclo	:= oRegraTaxaManutencao:RetDadosFinRegra( U00->U00_CODIGO, Round(nVlrNovaTaxa - nValorDesconto, 2), dDataVencto, nPosRegra, cDiaVenci )
+				else
+
+					lContinua := .F.
+
+					Help( ,, 'Help',, 'Para a regra de taxa de manutenção definida no contrato, não existem regras para a forma de pagamento informada!', 1, 0 )
+
+					cQtdParcelasProx			:= "0"
+					cIntervaloProx				:= "0"
+				EndIf
+
+				nValorCobAdicional	:= Round((nVlrNovaTaxa - nValorDesconto) * (oRegraTaxaManutencao:aRegras[nPosRegra, 17] / 100), 2)
+
+				cValorCobAdicional	:= AllTrim(Transform(nValorCobAdicional,"@E 999,999.99"))
+				cValorPagoProx		:= AllTrim(Transform(0,"@E 999,999.99"))
+				cParcAbertoProx		:= "0"
+				cValorAbertoProx	:= AllTrim(Transform(0,"@E 999,999.99"))
+				cValorTaxaProx		:= AllTrim(TransForm(nVlrNovaTaxa, "@E 999,999.99"))
+				cValorDescontoProx	:= AllTrim(TransForm(nValorDesconto, "@E 999,999.99"))
+				cValorTotalProx		:= AllTrim(TransForm(nVlrNovaTaxa + nValorCobAdicional - nValorDesconto, "@E 999,999.99"))
+
+				//=================================================================
+				// DADOS DE ALTERACAO DA FORMA DE PAGAMENTO DA TAXA DE MANUTENCAO
+				//=================================================================
+				if lContinua
+
+					cDescriTela := "A alteração da forma de pagamento ou regra de manutenção impacta diretamente no ciclo de parcelamento "
+					cDescriTela += "da taxa de manutenção, caso existam parcelas em aberto o saldo em aberto será redefinido."
+
+					DEFINE MSDIALOG oDlgAlteraFormaPag TITLE "Alteração do Ciclo - Taxa de Manutenção" FROM 000, 000  TO 625, 800 COLORS 0, 16777215 PIXEL
+
+					//===================================================================================
+					//================================= CICLO ATUAL ===================================
+					//===================================================================================
+
+					@ 002, 002 GROUP oGroupCabecalho TO 045, 400 PROMPT "Alteração do Ciclo de Pagamento da Taxa de Manutenção" OF oDlgAlteraFormaPag COLOR 0, 16777215 PIXEL
+
+					@ 010, 015 BITMAP   oBitmap1    SIZE 024, 024 OF oDlgAlteraFormaPag FILENAME "vicone-alerta.png" NOBORDER PIXEL
+
+					@ 018, 041 SAY oSayDescricao PROMPT cDescriTela SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 045, 002 GROUP oGroupCicloAtual TO 290, 198 PROMPT "Ciclo Atual" OF oDlgAlteraFormaPag COLOR 0, 16777215 PIXEL
+
+					@ 060, 010 SAY oSayLabelRegra PROMPT "Regra" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 070, 010 SAY oSayRegra PROMPT cRegraTaxaManutencao SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 080, 010 SAY oSayLabelFormaPgAtual PROMPT "Forma Pg." SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 090, 010 SAY oSayFormaPgAtual PROMPT cFormaPagamentoTaxa SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 080, 110 SAY oSayLabelQtdParc PROMPT "Qtd. Parcelas" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 090, 110 SAY oSayQtdParc PROMPT cQtdParcelasAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 100, 010 SAY oSayLabelIntervalo PROMPT "Intervalo" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 110, 010 SAY oSayIntervalo PROMPT cIntervaloAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 100, 110 SAY oSayLabelVlTaxa PROMPT "Vlr. Taxa(R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 110, 110 SAY oSayIntervalo PROMPT cValorTaxaAtual + "(" + AllTrim(cTipoTaxa) + ")" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 120, 010 SAY oSayLabelParcPagaAtual PROMPT "Parcelas Pagas" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 130, 010 SAY oSayParcPagaAtual PROMPT cParcPagasAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 120, 110 SAY oSayLabelVlPagoAtual PROMPT "Vlr. Pago(R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 130, 110 SAY oSayVlrPagoAtual PROMPT cValorPagoAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 140, 010 SAY oSayLabelParcAbertoAtual PROMPT "Parcelas em Aberto" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 150, 010 SAY oSayParcPagaAtual PROMPT cParcAbertoAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 140, 110 SAY oSayLabelVlAbertoAtual PROMPT "Vlr. em Aberto(R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 150, 110 SAY oSayVlrPagoAtual PROMPT cValorAbertoAtual SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					// browse de dados do ciclo atual
+					FWBrwCicloAtual(@oGroupCicloAtual, @oDlgAlteraFormaPag, U00->U00_CODIGO, U26->U26_CODIGO)
+
+					//===================================================================================
+					//================================= PROXIMO CICLO ===================================
+					//===================================================================================
+
+					@ 045, 200 GROUP oGroupProxCiclo TO 290, 400 PROMPT "Próximo Ciclo" OF oDlgAlteraFormaPag COLOR 0, 16777215 PIXEL
+
+					@ 060, 210 SAY oSayLabelRegra PROMPT "Regra" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 070, 210 SAY oSayRegra PROMPT cRegraProximoCiclo SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 080, 210 SAY oSayLabelFormaPgAtual PROMPT "Forma Pg." SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 090, 210 SAY oSayFormaPgAtual PROMPT cFormaPagamentoProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 080, 310 SAY oSayLabelQtdParc PROMPT "Qtd. Parcelas" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 090, 310 SAY oSayQtdParc PROMPT cQtdParcelasProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 100, 210 SAY oSayLabelIntervalo PROMPT "Intervalo" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 110, 210 SAY oSayIntervalo PROMPT cIntervaloProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 100, 310 SAY oSayLabelVlTaxa PROMPT "Vlr. Taxa (R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 110, 310 SAY oSayIntervalo PROMPT cValorTaxaProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 120, 210 SAY oSayLabelParcPagaAtual PROMPT "Cobrança Adicional (R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 130, 210 SAY oSayParcPagaAtual PROMPT cValorCobAdicional SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 120, 310 SAY oSayLabelVlPagoProx PROMPT "Desonto (R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 130, 310 SAY oSayVlrPagoProx PROMPT cValorDescontoProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 140, 210 SAY oSayLabelParcAbertoProx PROMPT "Proxima Manutenção" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 150, 210 SAY oSayParcPagaProx PROMPT cProximaManutencao SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					@ 140, 310 SAY oSayLabelVlAbertoProx PROMPT "Vlr. Total (R$)" SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL FONT oFont1
+					@ 150, 310 SAY oSayVlrPagoProx PROMPT cValorTotalProx SIZE 344, 021 OF oDlgAlteraFormaPag COLORS 0, 16777215 PIXEL
+
+					FWBrwProxCiclo(@oGroupProxCiclo, @oDlgAlteraFormaPag, cFormaPagamentoAtual, aDadosProxCiclo)
+
+					@ 295, 310 BUTTON oButton2 PROMPT "Cancelar" SIZE 037, 012 OF oDlgAlteraFormaPag PIXEL ACTION (lRetorno := .F., oDlgAlteraFormaPag:End())
+					@ 295, 350 BUTTON oButton1 PROMPT "Confirmar" SIZE 037, 012 OF oDlgAlteraFormaPag PIXEL ACTION (lRetorno := .T., oDlgAlteraFormaPag:End())
+
+					oButton1:SetCSS(cCSSButtonAzul)
+					oButton2:SetCSS(cCSSButtonVermelho)
+
+					ACTIVATE MSDIALOG oDlgAlteraFormaPag CENTERED
+
+				else
+					lRetorno := .F.
+				endIf
+
+			Else
+
+				lRetorno := .F.
+				Help(,,'Help - NAOEXISTE',,"Não existe taxa de manutenção vigente para o contrato!" ,1,0)
+
+			endIf
+		else
+
+			lRetorno := .F.
+			Help(,,'Help - PENDENCIA',,"Não é permitido alterar forma de pagamento para contratos inadimplentes!" ,1,0)
+		endif
+
+	endIf
+
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FWBrwCicloAtual
+Browse de ciclo atual
+
+@type function
+@version 
+@author g.sampaio
+@since 09/10/2020
+@param oGroupCicloAtual, object, param_description
+@param oDlgAlteraFormaPag, object, param_description
+@return return_type, return_description
+/*/
+Static Function FWBrwCicloAtual(oGroupCicloAtual, oDlgAlteraFormaPag, cCodigoContrato, cCodigoManutencao)
+
+	Local aBrwCicloAutal 	:= {}
+	Local oBrwCicloAtual	:= Nil
+	Local oTituloAberto 	:= LoadBitmap( GetResources(), "BR_VERDE")
+	Local oTituloBaixado 	:= LoadBitmap( GetResources(), "BR_VERMELHO")
+
+	Default cCodigoContrato		:= ""
+	Default cCodigoManutencao	:= ""
+
+	if Select("TRBATU") > 0
+		TRBATU->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " 	CASE WHEN SE1.E1_SALDO > 0 THEN 'A' ELSE 'B' END STATUSCTR, "
+	cQuery += " 	SE1.E1_XFORPG FORPG, "
+	cQuery += " 	U27.U27_PREFIX PREFIXO, "
+	cQuery += " 	U27.U27_NUM NUMERO, "
+	cQuery += " 	U27.U27_PARCEL PARCELA, "
+	cQuery += " 	U27.U27_TIPO TIPO, "
+	cQuery += " 	U27.U27_VALOR VALOR_TAXA, "
+	cQuery += " 	U27.R_E_C_N_O_ RECNOU27 "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " INNER JOIN  "
+	cQuery += RetSQLName("U27") + " U27 "
+	cQuery += " ON U26.D_E_L_E_T_ = '' "
+	cQuery += " 	AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += " 	AND U26.U26_CODIGO = U27.U27_CODIGO "
+	cQuery += " 	AND U26_STATUS = '2' "
+	cQuery += " INNER JOIN " + RetSqlName("SE1") + " SE1 ON SE1.D_E_L_E_T_ = ' '
+	cQuery += " 	AND SE1.E1_FILIAL 	= '" + xFilial("SE1") + "' "
+	cQuery += " 	AND SE1.E1_PREFIXO 	= U27.U27_PREFIX "
+	cQuery += " 	AND SE1.E1_NUM 		= U27.U27_NUM "
+	cQuery += " 	AND SE1.E1_PARCELA 	= U27.U27_PARCEL "
+	cQuery += " 	AND SE1.E1_TIPO 	= U27.U27_TIPO "
+	cQuery += " 	AND SE1.E1_XCONTRA 	= '" + cCodigoContrato + "' "
+	cQuery += " WHERE U27.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U27.U27_FILIAL = '" + xFilial("U27") + "' "
+	cQuery += " 	AND U27.U27_CODIGO = '" + cCodigoManutencao + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBATU")
+
+	// percorro os dados gerados da consulta
+	while TRBATU->(!Eof())
+
+		// alimento o browse de ciclo atual
+		Aadd(aBrwCicloAutal,{;
+			TRBATU->STATUSCTR,;
+			TRBATU->FORPG,;
+			TRBATU->VALOR_TAXA,;
+			TRBATU->PREFIXO,;
+			TRBATU->NUMERO,;
+			TRBATU->PARCELA,;
+			TRBATU->TIPO,;
+			TRBATU->RECNOU27,;
+			})
+
+		TRBATU->( DbSkip() )
+	endDo
+
+	// verifico se o array de ciclo atual tem dados
+	if len(aBrwCicloAutal) == 0
+
+		// alimento o browse de ciclo atual
+		Aadd(aBrwCicloAutal,{;
+			"",;
+			"",;
+			0,;
+			"",;
+			"",;
+			"",;
+			"",;
+			"",;
+			})
+	endIf
+
+	@ 160, 005 LISTBOX oBrwCicloAtual Fields HEADER "","Forma Pag.","Valor","Prefixo","Numero","Parcela","Tipo","Recno U27" SIZE 190, 125 OF oGroupCicloAtual PIXEL ColSizes 5, 10, 20, 15, 25, 15
+	oBrwCicloAtual:SetArray(aBrwCicloAutal)
+	oBrwCicloAtual:bLine := {|| {;
+		iif(aBrwCicloAutal[oBrwCicloAtual:nAt, 1]=="A",oTituloAberto,oTituloBaixado),;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 2],;
+		TransForm(aBrwCicloAutal[oBrwCicloAtual:nAt, 3],"@E 999,999.99"),;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 4],;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 5],;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 6],;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 7],;
+		aBrwCicloAutal[oBrwCicloAtual:nAt, 8],;
+		}}
+
+	if Select("TRBATU") > 0
+		TRBATU->(DbCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} FWBrwProxCiclo
+description
+@type function
+@version 
+@author g.sampaio
+@since 09/10/2020
+@param oGroupProxCiclo, object, param_description
+@param oDlgAlteraFormaPag, object, param_description
+@return return_type, return_description
+/*/
+Static Function FWBrwProxCiclo(oGroupProxCiclo, oDlgAlteraFormaPag, cFormaPagamento, aDadosProxCiclo)
+
+	Local oBrwProxCiclo
+	Local aBrwProxCiclo 	:= {}
+	Local nConta			:= 0
+	Local oTituloAberto 	:= LoadBitmap( GetResources(), "BR_VERDE")
+	Local oTituloBaixado 	:= LoadBitmap( GetResources(), "BR_VERMELHO")
+
+	Default oGroupProxCiclo		:= Nil
+	Default oDlgAlteraFormaPag	:= Nil
+	Default cFormaPagamento		:= ""
+	Default aDadosProxCiclo		:= {}
+
+	if Len(aDadosProxCiclo) > 0
+
+		// percorro e preencho os dados do proximo ciclo
+		for nConta := 1 to Len(aDadosProxCiclo)
+
+			// Insert items here
+			Aadd(aBrwProxCiclo,{;
+				"A",;
+				cFormaPagamento,;
+				aDadosProxCiclo[nConta,5],;
+				aDadosProxCiclo[nConta,1],;
+				aDadosProxCiclo[nConta,2],;
+				aDadosProxCiclo[nConta,3],;
+				aDadosProxCiclo[nConta,4];
+				})
+
+		next nConta
+
+	else
+
+		Aadd(aBrwProxCiclo,{;
+			"A",;
+			"",;
+			0,;
+			"",;
+			"",;
+			"",;
+			"";
+			})
+
+	endIf
+
+	@ 160, 205 LISTBOX oBrwProxCiclo Fields HEADER "", "Forma Pag.", "Valor", "Prefixo", "Numero", "Parcela", "Tipo" SIZE 190, 125 OF oGroupProxCiclo PIXEL ColSizes 5, 10, 20, 15, 25, 15
+	oBrwProxCiclo:SetArray(aBrwProxCiclo)
+	oBrwProxCiclo:bLine := {|| {;
+		iif(aBrwProxCiclo[oBrwProxCiclo:nAt, 1]=="A",oTituloAberto,oTituloBaixado),;
+		aBrwProxCiclo[oBrwProxCiclo:nAt,2],;
+		TransForm(aBrwProxCiclo[oBrwProxCiclo:nAt,3],"@E 999,999.99"),;
+		aBrwProxCiclo[oBrwProxCiclo:nAt,4],;
+		aBrwProxCiclo[oBrwProxCiclo:nAt,5],;
+		aBrwProxCiclo[oBrwProxCiclo:nAt,6],;
+		aBrwProxCiclo[oBrwProxCiclo:nAt,7],;
+		}}
+
+Return(Nil)
+
+/*/{Protheus.doc} RetValoresTaxa
+Funcao para retornoar os valores do financeiro
+sobre a taxa de manutencao
+
+@type function
+@version 
+@author g.sampaio
+@since 22/10/2020
+@param cCodContrato, character, param_description
+@return return_type, return_description
+/*/
+Static Function RetValoresTaxa(cCodContrato)
+
+	Local aRetorno 	:= {0,0,0,0}
+	Local cQuery	:= ""
+	Local cTipoMnt	:= SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+	Local nContParcPagas 	:= 0
+	Local nContParcAberto	:= 0
+	Local nValorPago		:= 0
+	Local nValorAberto		:= 0
+
+	if Select("TRBFIN") > 0
+		TRBFIN->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " SE1.E1_VALOR VALOR_TAXA, "
+	cQuery += " SE1.E1_SALDO SALDO "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " INNER JOIN  "
+	cQuery += RetSQLName("U27") + " U27 "
+	cQuery += " ON U26.D_E_L_E_T_ = '' "
+	cQuery += " AND U27.D_E_L_E_T_ = '' "
+	cQuery += " AND U26.U26_FILIAL = U27.U27_FILIAL "
+	cQuery += " AND U26.U26_CODIGO = U27.U27_CODIGO "
+	cQuery += " INNER JOIN " + RetSqlName("SE1") + " SE1 ON SE1.D_E_L_E_T_ = ' '
+	cQuery += " AND SE1.E1_PREFIXO 	= U27.U27_PREFIX "
+	cQuery += " AND SE1.E1_NUM 		= U27.U27_NUM "
+	cQuery += " AND SE1.E1_PARCELA 	= U27.U27_PARCEL "
+	cQuery += " AND SE1.E1_TIPO 	= U27.U27_TIPO "
+	cQuery += " AND SE1.E1_XCONTRA 	= '" + cCodContrato + "' "
+	cQuery += " WHERE U27.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_FILIAL = '" + xFilial("U26")+ "' "
+	cQuery += " AND U27.U27_NUM = '" + cCodContrato + "' "
+	cQuery += " AND SE1.E1_TIPO = '" + cTipoMnt + "' "
+	cQuery += " AND U26_STATUS = '2' "
+
+	MPSysOpenQuery(cQuery, "TRBFIN")
+
+	while TRBFIN->(!Eof())
+
+		// para saldo em aberto
+		if TRBFIN->SALDO > 0
+			nContParcAberto+=1
+			nValorAberto+=TRBFIN->SALDO
+		else // valor pago
+			nContParcPagas+=1
+			nValorPago+=TRBFIN->VALOR_TAXA
+		endIf
+
+		TRBFIN->(DbSkip())
+	endDo
+
+	// alimento o array de retorno
+	aRetorno := { nContParcPagas, nValorPago, nContParcAberto, nValorAberto }
+
+	if Select("TRBFIN") > 0
+		TRBFIN->(DbCloseArea())
+	endIf
+
+Return(aRetorno)
+
+Static Function RegraVigente(cCodContrato)
+
+	Local cQuery 	:= ""
+	Local lRetorno	:= .T.
+
+	If Select("TRBU26") > 0
+		TRBU26->(DbCloseArea())
+	EndIf
+
+	// query para verificar se o contrato será feito reajuste
+	cQuery += "  SELECT "
+	cQuery += "      	U26.R_E_C_N_O_   AS RECU26 "
+	cQuery += "  FROM "
+	cQuery += RetSqlName("U26") + " U26 "
+	cQuery += "  	WHERE U26.D_E_L_E_T_ = ' ' "
+	cQuery += "   	AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += "     AND U26.U26_CONTRA = '" + cCodContrato + "'"
+	cQuery += "     AND U26.U26_STATUS IN ('1','2') "
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBU26")
+
+	if TRBU26->(!Eof())
+
+		// retorno
+		lRetorno    := .T.
+
+		// posiciono no registro da U26
+		U26->(DBGoTo(TRBU26->RECU26))
+
+	endIf
+
+	If Select("TRBU26") > 0
+		TRBU26->(DbCloseArea())
+	EndIf
+
+Return(lRetorno)
+
+Static Function ExigTxManu( cPlanoCtr )
+
+	Local aArea			:= GetArea()
+	Local aAreaU00		:= U00->( GetArea() )
+	Local aAreaU05		:= U05->( GetArea() )
+	Local lExigeTxMnt	:= .F.
+
+	U05->( DbSetOrder(1) ) //U05_FILIAL + U05_CODIGO
+
+	//valido se o plano exige o preenchimento do campo de taxa de manutencao
+	If U05->( DbSeek( xFilial("U05") + cPlanoCtr ) ) .And. U05->U05_EXIMNT == 'S'
+		lExigeTxMnt	:= .T.
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaU00)
+	RestArea(aAreaU05)
+
+Return(lExigeTxMnt)

@@ -1,0 +1,831 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+/*/{Protheus.doc} RCPGE048
+Função para realizar a transferencia de cessionário/titular
+do contrato
+
+(Antiga funcao CPGA001S)
+@type function
+@version 1.0 
+@author g.sampaio
+@since 04/09/2020
+/*/
+User Function RCPGE048( cCodContrato, cTipoTransf )
+
+	Local aArea         		As Array
+	Local aAreaU00      		As Array
+	Local lRetorno      		As Logical
+	Local lContinua    	 		As Logical
+	Local lRecorrencia			As Logical
+	Local oVirtusFin    		As Object
+	Local lPermiteInadimplente	As Logical
+
+	Default cCodContrato    := ""
+	Default cTipoTransf     := "R"
+
+	// atribuo os valores das variaveis
+	aArea       	:= GetArea()
+	aAreaU00    	:= U00->( GetArea() )
+	lRetorno    	:= .T.
+	lContinua   	:= .T.
+	lRecorrencia	:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	oVirtusFin  	:= Nil
+	lPermiteInadimplente	:= SuperGetMv("MV_XTRFINA",.F.,.F.)
+
+	If cTipoTransf == "C" .And. (U00->(FieldPos("U00_CLICES")) == 0 .Or. U00->(FieldPos("U00_LOJCES")) == 0)
+		cTipoTransf := "R"
+		MsgAlert("O ambiente não possui Cessionario e Responsavel financeiro para o contrato, a transferencia do cessionário acontecera normalmente.","Atenção")
+	EndIf
+
+	// posiciono no cadastro do contrato de cemiterio
+	U00->( DbSetOrder(1) )
+	if U00->( MsSeek( xFilial("U00")+cCodContrato ) )
+
+		Do Case
+
+		Case U00->U00_STATUS == "P" //Pré-cadastro
+			MsgInfo("O Contrato se encontra pré-cadastrado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "S" //Suspenso
+			MsgInfo("O Contrato se encontra Suspenso, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "C" //Cancelado
+			MsgInfo("O Contrato se encontra Cancelado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "F" //Finalizado
+			MsgInfo("O Contrato se encontra Finalizado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		EndCase
+
+		if lContinua .And. U00->(FieldPos("U00_TPCONT")) > 0
+
+			// contrato de integracao de empresas
+			if U00->U00_STATUS == "A" .And. U00->U00_TPCONT == "2"
+				MsgInfo("O Contrato de Integração de Empresas, operação não permitida.","Atenção")
+				lContinua := .F.
+			endIf
+
+		endIf
+
+		// se estiver tudo certo continua
+		If lContinua
+
+			if lRecorrencia .And. cTipoTransf == "R" // para responsavel financeiro
+				//-- Verifica se existe pendencias de processamentos VINDI --//
+				lContinua := U_PENDVIND(U00->U00_CODIGO, "C")
+			endIf
+
+			If lContinua
+
+				// inicio a classe de financeiro do virtus
+				oVirtusFin  := VirtusFin():New()
+
+				// valido de o contrato esta adimplente
+				if lPermiteInadimplente .Or. oVirtusFin:ContratoAdimplente( U00->U00_CODIGO, "C" ) //Se adimplente
+
+					// chamo a funcao de transferencia de cessionario
+					lRetorno := TransfCont(cTipoTransf)
+
+					If lRetorno
+						MsgInfo("Transferência de Cessionário realizada com sucesso.","Atenção")
+					Endif
+
+				Else
+					MsgInfo("O Cessionário atual se encontra inadimplente, operação não permitida.","Atenção")
+				Endif
+
+			EndIf
+
+		Endif
+
+	Else
+		lRetorno := .F.
+		MsgAlert("Contrato ["+cCodContrato+"] não localizado.","Atenção")
+	endif
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} TransfCont
+Tela de transferencia de cessionario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/09/2020
+@return logical, retorna que a transferencia deu certo
+/*/
+Static Function TransfCont(cTipoTransf)
+
+	Local bConfTransf	As CodeBlock
+	Local bValCliente	As CodeBlock
+	Local cClienteAtual	As Character
+	Local cLojaAtual	As Character
+	Local cNomeCliAtual	As Character
+	Local cCliTransf	As Character
+	Local cLojaTransf	As Character
+	Local cNomeTransf	As Character
+	Local cMotTransf	As Character
+	Local lRetorno		As Logical
+	Local nVlrTx		As Numeric
+	Local oCliTransf	As Object
+	Local oLojaTransf	As Object
+	Local oVlrTx		As Object
+	Local oMotTransf	As Object
+	Local oGroup1		As Object
+	Local oGroup2		As Object
+	Local oSay1			As Object
+	Local oSay2			As Object
+	Local oSay3			As Object
+	Local oSay4			As Object
+	Local oSay5			As Object
+	Local oSay6			As Object
+	Local oSay7			As Object
+	Local oSay8			As Object
+	Local oSay9			As Object
+	Local oBut1			As Object
+	Local oBut2			As Object
+	Local oDlgTrans		As Object
+
+	Default cTipoTransf := "R"
+
+	// atribuo valor as variaveis
+	lRetorno 	:= .F.
+	cCliTransf 	:= Space(TamSX3("A1_COD")[1])
+	cLojaTransf	:= Space(TamSX3("A1_LOJA")[1])
+	cNomeTransf	:= ""
+	nVlrTx 		:= 0
+	cMotTransf	:= Space(200)
+	bConfTransf := {|| ConfTrans(cCliTransf, cLojaTransf, cNomeTransf, cMotTransf, nVlrTx, @oDlgTrans, cTipoTransf) }
+	bValCliente := {|| CliTransf(cCliTransf, cLojaTransf, @cNomeTransf, @oNomeTransf) }
+
+	If cTipoTransf == "C"
+		If U00->(FieldPos("U00_CLICES")) > 0 .And. U00->(FieldPos("U00_LOJCES")) > 0
+			cClienteAtual	:= U00->U00_CLICES
+			cLojaAtual		:= U00->U00_LOJCES
+			cNomeCliAtual	:= U00->U00_NOMCES
+		Else
+			cTipoTransf 	:= "R"
+			cClienteAtual	:= U00->U00_CLIENT
+			cLojaAtual		:= U00->U00_LOJA
+			cNomeCliAtual	:= U00->U00_NOMCLI
+		EndIf
+	Else
+		cClienteAtual	:= U00->U00_CLIENT
+		cLojaAtual		:= U00->U00_LOJA
+		cNomeCliAtual	:= U00->U00_NOMCLI
+	EndIf
+
+	If FWIsInCallStack("U_RUTIL049") .Or. FWIsInCallStack("U_RUTIL49B")
+
+		If !Empty(U92->U92_CLINOV)
+			cCliTransf 	:= U92->U92_CLINOV
+			cLojaTransf := U92->U92_LOJNOV
+		EndIf
+
+		cNomeTransf := U92->U92_NMCLIN
+		cMotTransf	:= U92->U92_MOTIVO
+		nVlrTx		:= U92->U92_TAXA
+	EndIf
+
+	DEFINE MSDIALOG oDlgTrans TITLE "Tranferência de " + iif(cTipoTransf == "R", "Responsável Financeiro","Cessionário") From 000,000 TO 270,605 COLORS 0, 16777215 PIXEL
+
+	@ 005, 005 SAY oSay1 PROMPT "Contrato:" SIZE 070, 007 OF oDlgTrans COLORS 0, 16777215 PIXEL
+	@ 005, 030 SAY oSay2 PROMPT U00->U00_CODIGO SIZE 200, 007 OF oDlgTrans COLORS 0, 16777215 PIXEL
+
+	//Cessonário atual
+	@ 015, 005 GROUP oGroup1 TO 037, 300 PROMPT iif(cTipoTransf == "R", "Responsável Financeiro","Cessionário") + " atual" OF oDlgTrans COLOR 0, 16777215 PIXEL
+
+	@ 025, 010 SAY oSay3 PROMPT "Cliente:" SIZE 070, 007 OF oGroup1 COLORS 0, 16777215 PIXEL
+	@ 025, 035 SAY oSay4 PROMPT AllTrim(cClienteAtual) + "/" + AllTrim(cLojaAtual) + " - " + cNomeCliAtual SIZE 200, 007 OF oGroup1 COLORS 0, 16777215 PIXEL
+
+	//Novo cessonário
+	@ 040, 005 GROUP oGroup2 TO 079, 300 PROMPT "Novo " + iif(cTipoTransf == "R", "Responsável Financeiro","Cessionário") OF oDlgTrans COLOR 0, 16777215 PIXEL
+
+	@ 050, 010 SAY oSay5 PROMPT "Cliente:" SIZE 070, 007 OF oGroup2 COLORS 0, 16777215 PIXEL
+	@ 050, 040 MSGET oCliTransf VAR cCliTransf SIZE 040,007 PIXEL OF oGroup2 PICTURE "@!" F3 "SA1CTR" HASBUTTON VALID (Eval(bValCliente))
+
+	@ 050, 090 SAY oSay6 PROMPT "Loja:" SIZE 070, 007 OF oGroup2 COLORS 0, 16777215 PIXEL
+	@ 050, 110 MSGET oLojaTransf VAR cLojaTransf SIZE 020,007 PIXEL OF oGroup2 PICTURE "@!" VALID (Eval(bValCliente))
+
+	@ 050, 145 SAY oNomeTransf PROMPT cNomeTransf SIZE 120, 007 OF oGroup2 COLORS 0, 16777215 PIXEL
+
+	@ 063, 010 SAY oSay7 PROMPT "Motivo:" SIZE 070, 007 OF oGroup2 COLORS 0, 16777215 PIXEL
+	@ 063, 040 MSGET oMotTransf VAR cMotTransf SIZE 250,007 PIXEL OF oGroup2 PICTURE "@!"
+
+	//Taxa
+	@ 085, 005 SAY oSay8 PROMPT "Valor taxa:" SIZE 070, 007 OF oDlgTrans COLORS 0, 16777215 PIXEL
+	@ 085, 040 MSGET oVlrTx VAR nVlrTx SIZE 060,007 PIXEL OF oDlgTrans PICTURE "@E 999,999.99" HASBUTTON
+
+	//Linha horizontal
+	@ 108, 005 SAY oSay9 PROMPT Repl("_",292) SIZE 292, 007 OF oDlgTrans COLORS CLR_GRAY, 16777215 PIXEL
+
+	@ 118, 222 BUTTON oBut1 PROMPT "Confirmar" SIZE 040, 010 OF oDlgTrans ACTION {||lRetorno := Eval(bConfTransf)} PIXEL
+	@ 118, 267 BUTTON oBut2 PROMPT "Fechar" SIZE 030, 010 OF oDlgTrans ACTION {||lRetorno := .F.,oDlgTrans:End()} PIXEL
+
+	ACTIVATE MSDIALOG oDlgTrans CENTERED
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CliTransf
+Validacao do cliente na transfenrencia de cessionario
+@type function
+@version 1.0
+@author g.sampaio
+@since 21/12/2020
+@param cCliTransf, Character, codigo do cliente
+@param cLojaTransf, Character, loja do cliente
+@return Logical, retorno se o cliente é válido
+/*/
+Static Function CliTransf(cCliTransf, cLojaTransf, cNomeTransf, oNomeTransf)
+
+	Local lRetorno := .T.
+
+	DbSelectArea("SA1")
+	SA1->(DbSetOrder(1)) //A1_FILIAL+A1_COD+A1_LOJA
+
+	If !Empty(cCliTransf)
+
+		If !Empty(cLojaTransf)
+
+			If !SA1->(MsSeek(xFilial("SA1")+cCliTransf+cLojaTransf))
+				MsgInfo("Cliente não localizado para a Loja selecionada.","Atenção")
+				cNomeTransf := ""
+				lRetorno := .F.
+			Else
+				cNomeTransf := SA1->A1_NOME
+			Endif
+
+		Else
+
+			If !SA1->(MsSeek(xFilial("SA1")+cCliTransf))
+				MsgInfo("Cliente não localizado.","Atenção")
+				cNomeTransf := ""
+				lRetorno := .F.
+			Endif
+
+		Endif
+	Endif
+
+	oNomeTransf:Refresh()
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ConfTrans
+Confirma transferencia de cessionario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/09/2020
+@return Logical, retorno sobre a transferencia do cessionario
+/*/
+Static Function ConfTrans(cCliTransf, cLojaTransf, cNomeTransf, cMotTransf, nVlrTx, oDlgTrans, cTipoTransf)
+
+	Local cCodClienteAnterior	As Character
+	Local cLojaAnterior			As Character
+	Local cNomeAnterior			As Character
+	Local lContinua     		As Logical
+	Local lRetorno		    	As Logical
+	Local lRecorrencia			As Logical
+	Local lPermiteInadimplente	As Logical
+	Local oVirtusFin    		As Object
+	Local oVindi        		As Object
+	Local cOrigem        		As Character
+	Local cOrigemDesc    		As Character
+
+	Default cCliTransf	:= ""
+	Default cLojaTransf	:= ""
+	Default cNomeTransf	:= ""
+	Default cMotTransf	:= ""
+	Default nVlrTx		:= 0
+	Default oDlgTrans	:= Nil
+	Default cTipoTransf	:= "R"
+
+	// atribuo valor as variaveis
+	cCodClienteAnterior		:= ""
+	cLojaAnterior			:= ""
+	cNomeAnterior			:= ""
+	lContinua     			:= .T.
+	lRetorno	    		:= .T.
+	lRecorrencia			:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	lPermiteInadimplente	:= SuperGetMv("MV_XTRFINA",.F.,.F.)
+	oVirtusFin    			:= Nil
+	oVindi        			:= Nil
+	cOrigem        			:= "RCPGE048"
+	cOrigemDesc    			:= "Transferencia de Cessionario"
+
+	If Empty(cCliTransf)
+		MsgInfo("Campo <Cliente> obrigatório.","Atenção")
+		lContinua := .F.
+	Endif
+
+	If lContinua
+
+		If Empty(cLojaTransf)
+			MsgInfo("Campo <Loja> obrigatório.","Atenção")
+			lContinua := .F.
+		Endif
+	Endif
+
+	If lContinua
+
+		If Empty(cMotTransf)
+			MsgInfo("Campo <Motivo> obrigatório.","Atenção")
+			lContinua := .F.
+		Endif
+	Endif
+
+	If lContinua
+
+		If cTipoTransf == "C"
+			If U00->(FieldPos("U00_CLICES")) > 0 .And. U00->(FieldPos("U00_LOJCES")) > 0
+				If AllTrim(U00->U00_CLICES) == AllTrim(cCliTransf) .And. AllTrim(U00->U00_LOJCES) == AllTrim(cLojaTransf)
+					MsgInfo("O cessário selecionado é igual ao atual cessionário, favor selecionar outro cessionário.","Atenção")
+					lContinua := .F.
+				Endif
+			Else
+				If AllTrim(U00->U00_CLIENT) == AllTrim(cCliTransf) .And. AllTrim(U00->U00_LOJA) == AllTrim(cLojaTransf)
+					MsgInfo("O cessário selecionado é igual ao atual cessionário, favor selecionar outro cessionário.","Atenção")
+					lContinua := .F.
+				Endif
+			EndIf
+		Else
+			If AllTrim(U00->U00_CLIENT) == AllTrim(cCliTransf) .And. AllTrim(U00->U00_LOJA) == AllTrim(cLojaTransf)
+				MsgInfo("O cessário selecionado é igual ao atual cessionário, favor selecionar outro cessionário.","Atenção")
+				lContinua := .F.
+			Endif
+		EndIf
+
+	Endif
+
+	If lContinua
+
+		If MsgYesNo("Haverá a transferência de " + iif(cTipoTransf == "R", "Responsável Financeiro","Cessionário") + ", deseja continuar?")
+
+			BEGIN TRANSACTION
+
+				If nVlrTx > 0 //Gera Título a Receber, referente a Taxa
+
+					MsgRun("Gerando Título referente a Taxa de Transferência...","Aguarde",{|| lRetorno := GeraTitTx(U00->U00_CODIGO,cCliTransf,cLojaTransf,nVlrTx,dDataBase,.T.)})
+
+				Endif
+
+				If lRetorno
+
+					//------------------------------------------------------------
+					//arquivo o cliente atual do contrato, caso seja recorrencia
+					//------------------------------------------------------------
+					if lRecorrencia .And. cTipoTransf == "R"
+						U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+						If U60->(MsSeek(xFilial("U60") + U00->U00_FORPG))
+
+							//realizo o arquivamento do cliente na Vindi, caso forma de pagamento seja recorrencia
+							lRetorno := U_UVIND20( "C", U00->U00_CODIGO , U00->U00_CLIENT , U00->U00_LOJA, cOrigem, cOrigemDesc )
+
+						endif
+					endIf
+
+					If cTipoTransf == "C"
+						If U00->(FieldPos("U00_CLICES")) > 0 .And. U00->(FieldPos("U00_LOJCES")) > 0
+							// dados do cliente anterior a alteracao
+							cCodClienteAnterior := U00->U00_CLICES
+							cLojaAnterior		:= U00->U00_LOJCES
+							cNomeAnterior		:= U00->U00_NOMCES
+						ELse
+							// dados do cliente anterior a alteracao
+							cCodClienteAnterior := U00->U00_CLIENT
+							cLojaAnterior		:= U00->U00_LOJA
+							cNomeAnterior		:= U00->U00_NOMCLI
+						EndIf
+					Else
+						// dados do cliente anterior a alteracao
+						cCodClienteAnterior := U00->U00_CLIENT
+						cLojaAnterior		:= U00->U00_LOJA
+						cNomeAnterior		:= U00->U00_NOMCLI
+					EndIf
+
+					// posiciono no autorizado amarrado ao titular do contrato
+					U02->(DbSetOrder(2))
+					if lRetorno .And. U02->(MsSeek(xFilial("U02")+U00->U00_CODIGO+cCodClienteAnterior+cLojaAnterior))
+
+						// deleto o
+						if U02->(RecLock("U02",.F.))
+							U02->(DBDelete())
+							U02->(MsUnlock())
+						else
+							U02->(DisarmTransaction())
+						endIf
+
+					endIf
+
+					if lRetorno
+
+						//------------------------------------
+						//Atualiza o cliente do Contrato
+						//------------------------------------
+						RecLock("U00",.F.)
+						U00->U00_CLIENT := cCliTransf
+						U00->U00_LOJA	:= cLojaTransf
+						U00->U00_NOMCLI	:= cNomeTransf
+						U00->(MsUnlock())
+
+						AtuInfCli(U00->U00_CODIGO, cCliTransf, cLojaTransf, cTipoTransf) //Atualiza inf. de clientes do contrato
+
+						//------------------------------------------------------------
+						//Cadastro o novo perfil de pagamento
+						//------------------------------------------------------------
+						if lRecorrencia .And. cTipoTransf == "R"
+
+							U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+							If U60->(MsSeek(xFilial("U60") + U00->U00_FORPG))
+
+								// crio objeto da intergacao com a Vindi
+								oVindi := IntegraVindi():New()
+
+								If !lRetorno
+
+									Help(NIL, NIL, "Atenção!", NIL, "Não foi possível realizar a Inclusao do perfil de pagamento na Vindi!", 1, 0, NIL, NIL, NIL, NIL, NIL)
+
+									DisarmTransaction()
+									BREAK
+
+								Endif
+
+							Endif
+
+						Endif
+
+						DbSelectArea("SE1")
+						SE1->(DbOrderNickName("XCTRCEM")) //E1_FILIAL+E1_XCONTRA
+						If cTipoTransf == "R" .And. SE1->(MsSeek(xFilial("SE1")+U00->U00_CODIGO))
+
+							While SE1->(!EOF()) .And. SE1->E1_FILIAL == xFilial("SE1") .And. SE1->E1_XCONTRA == U00->U00_CODIGO
+
+								If (SE1->E1_VENCREA >= dDataBase .And. SE1->E1_SALDO > 0) .Or.;
+										(lPermiteInadimplente .And. SE1->E1_SALDO > 0)
+
+									// inicio a classe financeira do virtus
+									oVirtusFin := VirtusFin():New()
+
+									// faco a exclusao do bordero do titulo
+									oVirtusFin:ExcBordTit(SE1->(Recno()))
+
+									if lRecorrencia .And. oVindi <> nil
+										oVindi:IncluiTabEnvio("C", "3", "I", 1, SE1->E1_FILIAL + SE1->E1_PREFIXO + SE1->E1_NUM + SE1->E1_PARCELA + SE1->E1_TIPO,/*aProc*/,cOrigem,cOrigemDesc)
+									endif
+
+									RecLock("SE1",.F.)
+									SE1->E1_CLIENTE := cCliTransf
+									SE1->E1_LOJA	:= cLojaTransf
+									SE1->E1_NOMCLI	:= cNomeTransf
+									SE1->(MsUnlock())
+
+								Endif
+
+								SE1->(DbSkip())
+							EndDo
+						Endif
+
+						// verifico se existem protocolos de entrega para o cliente e do contrato
+						if cTipoTransf == "R" .And. ExistBlock("RCPGA28B")
+							U_RCPGA28B(U00->U00_CODIGO, cCodClienteAnterior, cLojaAnterior)
+						endIf
+
+					endIf
+
+				endIf
+
+				// verifico se esta tudo certo ate aqui
+				If lRetorno
+
+					//Gera Log
+					RecLock("U19",.T.)
+					U19->U19_FILIAL	:= xFilial("U19")
+					U19->U19_CODIGO := GetSX8Num("U19","U19_CODIGO")
+					U19->U19_CONTRA	:= U00->U00_CODIGO
+					U19->U19_DATA	:= dDataBase
+					U19->U19_USER	:= cUserName
+
+					// dados do cliente anterior
+					U19->U19_CLIANT	:= cCodClienteAnterior
+					U19->U19_LOJANT	:= cLojaAnterior
+					U19->U19_NOMANT	:= cNomeAnterior
+
+					// dadoso do cliente atual
+					U19->U19_CLIATU	:= U00->U00_CLIENT
+					U19->U19_LOJATU	:= U00->U00_LOJA
+					U19->U19_NOMATU	:= U00->U00_NOMCLI
+					U19->U19_MOTIVO	:= cMotTransf
+
+					If U19->(FieldPos("U19_VLRTAX")) > 0
+						U19->U19_VLRTAX := nVlrTx
+					Endif
+
+					If U19->(FieldPos("U19_TIPO")) > 0
+						U19->U19_TIPO := cTipoTransf
+					EndIf
+
+					If FWIsInCallStack("U_RUTIL49B") .And. U19->(FieldPos("U19_AGENDA")) > 0
+						U19->U19_AGENDA := U92->U92_CODIGO
+					EndIf
+
+					U19->(MsUnlock())
+
+					ConfirmSX8()
+
+				else
+
+					DisarmTransaction()
+
+				Endif
+
+			END TRANSACTION
+
+			///////////////////////////////////////////////////////////////////////////////////////
+			////// Ponto de Entrada PCPGE48F - após a transferencia de cessionario (VPDV-1723) ////
+			///////////////////////////////////////////////////////////////////////////////////////
+			If ExistBlock("PCPGE48F")
+				ExecBlock("PCPGE48F",.F.,.F.,{U00->U00_CODIGO,cCodClienteAnterior,cLojaAnterior,U00->U00_CLIENT,U00->U00_LOJA})
+			EndIf
+
+			oDlgTrans:End()
+
+		Endif
+
+	Else
+
+		lRetorno := .F.
+
+	Endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AtuInfCli
+Funcao para atualizar as informacoes de cliente
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/09/2020
+@param cCodContrato, Character, Codigo do contrato
+@param cCodCliente, Character, Codigo do cliente
+@param cLojaCli, Character, loja do cliente
+/*/
+Static Function AtuInfCli( cCodContrato, cCodCliente, cLojaCli, cTipoTransf)
+
+	Local aArea     		As Array
+	Local aAreaU00 	 		As Array
+	Local aAreaSA1  		As Array
+	Local lCriaAutTitular	As Logical
+
+	Default cCodContrato    := ""
+	Default cCodCliente     := ""
+	Default cLojaCli        := ""
+	Default cTipoTransf		:= ""
+
+	//atribuo valo as variaveis
+	aArea       	:= GetArea()
+	aAreaU00    	:= U00->( GetArea() )
+	aAreaSA1    	:= SA1->( GetArea() )
+	lCriaAutTitular := SuperGetMV("MV_XCEMAUT",.F.,.F.)
+
+	U00->(DbSetOrder(1)) //U00_FILIAL+U00_CODIGO
+	If U00->(MsSeek(xFilial("U00")+cCodContrato))
+
+		If lCriaAutTitular
+			If cTipoTransf == "R" .And. U00->(FieldPos("U00_CLICES")) > 0 .And. U00->(FieldPos("U00_LOJCES")) > 0
+				lCriaAutTitular := .F.
+			EndIf
+		EndIf
+
+		SA1->(DbSetOrder(1)) //A1_FILIAL+A1_COD+A1_LOJA
+		If SA1->(MsSeek(xFilial("SA1")+cCodCliente+cLojaCli))
+
+			If U00->(RecLock("U00",.F.))
+				If cTipoTransf == "R"
+					U00->U00_NATURA := POSICIONE("CC2",3,XFILIAL("CC2")+SA1->A1_XMUNNAT,"CC2_MUN")
+					U00->U00_ESTCIV	:= SA1->A1_XESTCIV
+					U00->U00_DTNASC	:= SA1->A1_XDTNASC
+					U00->U00_PROFIS	:= SA1->A1_XPROFIS
+					U00->U00_RG		:= SA1->A1_RG
+					U00->U00_CGC	:= SA1->A1_CGC
+					U00->U00_CONJUG	:= SA1->A1_XCONJUG
+					U00->U00_DDD	:= SA1->A1_DDD
+					U00->U00_TEL	:= SA1->A1_TEL
+					U00->U00_CEL	:= SA1->A1_XCEL
+					U00->U00_CONTAT	:= SA1->A1_XCONTAT
+					U00->U00_TELCON	:= SA1->A1_XTELCON
+					U00->U00_HRCONT	:= SA1->A1_XHRCONT
+					U00->U00_EMAIL	:= SA1->A1_EMAIL
+					U00->U00_END	:= SA1->A1_END
+					U00->U00_COMPLE	:= SA1->A1_COMPLEM
+					U00->U00_BAIRRO	:= SA1->A1_BAIRRO
+					U00->U00_REFERE	:= SA1->A1_XREFERE
+					U00->U00_MUN	:= SA1->A1_MUN
+					U00->U00_UF		:= SA1->A1_EST
+					U00->U00_CEP	:= SA1->A1_CEP
+					U00->U00_ENDCOB	:= SA1->A1_ENDCOB
+					U00->U00_COMPCO	:= SA1->A1_XCOMPCO
+					U00->U00_BAICOB	:= SA1->A1_BAIRROC
+					U00->U00_REFCOB	:= SA1->A1_XREFCOB
+					U00->U00_MUNCOB	:= SA1->A1_MUNC
+					U00->U00_ESTCOB	:= SA1->A1_ESTC
+					U00->U00_CEPCOB	:= SA1->A1_CEPC
+				Else
+					U00->U00_CNATUR := POSICIONE("CC2",3,XFILIAL("CC2")+SA1->A1_XMUNNAT,"CC2_MUN")
+					U00->U00_CESTCI	:= SA1->A1_XESTCIV
+					U00->U00_CDTNAS	:= SA1->A1_XDTNASC
+					U00->U00_CPROFI	:= SA1->A1_XPROFIS
+					U00->U00_CRG	:= SA1->A1_RG
+					U00->U00_CCGC	:= SA1->A1_CGC
+					U00->U00_CCONJU	:= SA1->A1_XCONJUG
+					U00->U00_CDDD	:= SA1->A1_DDD
+					U00->U00_CTEL	:= SA1->A1_TEL
+					U00->U00_CCEL	:= SA1->A1_XCEL
+					U00->U00_CCONTA	:= SA1->A1_XCONTAT
+					U00->U00_CTELCO	:= SA1->A1_XTELCON
+					U00->U00_CHRCON	:= SA1->A1_XHRCONT
+					U00->U00_CEMAIL	:= SA1->A1_EMAIL
+					U00->U00_CEND	:= SA1->A1_END
+					U00->U00_CCOMPL	:= SA1->A1_COMPLEM
+					U00->U00_CBAIRR	:= SA1->A1_BAIRRO
+					U00->U00_CREFER	:= SA1->A1_XREFERE
+					U00->U00_CMUN	:= SA1->A1_MUN
+					U00->U00_CUF	:= SA1->A1_EST
+					U00->U00_CCEP	:= SA1->A1_CEP
+				EndIf
+
+				U00->(MsUnlock())
+
+			EndIf
+
+			// inclui o autorizado caso estiver habilitado
+			if lCriaAutTitular .And. SA1->A1_XCEMAUT <> "2"
+
+				if U02->(RecLock("U02",.T.))
+					U02->U02_FILIAL := xFilial("U02")
+					U02->U02_CODIGO	:= U00->U00_CODIGO
+					U02->U02_ITEM 	:= ProxItemU02( U00->U00_CODIGO )
+					U02->U02_CODCLI	:= SA1->A1_COD
+					U02->U02_LOJCLI	:= SA1->A1_LOJA
+					U02->U02_NOME 	:= SA1->A1_NOME
+					U02->U02_GRAUPA	:= "OU" // Outros
+					U02->U02_CPF	:= SA1->A1_CGC
+					U02->U02_CI		:= SA1->A1_PFISICA
+
+					if !Empty(SA1->A1_XDTNASC)
+						U02->U02_DTNASC	:= SA1->A1_XDTNASC
+						U02->U02_IDADE	:= U_UAgeCalculate(SA1->A1_XDTNASC,dDataBase)
+					EndIf
+
+					U02->U02_SEXO 	:= SA1->A1_XSEXO
+					U02->U02_ESTCIV	:= SA1->A1_XESTCIV
+					U02->U02_END	:= SA1->A1_ENDCOB
+					U02->U02_COMPLE	:= SA1->A1_COMPLEM
+					U02->U02_BAIRRO	:= SA1->A1_BAIRROC
+					U02->U02_CEP 	:= SA1->A1_CEP
+					U02->U02_EST	:= SA1->A1_EST
+					U02->U02_CODMUN	:= SA1->A1_CODMUN
+					U02->U02_MUN 	:= SA1->A1_MUN
+					U02->U02_DDD	:= SA1->A1_DDD
+					U02->U02_FONE	:= SA1->A1_TEL
+					U02->U02_CELULA := SA1->A1_XCEL
+					U02->U02_EMAIL	:= SA1->A1_EMAIL
+					U02->U02_STATUS	:= "2" // titular
+
+					U02->(MsUnlock())
+				else
+					U02->(DisarmTransaction())
+				endIf
+
+			endIf
+
+		Endif
+
+	Endif
+
+	RestArea( aAreaSA1 )
+	RestArea( aAreaU00 )
+	RestArea( aArea )
+
+Return(Nil)
+
+/************************************************************************/
+Static Function GeraTitTx(cContrato,cCli,cLojaCli,nValor,dDtVenc,lTransf)
+/************************************************************************/
+
+	Local lRetorno 		:= .T.
+
+	Local cQry			:= ""
+	Local cParc			:= ""
+
+	Local aFin040 		:= {}
+
+	Local cPref 		:= SuperGetMv("MV_XPREFCT",.F.,"CTR")
+	Local cTipo			:= SuperGetMv("MV_XTIPOTX",.F.,"TX")
+	Local cNat			:= SuperGetMv("MV_XNATTXA",.F.,"10101") //Venda de jazigos para testes
+	Local lRecorrencia	:= SuperGetMv("MV_XATVREC",.F.,.F.)
+
+	Private lMsErroAuto := .F.
+	Private lMsHelpAuto := .T.
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	Endif
+
+	cQry := "SELECT MAX(E1_PARCELA) AS NROPARC"
+	cQry += " FROM "+RetSqlName("SE1")+""
+	cQry += " WHERE D_E_L_E_T_ 	<> '*'"
+	cQry += " AND E1_FILIAL 	= '"+xFilial("SE1")+"'"
+	cQry += " AND E1_XCONTRA 	= '"+U00->U00_CODIGO+"'"
+	cQry += " AND E1_PREFIXO 	= '"+cPref+"'"
+
+	cQry := ChangeQuery(cQry)
+	TcQuery cQry NEW Alias "QRYSE1"
+
+	If QRYSE1->(!EOF())
+		cParc := Soma1(QRYSE1->NROPARC)
+	Else
+		cParc := "001"
+	Endif
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	Endif
+
+	AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")											   					,Nil } )
+	AAdd(aFin040, {"E1_PREFIXO"	, cPref          						   					   					,Nil } )
+	AAdd(aFin040, {"E1_NUM"		, cContrato		 	   															,Nil } )
+	AAdd(aFin040, {"E1_PARCELA"	, cParc									   					   					,Nil } )
+	AAdd(aFin040, {"E1_TIPO"	, cTipo		 							   										,Nil } )
+	AAdd(aFin040, {"E1_NATUREZ"	, cNat														   					,Nil } )
+	AAdd(aFin040, {"E1_CLIENTE"	, cCli									   					   					,Nil } )
+	AAdd(aFin040, {"E1_LOJA"	, cLojaCli								   										,Nil } )
+	AAdd(aFin040, {"E1_EMISSAO"	, dDataBase								   										,Nil } )
+	AAdd(aFin040, {"E1_VENCTO"	, IIF(Empty(dDtVenc),dDataBase,dDtVenc)											,Nil } )
+	AAdd(aFin040, {"E1_VENCREA"	, DataValida(IIF(Empty(dDtVenc),dDataBase,dDtVenc))								,Nil } )
+	AAdd(aFin040, {"E1_VALOR"	, nValor								   										,Nil } )
+	AAdd(aFin040, {"E1_XCONTRA"	, cContrato								   										,Nil } )
+
+	if lRecorrencia
+		AAdd(aFin040, {"E1_XFORPG"	, U00->U00_FORPG						   									,Nil } )
+	endif
+
+	MSExecAuto({|x,y| FINA040(x,y)},aFin040,3)
+
+	If lMsErroAuto
+		MostraErro()
+		DisarmTransaction()
+		lRetorno := .F.
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ProxItemU02
+funcao para retornar o proximo item da U02
+@type function
+@version 1.0
+@author g.sampaio
+@since 16/12/2020
+@param cCodContrato, Character, codigo do contrato
+@return Character, retorna o proximo item do autorizado
+/*/
+Static Function ProxItemU02( cCodContrato )
+
+	Local cQuery As Character
+
+	// atribuo valor das variaveis
+	cQuery := ""
+
+	if Select("TRBU02") > 0
+		TRBU02->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT MAX(U02_ITEM) MAXITEM FROM " + RetSqlName("U02") + " U02 "
+	cQuery += " WHERE U02.D_E_L_E_T_ = ' '"
+	cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'"
+	cQuery += " AND U02.U02_CODIGO = '" + cCodContrato + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MpSysOpenQuery(cQuery, "TRBU02")
+
+	if TRBU02->(!Eof())
+		cRetorno	:= Soma1(AllTrim(TRBU02->MAXITEM))
+	endIf
+
+	if Empty(cRetorno)
+		cRetorno := StrZero(1,TamSX3("U02_ITEM")[1])
+	endIf
+
+	if Select("TRBU02") > 0
+		TRBU02->(DbCloseArea())
+	endIf
+
+Return(cRetorno)

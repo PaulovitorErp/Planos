@@ -1,0 +1,291 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE056
+Rotina automatica de Apontamento de Servicos Cemiterio
+
+@type function
+@version 
+@author g.sampaio
+@since 06/11/2020
+@param nOperacao, numeric, param_description
+@param aServicos, array, param_description
+@param aServAdicionais, array, param_description
+@param aSalaVelorio, array, param_description
+@return return_type, return_description
+/*/
+User Function RCPGE056( nOperacao, aServicos, aServAdicionais, aSalaVelorio, lEfetivaEndereco, lMostraErro, cErrorLog)
+
+	Local aAux              as Array
+	Local lRetorno          as Logical
+	Local lAux              as Logical
+	Local nLinhaErro        as Numeric
+	Local nLinhaUJV         as Numeric
+	Local nLinhaUJX         as Numeric
+	Local nLinhaU25         as Numeric
+	Local nPos              as Numeric
+	Local oModelAptServico  as Object
+	Local oStruct           aS Object
+	Local oAux              as Object
+
+	Default nOperacao       	:= 0
+	Default aServicos       	:= {}
+	Default aServAdicionais 	:= {}
+	Default aSalaVelorio    	:= {}
+	Default lEfetivaEndereco	:= .F.
+	Default lMostraErro			:= .T.
+	Default cErrorLog			:= ""	
+
+	// faco a declaracao das variaveis
+	aAux                := {}
+	lRetorno            := .T.
+	lAux                := .T.
+	nLinhaErro          := 0
+	nLinhaUJV           := 0
+	nLinhaUJX           := 0
+	nLinhaU25           := 0
+	nPos                := 0
+	oModelAptServico    := FWLoadModel("RCPGA039")
+	oAux                := Nil
+	oStruct             := Nil
+
+	// verifico se for informado a operacao da rotina automatica
+	if nOperacao > 0
+
+		UJV->(DbSetOrder(1))//UJV_FILIAL+UJV_CODIGO
+
+		// defino a operação
+		oModelAptServico:SetOperation(nOperacao)
+
+		// Antes de atribuirmos os valores dos campos temos que ativar o modelo
+		lRetorno := oModelAptServico:Activate()
+
+		If lRetorno .And. nOperacao <> 5
+
+			// Instanciamos apenas a parte do modelo referente aos dados de cabeçalho
+			oAux := oModelAptServico:GetModel( 'UJVMASTER' )
+
+			// Obtemos a estrutura de dados do cabeçalho
+			oStruct := oAux:GetStruct()
+			aAux := oStruct:GetFields()
+
+			If lRetorno
+
+				For nLinhaUJV := 1 To Len(aServicos)
+
+					// Verifica se os campos passados existem na estrutura do cabeçalho
+					If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aServicos[nLinhaUJV][1] ) } ) ) > 0
+
+						// È feita a atribuicao do dado aos campo do Model do cabeçalho
+						If !( lAux := oModelAptServico:SetValue( 'UJVMASTER', aServicos[nLinhaUJV][1], aServicos[nLinhaUJV][2] ) )
+
+							// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+							// o método SetValue retorna .F.
+							lRetorno    := .F.
+							Exit
+
+						EndIf
+
+					EndIf
+
+				Next nLinhaUJV
+
+			EndIf
+
+		EndIf
+
+		// verifico se tenho a necessidade de fazer a inclusao de serviços adicionais
+		If lRetorno .And. Len(aServAdicionais) > 0  .And. nOperacao <> 5
+
+			UJX->(DbSetOrder(1))//UJX_FILIAL+UJX_CODIGO
+
+			// Intanciamos apenas a parte do modelo referente aos dados do item
+			oAux := oModelAptServico:GetModel( 'UJXDETAIL' )
+
+			// Obtemos a estrutura de dados do item
+			oStruct := oAux:GetStruct()
+			aAux := oStruct:GetFields()
+
+			nLinhaErro  := 0
+
+			For nLinhaUJV := 1 To Len(aServAdicionais)
+
+				// Incluímos uma linha nova
+				// ATENCAO: O itens são criados em uma estrura de grid (FORMGRID), portanto já é criada uma primeira linha
+				//branco automaticamente, desta forma começamos a inserir novas linhas a partir da 2ª vez
+
+				If nLinhaUJV > 1
+
+					// Incluimos uma nova linha de item
+
+					If  ( nLinhaErro := oAux:AddLine() ) <> nLinhaUJV
+
+						// Se por algum motivo o metodo AddLine() não consegue incluir a linha,
+						// ele retorna a quantidade de linhas já
+						// existem no grid. Se conseguir retorna a quantidade mais 1
+						lRetorno    := .F.
+						Exit
+
+					EndIf
+
+				EndIf
+
+				For nLinhaUJX := 1 To Len( aServAdicionais[nLinhaUJV] )
+
+					// Verifica se os campos passados existem na estrutura de item
+					If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aServAdicionais[nLinhaUJV][nLinhaUJX][1] ) } ) ) > 0
+
+						If !( lAux := oModelAptServico:SetValue( 'UJXDETAIL' , aServAdicionais[nLinhaUJV][nLinhaUJX][1], aServAdicionais[nLinhaUJV][nLinhaUJX][2] ) )
+
+							// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+							// o método SetValue retorna .F.
+							lRetorno    := .F.
+							nLinhaErro  := nLinhaUJV
+							Exit
+
+						EndIf
+
+					EndIf
+
+				Next nLinhaUJXnLinhaUJX
+
+				If !lRetorno
+					Exit
+				EndIf
+
+			Next nLinhaUJV
+
+		EndIf
+
+		// verifico se tenho a necessidade de fazer a inclusao de serviços adicionais
+		If lRetorno .And. Len(aSalaVelorio) > 0 .And. nOperacao <> 5
+
+			U25->(DbSetOrder(1))//U25_FILIAL+U25_CODIGO
+
+			// Intanciamos apenas a parte do modelo referente aos dados do item
+			oAux := oModelAptServico:GetModel( 'U25DETAIL' )
+
+			// Obtemos a estrutura de dados do item
+			oStruct := oAux:GetStruct()
+			aAux := oStruct:GetFields()
+
+			nLinhaErro  := 0
+
+			For nLinhaUJV := 1 To Len(aSalaVelorio)
+
+				// Incluímos uma linha nova
+				// ATENCAO: O itens são criados em uma estrura de grid (FORMGRID), portanto já é criada uma primeira linha
+				//branco automaticamente, desta forma começamos a inserir novas linhas a partir da 2ª vez
+
+				If nLinhaUJV > 1
+
+					// Incluimos uma nova linha de item
+
+					If  ( nLinhaErro := oAux:AddLine() ) <> nLinhaUJV
+
+						// Se por algum motivo o metodo AddLine() não consegue incluir a linha,
+						// ele retorna a quantidade de linhas já
+						// existem no grid. Se conseguir retorna a quantidade mais 1
+						lRetorno    := .F.
+						Exit
+
+					EndIf
+
+				EndIf
+
+				For nLinhaU25 := 1 To Len( aSalaVelorio[nLinhaUJV] )
+
+					// Verifica se os campos passados existem na estrutura de item
+					If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aSalaVelorio[nLinhaUJV][nLinhaU25][1] ) } ) ) > 0
+
+						If !( lAux := oModelAptServico:SetValue( 'U25DETAIL' , aSalaVelorio[nLinhaUJV][nLinhaU25][1], aSalaVelorio[nLinhaUJV][nLinhaU25][2] ) )
+
+							// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+							// o método SetValue retorna .F.
+							lRetorno    := .F.
+							nLinhaErro := nLinhaUJV
+							Exit
+
+						EndIf
+
+					EndIf
+
+				Next nLinhaU25
+
+				If !lRetorno
+					Exit
+				EndIf
+
+			Next nLinhaUJV
+
+		EndIf
+
+		If lRetorno
+
+			// Faz-se a validação dos dados, note que diferentemente das tradicionais "rotinas automáticas"
+			// neste momento os dados não são gravados, são somente validados.
+			If ( lRetorno := oModelAptServico:VldData() )
+
+				// Se o dados foram validados faz-se a gravação efetiva dos dados (commit)
+				lRetorno := oModelAptServico:CommitData()
+
+			EndIf
+
+		EndIf
+		
+		// se caso deu tudo certo ate aqui
+		if lRetorno .And. lEfetivaEndereco .And. nOperacao <> 5
+			
+			// efetivo o enderecamento
+			U_UConfEndereco( UJV->UJV_CODIGO, UJV->UJV_CONTRA )
+
+		endIf
+
+		If !lRetorno
+
+			// Se os dados não foram validados obtemos a descrição do erro para gerar LOG ou mensagem de aviso
+			aErro   := oModelAptServico:GetErrorMessage()
+
+			// A estrutura do vetor com erro é:
+			//  [1] Id do formulário de origem
+			//  [2] Id do campo de origem
+			//  [3] Id do formulário de erro
+			//  [4] Id do campo de erro
+			//  [5] Id do erro
+			//  [6] mensagem do erro
+			//  [7] mensagem da solução
+			//  [8] Valor atribuido
+			//  [9] Valor anterior
+
+			AutoGrLog( "Id do formulário de origem:" + ' [' + AllToChar( aErro[1]  ) + ']' )
+			AutoGrLog( "Id do campo de origem:     " + ' [' + AllToChar( aErro[2]  ) + ']' )
+			AutoGrLog( "Id do formulário de erro:  " + ' [' + AllToChar( aErro[3]  ) + ']' )
+			AutoGrLog( "Id do campo de erro:       " + ' [' + AllToChar( aErro[4]  ) + ']' )
+			AutoGrLog( "Id do erro:                " + ' [' + AllToChar( aErro[5]  ) + ']' )
+			AutoGrLog( "Mensagem do erro:          " + ' [' + AllToChar( aErro[6]  ) + ']' )
+			AutoGrLog( "Mensagem da solução:       " + ' [' + AllToChar( aErro[7]  ) + ']' )
+			AutoGrLog( "Valor atribuido:           " + ' [' + AllToChar( aErro[8]  ) + ']' )
+			AutoGrLog( "Valor anterior:            " + ' [' + AllToChar( aErro[9]  ) + ']' )
+
+			If nLinhaErro > 0
+				AutoGrLog( "Erro no Item:              " + ' [' + AllTrim( AllToChar( nLinhaErro  ) ) + ']' )
+			EndIf
+			
+			if lMostraErro
+				MostraErro()
+			else
+				cErrorLog := MostraErro("/temp")
+			endIf
+
+		EndIf
+
+		// Desativamos o Model
+		oModelAptServico:DeActivate()
+
+		//limpo objetos da memoria
+		FreeObj(oAux)
+		FreeObj(oStruct)
+		FreeObj(oModelAptServico)
+
+	EndIf
+
+Return(lRetorno)

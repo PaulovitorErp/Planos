@@ -1,0 +1,2506 @@
+#include "totvs.ch"
+#INCLUDE "tbiconn.CH"
+#INCLUDE "topconn.ch"
+#INCLUDE "protheus.ch"
+/*/{Protheus.doc} RegraTaxaManutencao
+Classe de regra de manutencao
+
+@type class
+@version 1.0
+@author g.sampaio
+@since 17/08/2020
+/*/
+Class RegraTaxaManutencao
+
+	Public Data aRegras         As Array
+	Public Data cOperRegra      As Character
+	Public Data lTemRegra       As Logical
+	Public Data nRegraMemoria	As Numeric
+
+	Public Method New() Constructor     	// metodo construtor
+	Public Method ValidaRegra()        		// metodo para validar a utilizacao da regra
+	Public Method ExecutaRegra()        	// metodo para executar a regra utilizada
+	Public Method ProvisionaRegra()     	// metodo para gerar o provisionamento da regra
+	Public Method EfetivaRegra()        	// metodo para efetivar a regra e gerar o financeiro da regra
+	Public Method ValidaReajuste()      	// metodo para validar se estou executando o reajuste do contrato
+	Public Method RetProxReajuste()     	// metodo para retornar a data do proximo reajuste
+	Public Method ExisteManutencao()    	// metodo para verificar se ja existe regra de manutencao para o contrato
+	Public Method RetValorIndice()      	// metodo para retornar a validade do indice de reajuste
+	Public Method ExcluiManutencao()    	// metodo para excluir os registros da taxa de manutencao
+	Public Method ValidaManutencao()    	// metodo para validar a taxa de menutencao antes da exclusao
+	Public Method RetDadosFinRegra()    	// metodo para retornar os dados financeiro da regra
+	Public Method RetValorCiclo()			// metodo para retornar o valor da taxa de manutencao no ciclo
+	Public Method AlteraDadosManutencao()	// metodo para alterar os dados da manutencao
+	Public Method AtualizaTaxaManutencao()	// metodo para atualizar a taxa de manutencao
+	Public Method RetPrazoQuitacao()		// metodo para atualizar a manutencao
+	Public Method ContratoQuitado()
+
+EndClass
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:New
+Metodo construtor 
+@type method
+@version 1.0
+@author g.sampaio
+@since 21/07/2020
+/*/
+Method New( cCodRegra, cRotina, cFormaPag ) Class RegraTaxaManutencao
+
+	Local aArea             as Array
+	Local aAreaU79          as Array
+	Local aAreaU80          as Array
+	Local aAreaU81          as Array
+	Local aFormasPagamento  as Array
+	Local aRegrasTaxas      as Array
+	Local cQuery            as Character
+
+	Default cCodRegra   := ""
+	Default cRotina     := ""
+	Default cFormaPag	:= ""
+
+	// defino o valor das variveis
+	Self:aRegras       := {}
+	Self:lTemRegra     := .F.
+	Self:cOperRegra    := ""
+	Self:nRegraMemoria := 0
+
+	// atribuo valor as variaveis
+	aArea             := GetArea()
+	aAreaU79          := U79->(GetArea())
+	aAreaU80          := U80->(GetArea())
+	aAreaU81          := U81->(GetArea())
+	aFormasPagamento  := {}
+	aRegrasTaxas      := {}
+	cQuery            := ""
+
+	// verifico qual operacao da rotina estou executando
+	if !Empty(cRotina)
+		Self:cOperRegra := cRotina // alimento a operacao
+	endIf
+
+	if Select("TRBREGRA") > 0
+		TRBREGRA->(DbCloseArea())
+	endIf
+
+	// query para retornar a regra
+	cQuery := " SELECT "
+	cQuery += " U79.U79_CODIGO, "
+	cQuery += " U79.U79_VLTAXA,"
+	cQuery += " U79.U79_CGERA, "
+	cQuery += " U79.U79_COBADI, "
+
+	If U79->(FieldPos("U79_TAXPRO")) > 0
+		cQuery += " 	U79.U79_TAXPRO, "
+	Else
+		cQuery += " 	'2' As U79_TAXPRO, "
+	EndIf
+
+	If U79->(FieldPos("U79_ATUCTR")) > 0
+		cQuery += " 	U79.U79_ATUCTR, "
+	Else
+		cQuery += " 	'2' As U79_ATUCTR, "
+	EndIf
+
+	If U79->(FieldPos("U79_CONIND")) > 0
+		cQuery += " 	U79.U79_CONIND, "
+	Else
+		cQuery += " 	'1' As U79_CONIND, "
+	EndIf
+
+	If U79->(FieldPos("U79_ATUDES")) > 0
+		cQuery += " 	U79.U79_ATUDES, "
+	Else
+		cQuery += " 	'1' As U79_ATUDES, "
+	EndIf
+
+	If U79->(FieldPos("U79_APQUIT")) > 0
+		cQuery += " 	U79.U79_APQUIT, "
+	Else
+		cQuery += " 	'2' As U79_APQUIT, "
+	EndIf
+
+	cQuery += " U80.U80_ITEM, "
+	cQuery += " U80.U80_FORMA, "
+	cQuery += " U80.U80_TPDESC,"
+	cQuery += " U80.U80_DESC,"
+	cQuery += " U81.U81_ITEM, "
+	cQuery += " U81.U81_VENCIM, "
+	cQuery += " U81.U81_QUANDO, "
+	cQuery += " U81.U81_QTDPAR, "
+	cQuery += " U81.U81_INTERV, "
+	cQuery += " U81.U81_CICLO, "
+	cQuery += " U81.U81_ATVINI, "
+	cQuery += " U81.U81_ATVFIM, "
+	cQuery += " U81.U81_GERACA "
+	cQuery += " FROM " + RetSqlName("U79") + " U79 "
+	cQuery += " INNER JOIN " + RetSqlName("U80") + " U80 ON U80.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U79.U79_FILIAL = U80.U80_FILIAL "
+	cQuery += " AND U79.U79_CODIGO = U80.U80_CODIGO  "
+	cQuery += " INNER JOIN " + RetSqlName("U81") + " U81 ON U81.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U81.U81_FILIAL = U80.U80_FILIAL "
+	cQuery += " AND U81.U81_CODIGO = U80.U80_CODIGO "
+	cQuery += " AND U81.U81_ITEMFO = U80.U80_ITEM "
+	cQuery += " WHERE U79.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U79.U79_FILIAL = '" + xFilial("U79") + "' "
+
+	// caso o codigo da regra preenchido
+	if !Empty(cCodRegra)
+		cQuery += " AND U79.U79_CODIGO = '" + AllTrim(cCodRegra) + "'"
+	endIf
+
+	If !Empty(cFormaPag)
+		cQuery += " AND U80.U80_FORMA = '" + AllTrim(cFormaPag) + "' "
+	EndIf
+
+	// operacao aonde se encontra a regra
+	if Self:cOperRegra == "A" // regra na ativacao
+		If U79->(FieldPos("U79_APQUIT")) > 0
+			cQuery += " AND (U79.U79_CGERA = '1' OR U79.U79_APQUIT = '1') "
+		Else
+			cQuery += " AND U79.U79_CGERA = '1' "
+		EndIf
+	elseIf Self:cOperRegra == "E" // regra no enderecamento
+		cQuery += " AND U79.U79_CGERA IN ('2','3') "
+	endIf
+
+	// orgeno pelo codigo da regra e forma de pagamento
+	cQuery += " ORDER BY U79.U79_CODIGO, U80.U80_FORMA "
+
+	MPSysOpenQuery(cQuery, "TRBREGRA")
+
+	While TRBREGRA->(!Eof())
+
+		// preencho a regra de taxa de manutencao
+		Aadd( Self:aRegras, {  TRBREGRA->U79_CODIGO,;  // [01] Codigo da Regra
+		TRBREGRA->U80_ITEM,;        // [02] Item da Forma de Pagamento
+		TRBREGRA->U80_FORMA,;       // [03] Forma de pagamento
+		Round(TRBREGRA->U80_DESC, 2),;        // [04] Desconto no valor para a forma de pagamento
+		TRBREGRA->U81_ITEM,;        // [05] Item da Regra de Negociação
+		TRBREGRA->U79_CGERA,;       // [06] Como é gerado a Taxa de Manutenção
+		TRBREGRA->U81_VENCIM,;      // [07] Dia da Data de Vencimento da Taxa de Manutenção
+		TRBREGRA->U81_QUANDO,;      // [08] Quantidade de meses após o endereçamento para gerar a taxa de manutencao
+		TRBREGRA->U81_QTDPAR,;      // [09] Quantidade de parcelas geradas por intervalo
+		TRBREGRA->U81_INTERV,;      // [10] Intervalo de meses entre as parcelas
+		TRBREGRA->U81_ATVINI,;      // [11] Mês inicial
+		TRBREGRA->U81_ATVFIM,;      // [12] Mês Final
+		TRBREGRA->U81_GERACA,;      // [13] Mês Geraação da Taxa de Manutençaõ
+		TRBREGRA->U81_CICLO,;       // [14] Ciclo Taxa de Manutencao
+		TRBREGRA->U79_VLTAXA,;      // [15] Valor da Taxa (1-Valor da Parcela ou 2-Valor Total da Taxa)
+		TRBREGRA->U80_TPDESC,;    	// [16] Tipo de Desconto
+		TRBREGRA->U79_COBADI,; 		// [17] % de Cobranca Adicional
+		TRBREGRA->U79_TAXPRO,; 		// [18] 1=considera a taxa que esta no produto(plano);2=Nao considera a taxa que esta no produto(plano)
+		TRBREGRA->U79_ATUCTR,; 		// [19] 1=Atualiza Manutencao no contrato;2=Nao atualiza manutencao no contrato
+		TRBREGRA->U79_CONIND,;		// [20] 1=considera indice;2=Nao considera indice
+		TRBREGRA->U79_ATUDES,; 		// [21] 1=Atualiza desconto;2=Nao atualiza desconto
+		TRBREGRA->U79_APQUIT}) 		// [22] 1=Apos Quitacao;2=Nao gera apos quitacao
+		TRBREGRA->(DbSkip())
+	EndDo
+
+	// verifico se teve regra preenchida
+	if Len(Self:aRegras)
+		Self:lTemRegra := .T. // caso tenham regras
+	endIf
+
+	if Select("TRBREGRA") > 0
+		TRBREGRA->(DbCloseArea())
+	endIf
+
+	RestArea(aAreaU79)
+	RestArea(aAreaU80)
+	RestArea(aAreaU81)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ValidaRegra
+Funcoa para validar a regra do contrato
+@type method
+@version 1.0
+@author g.sampaio
+@since 14/08/2020
+@param cContrato, character, codigo do contrato
+@param dPrimVencimento, Date, Data de vencimento da primeira parcela do ciclo atual
+@param lPrimeiraTaxa, logical, define se esta na ativacao(geracao) da primeira manutencao
+@return logical, retorna se esta tudo certo
+/*/
+Method ValidaRegra( cContrato, dPrimVencimento, lPrimeiraTaxa, nValorTaxa, lReajuste, cProximaManutencao ) Class RegraTaxaManutencao
+
+	Local aArea 		    	As Array
+	Local aAreaU00		    	As Array
+	Local aFormasPagamento  	As Array
+	Local aRegrasTaxas      	As Array
+	Local cFormaPagamento   	As Character
+	Local cCodProvisionamento	As Character
+	Local lRetorno		    	As Logical
+	Local lAtivaRegra	    	As Logical
+	Local nPosRegra         	As Numeric
+
+	Default cContrato	    	:= ""
+	Default dPrimVencimento		:= Stod("")
+	Default lPrimeiraTaxa		:= .F.
+	Default nValorTaxa			:= 0
+	Default lReajuste			:= .F.
+	Default cProximaManutencao	:= ""
+
+	// atribuo valores as variaveis
+	aArea 		        := GetArea()
+	aAreaU00		    := U00->(GetArea())
+	aFormasPagamento    := {}
+	aRegrasTaxas        := {}
+	cFormaPagamento     := ""
+	cCodProvisionamento := ""
+	lRetorno		    := .T.
+	lAtivaRegra	        := SuperGetMv("MV_XREGCEM",,.F.)	// parametro para ativacao da regra
+	nPosRegra           := 0
+
+	// verifico se utilizo a regra para taxa de manutencao
+	if lAtivaRegra
+
+		// posiciono no contrato
+		U00->(DbSetOrder(1))
+		if U00->( MSSeek( xFilial("U00")+cContrato ) )
+
+			// verifico se a forma de pagamento da taxa de manutencao esta preenchida
+			if !Empty(U00->U00_FPTAXA)
+				cFormaPagamento     := U00->U00_FPTAXA
+			else // caso nao estiver pego a forma de pagamento do contrato
+				cFormaPagamento     := U00->U00_FORPG
+			endIf
+
+			if !Empty(U00->U00_INDMAN)
+
+				// verifico se o campo de regra esta preenchido
+				if !Empty(U00->U00_REGRA) .And. !Empty(cFormaPagamento)
+
+					// pego a regra de taxa de manutencao e forma de pagamento utilizada
+					nPosRegra := Ascan( Self:aRegras, { |x| x[1] == U00->U00_REGRA .and. AllTrim(x[3]) == AllTrim(cFormaPagamento)  } )
+
+				endIf
+
+			else
+				lRetorno := .F.
+			endIf
+
+
+			// verifico se tenho regra e forma de pagamento preenchida
+			if nPosRegra > 0
+
+				If !Self:ExisteManutencao(cContrato, Nil, @cCodProvisionamento)
+
+					// vou executar a regra
+					lRetorno := Self:ExecutaRegra( U00->U00_CODIGO, nPosRegra, dPrimVencimento, lPrimeiraTaxa, nValorTaxa, lReajuste, cProximaManutencao)
+
+				ElseIf Self:cOperRegra == "E" .And. Self:aRegras[nPosRegra, 22] == "1"// caso nao tenha posicionado no contrato
+
+					U26->(DbSetOrder(1))
+					If U26->(MSSeek( xFilial("U26")+cCodProvisionamento )) .And. U26->U26_STATUS == "1"
+						if U26->( RecLock("U26", .F.) )
+							U26->U26_STATUS := "3" // finalizada
+							U26->( MsUnLock() )
+						endIf
+
+						// vou executar a regra
+						lRetorno := Self:ExecutaRegra( U00->U00_CODIGO, nPosRegra, dPrimVencimento, lPrimeiraTaxa, nValorTaxa, lReajuste, cProximaManutencao)
+
+					Else
+						lRetorno := .F.
+					EndIf
+
+				else // caso nao tenha posicionado no contrato ou ja exista regra ativa
+					lRetorno := .F.
+				endIf
+
+			else // caso nao tenha achado regra compativel
+				lRetorno := .F.
+			endIf
+
+		else // caso nao tenha posicionado no contrato ou ja exista regra ativa
+			lRetorno := .F.
+		endIf
+
+	else // caso a regra nao estiver ativa
+		lRetorno := .F.
+	endIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ExecutaRegra
+Metodo para executar a regra de manutencao
+@type method
+@version 1.0
+@author g.sampaio
+@since 19/08/2020
+@param cCodContrato, character, codigo do contrato
+@param nPosRegra, Numeric, Posicao da regra do contrato
+@param dPrimVencimento, Date, Data de Primeiro vencimento da parcela do ciclo atual=
+@return logical, retorna se executou a regra sem problemas
+/*/
+Method ExecutaRegra( cCodContrato, nPosRegra, dPrimVencimento, lPrimeiraTaxa, nValorTaxa, lReajuste, cProximaManutencao) Class RegraTaxaManutencao
+
+	Local aArea                 as Array
+	Local aAreaU00              as Array
+	Local aDadosFin             as Array
+	Local cDiaVenci             as Character
+	Local cProxReaj             as Character
+	Local cCodProvisionamento   as Character
+	Local cGeracao              as Character
+	Local dDataAtivacao         as Date
+	Local dDataAux				as Date
+	Local lContinua             as Logical
+	Local lRetorno              as Logical
+	Local lMsgIndice            as Logical
+	Local nValCobAdic			as Numeric
+	Local nCobAdic				as Numeric
+	Local nRegra                as Numeric
+	Local nParcela              as Numeric
+	Local nValAdic              as Numeric
+	Local nIndice               as Numeric
+	Local nDesconto             as Numeric
+
+	Default cCodContrato    	:= ""
+	Default nPosRegra       	:= 1
+	Default dPrimVencimento		:= Stod("")
+	Default lPrimeiraTaxa		:= .F.
+	Default nValorTaxa			:= 0
+	Default lReajuste			:= .F.
+	Default cProximaManutencao	:= ""
+
+	// atribuo valores para as variaveis
+	aArea                   := GetArea()
+	aAreaU00                := U00->( GetArea() )
+	aDadosFin               := {}
+	cDiaVenci               := ""
+	cProxReaj               := ""
+	cCodProvisionamento     := ""
+	cGeracao                := ""
+	dDataAtivacao           := Stod("")
+	dDataAux           		:= Stod("")
+	lRetorno                := .T.
+	lContinua               := .T.
+	lMsgIndice              := .T.
+	nRegra                  := 0
+	nParcela                := 0
+	nValAdic                := 0
+	nIndice                 := 0
+	nDesconto               := 0
+	nValCobAdic				:= 0
+	nCobAdic				:= 0
+
+	// posiciono no cadastro do contrato
+	U00->(DbSetOrder(1))
+	If U00->( MSSeek( xFilial("U00")+cCodContrato ) )
+
+		// informacoes do contrrato
+		cIndice             := U00->U00_INDMAN
+		cRegra              := U00->U00_REGRA
+		dDataAtivacao       := U00->U00_DTATIV
+
+		// verifico se a forma de pagamento da taxa de manutencao esta preenchida
+		if !Empty(U00->U00_FPTAXA)
+			cFormaPagamento     := U00->U00_FPTAXA
+		else // caso nao estiver pego a forma de pagamento do contrato
+			cFormaPagamento     := U00->U00_FORPG
+		endIf
+
+		// percorro o array de regras
+		For nRegra := nPosRegra To Len(Self:aRegras)
+
+			// reinicio as variaveis
+			aDadosFin   := {}
+			nValorTaxa  := Round(If(nValorTaxa > 0, nValorTaxa, U00->U00_TXMANU + U00->U00_ADIMNT), 2)
+			cDiaVenci   := ""
+			cProxReaj   := ""
+			dDataVencto := Stod("")
+			nIndice     := 0
+			nValAdic    := 0
+			nDesconto   := 0
+
+			// se a operacao estiver sem conteudo
+			if Empty(Self:cOperRegra)
+				if Self:aRegras[nRegra, 6] == "1" // ativacao
+					Self:cOperRegra := "A"
+				elseIf Self:aRegras[nRegra, 6] $ "2/3" // aniversario e apos o enderecamento
+					Self:cOperRegra := "E"
+				endIf
+			endIf
+
+			// tratamento para o desconto
+			if Self:aRegras[nRegra, 16] == "1" // percentual
+				nDesconto := Round(nValorTaxa * (Self:aRegras[nRegra, 4]/100), 2)
+			elseIf Self:aRegras[nRegra, 16] == "2" // valor da taxa
+				nDesconto :=  Round(Self:aRegras[nRegra, 4], 2)
+			endIf
+
+			// verifico se tem desconto a ser aplicado
+			if nDesconto > 0
+				nValorTaxa := Round(nValorTaxa - nDesconto, 2) // aplico o desconto sobre a taxa de manutencao
+			endIf
+
+			// pelo o valor do indice para reajuste
+			If !IsInCallStack("U_RCPGE055") .And. !IsInCallStack("AtualizaTaxaManutencao")
+				lContinua := Self:RetValorIndice( cIndice, @nIndice, @lMsgIndice )
+			endif
+
+			// verifico se esta tudo certo para continuar
+			if lContinua
+
+				// valido se estou executando o reajuste de contrato
+				If lReajuste .And. Self:ValidaReajuste( cCodContrato )
+
+					// valor adicional quando for reajuste
+					nValAdic := nValorTaxa  * (nIndice / 100)
+
+				EndIf
+
+				// pego o dia do vencimento
+				if Self:aRegras[nRegra, 7] > 0
+
+					// dia de vencimento
+					cDiaVenci   := StrZero( Self:aRegras[nRegra, 7], 2 )
+
+				else // caso eu utilizo a data de vencimento do contrato
+
+					// verifico se o primeiro vencimento esta preenchido
+					cDiaVenci :=  SubStr( Dtos(U00->U00_PRIMVE), 7, 2 )
+
+				endIf
+
+				// verifico o primeiro mes de vencimento
+				if !Empty(dPrimVencimento)
+					dDataAux := dPrimVencimento
+				elseif Self:aRegras[nRegra, 8] > 0 // verifico se o campo quando esta preenchido
+					dDataAux := MonthSum( dDataBase, Self:aRegras[nRegra, 8] )
+				else
+					dDataAux := MonthSum( dDataBase, 1 )
+				endIf
+
+				// caso o dia de vencimento for maior que o ultimo do mes
+				if Val(cDiaVenci) > Last_Day(dDataAux)
+					cDiaVenci := StrZero(Last_Day(dDataAux), 2)
+				endIf
+
+				//===================================================
+				// ativacao do contrato
+				//===================================================
+
+				// verifico quando sera gerada a taxa de manutencao
+				if lContinua .And. Self:aRegras[nRegra, 1] == cRegra .And. AllTrim(Self:aRegras[nRegra, 3]) == AllTrim(cFormaPagamento);
+						.And. Self:aRegras[nRegra, 6] == "1" .And. Self:cOperRegra == "A"  // ativacao do contrato
+
+					// pego o primeiro vencimento
+					if !Empty(dPrimVencimento)
+						dDataVencto := dPrimVencimento
+					else
+						dDataVencto := Stod( AnoMes( dDataBase ) + cDiaVenci )
+
+						// incremento a data do vencimento
+						if Self:aRegras[nRegra, 8] > 0 // verifico se o campo quando esta preenchido
+							dDataVencto := MonthSum( dDataVencto, Self:aRegras[nRegra, 8] )
+						else
+							dDataVencto := MonthSum( dDataVencto, 1 )
+						endIf
+
+					endif
+
+					// pego quando é o proximo reajuste
+					If Empty(cProximaManutencao)
+						cProxReaj   := Self:RetProxReajuste( nRegra, .F., dDataVencto, .T. )
+					Else
+						cProxReaj := cProximaManutencao
+					EndIf
+
+					// pego os dados do financeiro
+					aDadosFin := Self:RetDadosFinRegra( cCodContrato, @nValorTaxa, dDataVencto, nRegra, cDiaVenci, @nCobAdic, @nValCobAdic )
+
+					// faco o provisionamento da regra
+					lContinua := Self:ProvisionaRegra( cCodContrato, cIndice, cRegra, Self:aRegras[nRegra, 6], cFormaPagamento,;
+						nIndice, nValorTaxa, nValAdic, cProxReaj, aDadosFin, @cCodProvisionamento, lReajuste, U00->U00_TXMANU + U00->U00_ADIMNT,;
+						nDesconto, lPrimeiraTaxa, Self:aRegras[nRegra, 15], nCobAdic, nValCobAdic)
+
+					// verifico se conseguiu provisionar corretamente
+					if lContinua
+
+						// gero o financeiro da regra
+						If !IsInCallStack("RCPGE055") .And. !IsInCallStack("RCPGE044") .And. !IsInCallStack("AtualizaTaxaManutencao")
+							lContinua := Self:EfetivaRegra( cCodProvisionamento )
+						EndIf
+
+					endIf
+
+					// saio do laco
+					Exit
+
+					//===================================================
+					// aniversario do contrato
+					//===================================================
+
+				elseIf lContinua .And. Self:aRegras[nRegra, 1] == cRegra .And. AllTrim(Self:aRegras[nRegra, 3]) == AllTrim(cFormaPagamento);
+						.And. Self:aRegras[nRegra, 6] == "2" .And. Self:cOperRegra == "E" .And. ( Month(dDataAtivacao) >= Val(Self:aRegras[nRegra, 11]) .And. Month(dDataAtivacao) <= Val(Self:aRegras[nRegra, 12]) ) // aniversario do contrato
+
+					if !Empty(dPrimVencimento)
+						dDataVencto := dPrimVencimento
+					else
+						// pego o mes de geracao
+						cGeracao    := Self:aRegras[nRegra, 13]
+
+						// pego o primeiro vencimento - Ano da Database + Mes de Geracao + o dia de vencimento
+						// caso o mes de geracao for menor que o mes da data base gero no proximo ano
+						if Val(cGeracao) < Month(dDataBase)
+							dDataVencto := Stod( cValToChar( Year( Yearsum(dDataBase, 1) ) ) + StrZero( Val(cGeracao), 2) + cDiaVenci )
+						else // gero a taxa de manutencao no ano corrente
+							dDataVencto := Stod( cValToChar( Year( dDataBase )) + StrZero( Val(cGeracao), 2) + cDiaVenci )
+						EndIf
+
+					endif
+
+					// pego quando é o proximo reajuste
+					If Empty(cProximaManutencao)
+						cProxReaj   := Self:RetProxReajuste( nRegra, .F., dDataVencto )
+					Else
+						cProxReaj := cProximaManutencao
+					EndIf
+
+					// pego os dados do financeiro
+					aDadosFin := Self:RetDadosFinRegra( cCodContrato, @nValorTaxa, dDataVencto, nRegra, cDiaVenci, @nCobAdic, @nValCobAdic )
+
+					// faco o provisionamento da regra
+					lContinua := Self:ProvisionaRegra( cCodContrato, cIndice, cRegra, Self:aRegras[nRegra, 6], cFormaPagamento,;
+						nIndice, nValorTaxa, nValAdic, cProxReaj, aDadosFin, "", lReajuste, U00->U00_TXMANU + U00->U00_ADIMNT,;
+						nDesconto, lPrimeiraTaxa, Self:aRegras[nRegra, 15], nCobAdic, nValCobAdic)
+
+					// saio do laco
+					Exit
+
+					//===================================================
+					// após o endereçamento
+					//===================================================
+
+				elseIf lContinua .And. Self:aRegras[nRegra, 1] == cRegra .And. AllTrim(Self:aRegras[nRegra, 3]) == AllTrim(cFormaPagamento);
+						.And. Self:aRegras[nRegra, 6] == "3" .And. (Self:cOperRegra == "E" .Or. Self:aRegras[nRegra, 22] == "1") // após o endereçamento
+
+					if !Empty(dPrimVencimento)
+						dDataVencto := dPrimVencimento
+					else
+
+						if Val(cDiaVenci) > Last_Day(dDataBase)
+							cDiaVenci := cValToChar(Last_Day(dDataBase))
+						endif
+						// pego o primeiro vencimento
+						dDataVencto := Stod( AnoMes( dDataBase ) + cDiaVenci )
+
+						if Self:aRegras[nRegra, 8] > 0 // verufuci se o campo quando esta preenchido
+							dDataVencto := MonthSum( dDataVencto, Self:aRegras[nRegra, 8] )
+						else
+							dDataVencto := MonthSum( dDataVencto, 1 )
+						endIf
+
+					endif
+
+					// pego quando é o proximo reajuste
+					If Empty(cProximaManutencao)
+						cProxReaj  := Self:RetProxReajuste( nRegra, .F., dDataVencto )
+					Else
+						cProxReaj := cProximaManutencao
+					EndIf
+
+					// pego os dados do financeiro
+					aDadosFin := Self:RetDadosFinRegra( cCodContrato, @nValorTaxa, dDataVencto, nRegra, cDiaVenci, @nCobAdic, @nValCobAdic )
+
+					// faco o provisionamento da regra
+					lContinua := Self:ProvisionaRegra( cCodContrato, cIndice, cRegra, Self:aRegras[nRegra, 6], cFormaPagamento,;
+						nIndice, nValorTaxa, nValAdic, cProxReaj, aDadosFin, "", lReajuste, U00->U00_TXMANU + U00->U00_ADIMNT,;
+						nDesconto, lPrimeiraTaxa, Self:aRegras[nRegra, 15], nCobAdic, nValCobAdic)
+
+					// saio do laco
+					Exit
+
+				endIf
+
+			endIf
+
+		Next nRegra
+
+		// retorno se deu tudo certo
+		lRetorno := lContinua
+
+	EndIf
+
+	RestArea( aAreaU00 )
+	RestArea( aArea )
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ProvisionaRegra
+Metodo para gerar o provisionamento da regra
+@type method
+@version 1.0
+@author g.sampaio
+@since 20/08/2020
+@param cContrato, Character, codigo do contrato
+@param cIndice, Character, codigo do indice
+@param cRegra, Character, codigo da regra
+@param nIndice, numeric, codigo do indice
+@param nTaxa, numeric, valor da taxa de manutencao
+@param nValAdic, numeric, valor adicional da manutencao
+@param cProxReaj, Character, proximo reajuste da manutencao
+@param aDadosFin, array, dados financeiro da manutencao
+@param cCodProvisionamento, Character, codigo do historico da taxa de manutencao
+@return logical, retorno se deu tudo certo
+/*/
+	Method ProvisionaRegra( cContrato, cIndice, cRegra, cComoGera, cFormaPagamento, nIndice,;
+		nTaxa, nValAdic, cProxReaj, aDadosFin, cCodProvisionamento, lReajuste,;
+		nValorTxBruto, nDesconto, lPrimeiraTaxa, cTipoVLTaxa, nCobAdic, nValCobAdic ) Class RegraTaxaManutencao
+
+	Local aArea 		as Array
+	Local aAreaU26 		as Array
+	Local aAreaU27 		as Array
+	Local aAreaU79		as Array
+	Local aCpoMaster	as Array
+	Local aLinha		as Array
+	Local aCpoDetail	as Array
+	Local aAux	   		as Array
+	Local cMaster 		as Character
+	Local cDetail		as Character
+	Local cItem 		as Character
+	Local lAux     		as Logical
+	Local lRetorno  	as Logical
+	Local nX			as Numeric
+	Local nI       		as Numeric
+	Local nJ       		as Numeric
+	Local nPos     		as Numeric
+	Local nItErro  		as Numeric
+	Local oModel  		as Object
+	Local oAux          as Object
+	Local oStruct       as Object
+
+	// valores default
+	Default cContrato           := ""
+	Default cIndice             := ""
+	Default cRegra              := ""
+	Default cComoGera           := ""
+	Default cFormaPagamento     := ""
+	Default nIndice             := ""
+	Default nTaxa               := ""
+	Default nValorAdic          := 0
+	Default cProxReaj           := ""
+	Default aDadosFin           := {}
+	Default cCodProvisionamento := ""
+	Default lReajuste           := .F.
+	Default nValorTxBruto       := 0
+	Default nDesconto           := 0
+	Default lPrimeiraTaxa		:= .F.
+	Default cTipoVLTaxa			:= ""
+	Default nCobAdic			:= 0
+	Default nValCobAdic			:= 0
+
+	// atribuo valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU26	:= U26->(GetArea())
+	aAreaU27	:= U27->(GetArea())
+	aAreaU79	:= U79->(GetArea())
+	aCpoMaster	:= {}
+	aLinha		:= {}
+	aCpoDetail	:= {}
+	aAux	   	:= {}
+	cMaster 	:= "U26"
+	cDetail		:= "U27"
+	cItem 		:= PADL("1",TamSX3("U27_ITEM")[1],"0")
+	lAux     	:= .T.
+	lRet     	:= .T.
+	nX			:= 1
+	nI       	:= 0
+	nJ       	:= 0
+	nPos     	:= 0
+	nItErro  	:= 0
+	oModel  	:= FWLoadModel("RCPGA023") // instanciamento do modelo de dados
+	oAux        := Nil
+	oStruct     := Nil
+
+	U79->(DbSelectArea(1))
+	If U79->(MsSeek(xFilial("U79") + cRegra))
+
+		// pego o proximo codigo
+		cCodProvisionamento := U_GetProxNumeroU26()
+
+		If U79->(FieldPos("U79_APQUIT")) > 0
+			If Self:cOperRegra == "A" .And. U79->U79_CGERA == "3" .And. U79->U79_APQUIT == "1"
+				lPrimeiraTaxa := .T.
+			EndIf
+		EndIf
+
+		// cabecalho do historico
+		Aadd(aCpoMaster,{"U26_FILIAL"	, xFilial("U26")	    })
+		Aadd(aCpoMaster,{"U26_CODIGO"	, cCodProvisionamento   })
+		Aadd(aCpoMaster,{"U26_DATA"		, dDataBase			    })
+		Aadd(aCpoMaster,{"U26_CONTRA"	, cContrato			    })
+		Aadd(aCpoMaster,{"U26_TPINDI"	, cIndice		    	})
+		
+		If lPrimeiraTaxa .Or. Self:cOperRegra == "A"
+			Aadd(aCpoMaster,{"U26_INDICE"	, 0			    		})
+		Else
+			Aadd(aCpoMaster,{"U26_INDICE"	, nIndice			    })
+		EndIf
+
+		Aadd(aCpoMaster,{"U26_TXBRU"	, nValorTxBruto			})
+		Aadd(aCpoMaster,{"U26_VLDESC"	, nDesconto				})
+		Aadd(aCpoMaster,{"U26_TAXA"		, nTaxa					})
+		Aadd(aCpoMaster,{"U26_VLADIC"	, nValAdic			    })
+		Aadd(aCpoMaster,{"U26_PROMAN"	, AllTrim(cProxReaj)	})
+		Aadd(aCpoMaster,{"U26_REGRA"	, cRegra			    })
+		Aadd(aCpoMaster,{"U26_FORPG"	, cFormaPagamento	    })
+		Aadd(aCpoMaster,{"U26_STATUS"	, "1"			        })
+		Aadd(aCpoMaster,{"U26_CGERA"	, cComoGera 	        })
+
+		If U26->(FieldPos("U26_VLTAXA")) > 0
+			Aadd(aCpoMaster,{"U26_VLTAXA"	, cTipoVLTaxa 	        })
+		EndIf
+
+		If U26->(FieldPos("U26_COBADI")) > 0
+			Aadd(aCpoMaster,{"U26_COBADI"	, nCobAdic 	        })
+		EndIf
+
+		If U26->(FieldPos("U26_VLCBAD")) > 0
+			Aadd(aCpoMaster,{"U26_VLCBAD"	, nValCobAdic        })
+		EndIf
+
+		If U26->(FieldPos("U26_TAXPRO")) > 0
+			Aadd(aCpoMaster,{"U26_TAXPRO"	, U79->U79_TAXPRO        })
+		EndIf
+
+		If U26->(FieldPos("U26_ATUCTR")) > 0
+			Aadd(aCpoMaster,{"U26_ATUCTR"	, U79->U79_ATUCTR        })
+		EndIf
+
+		If U26->(FieldPos("U26_CONIND")) > 0
+			Aadd(aCpoMaster,{"U26_CONIND"	, U79->U79_CONIND        })
+		EndIf
+
+		If U26->(FieldPos("U26_ATUDES")) > 0
+			Aadd(aCpoMaster,{"U26_ATUDES"	, U79->U79_AUTDES        })
+		EndIf
+
+		If U26->(FieldPos("U26_APQUIT")) > 0
+			Aadd(aCpoMaster,{"U26_APQUIT"	, U79->U79_APQUIT        })
+		EndIf
+
+		If !lPrimeiraTaxa .Or. (lPrimeiraTaxa .And. cComoGera == "1")
+
+			// faco o provisionamento do financeiro
+			For nX := 1 To Len(aDadosFin)
+
+				aLinha := {}
+
+				// preencho o array de itens
+				Aadd(aLinha,{"U27_FILIAL"	, xFilial("U27")	    })
+				Aadd(aLinha,{"U27_ITEM"		, cItem				    })
+				Aadd(aLinha,{"U27_PREFIX"	, aDadosFin[nX,1]		})
+				Aadd(aLinha,{"U27_NUM"		, aDadosFin[nX,2]		})
+				Aadd(aLinha,{"U27_PARCEL"	, aDadosFin[nX,3]		})
+				Aadd(aLinha,{"U27_TIPO"		, aDadosFin[nX,4]		})
+				Aadd(aLinha,{"U27_VALOR"	, aDadosFin[nX,5]		})
+				Aadd(aLinha,{"U27_VENC"		, aDadosFin[nX,6]		})
+				Aadd(aCpoDetail,aLinha)
+
+				// incremento o item
+				cItem := SOMA1(cItem)
+
+			Next nX
+
+		endIf
+
+	EndIf
+
+	(cDetail)->(DbSetOrder(1))
+	(cMaster)->(DbSetOrder(1))
+
+	// defino a operação de inclusão
+	oModel:SetOperation(3)
+
+	// Antes de atribuirmos os valores dos campos temos que ativar o modelo
+	lRetorno := oModel:Activate()
+
+	If lRetorno
+
+		// Instanciamos apenas a parte do modelo referente aos dados de cabeçalho
+		oAux := oModel:GetModel( cMaster + 'MASTER' )
+
+		// Obtemos a estrutura de dados do cabeçalho
+		oStruct := oAux:GetStruct()
+		aAux := oStruct:GetFields()
+
+		If lRetorno
+
+			For nI := 1 To Len(aCpoMaster)
+
+				// Verifica se os campos passados existem na estrutura do cabeçalho
+				If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aCpoMaster[nI][1] ) } ) ) > 0
+
+					// È feita a atribuicao do dado aos campo do Model do cabeçalho
+					If !( lAux := oModel:SetValue( cMaster + 'MASTER', aCpoMaster[nI][1], aCpoMaster[nI][2] ) )
+
+						// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+						// o método SetValue retorna .F.
+						lRetorno    := .F.
+						Exit
+
+					EndIf
+
+				EndIf
+
+			Next nI
+
+		EndIf
+
+	EndIf
+
+	// verifico se esta tudo certo
+	If lRetorno .And. Len(aCpoDetail) > 0
+
+		// Intanciamos apenas a parte do modelo referente aos dados do item
+		oAux := oModel:GetModel( cDetail + 'DETAIL' )
+
+		// Obtemos a estrutura de dados do item
+		oStruct := oAux:GetStruct()
+		aAux := oStruct:GetFields()
+
+		nItErro  := 0
+
+		For nI := 1 To Len(aCpoDetail)
+
+			// Incluímos uma linha nova
+			// ATENCAO: O itens são criados em uma estrura de grid (FORMGRID), portanto já é criada uma primeira linha
+			//branco automaticamente, desta forma começamos a inserir novas linhas a partir da 2ª vez
+
+			If nI > 1
+
+				// Incluimos uma nova linha de item
+
+				If  ( nItErro := oAux:AddLine() ) <> nI
+
+					// Se por algum motivo o metodo AddLine() não consegue incluir a linha,
+					// ele retorna a quantidade de linhas já
+					// existem no grid. Se conseguir retorna a quantidade mais 1
+					lRetorno    := .F.
+					Exit
+
+				EndIf
+
+			EndIf
+
+			For nJ := 1 To Len( aCpoDetail[nI] )
+
+				// Verifica se os campos passados existem na estrutura de item
+				If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aCpoDetail[nI][nJ][1] ) } ) ) > 0
+
+					If !( lAux := oModel:SetValue( cDetail + 'DETAIL', aCpoDetail[nI][nJ][1], aCpoDetail[nI][nJ][2] ) )
+
+						// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+						// o método SetValue retorna .F.
+						lRetorno    := .F.
+						nItErro := nI
+						Exit
+
+					EndIf
+
+				EndIf
+
+			Next nJ
+
+			If !lRetorno
+				Exit
+			EndIf
+
+		Next nI
+
+	EndIf
+
+	If lRetorno
+
+		// Faz-se a validação dos dados, note que diferentemente das tradicionais "rotinas automáticas"
+		// neste momento os dados não são gravados, são somente validados.
+		If ( lRetorno := oModel:VldData() )
+
+			// Se o dados foram validados faz-se a gravação efetiva dos dados (commit)
+			lRetorno := oModel:CommitData()
+
+		EndIf
+
+	EndIf
+
+	// caso esteja tudo certo
+	if lRetorno
+
+		// codigo do provisionamento
+		cCodProvisionamento := U26->U26_CODIGO
+
+	else // nao conseguiu gerar o proviosionamento
+
+		cCodProvisionamento := ""
+
+		// Se os dados não foram validados obtemos a descrição do erro para gerar LOG ou mensagem de aviso
+		aErro   := oModel:GetErrorMessage()
+
+		// A estrutura do vetor com erro é:
+		//  [1] Id do formulário de origem
+		//  [2] Id do campo de origem
+		//  [3] Id do formulário de erro
+		//  [4] Id do campo de erro
+		//  [5] Id do erro
+		//  [6] mensagem do erro
+		//  [7] mensagem da solução
+		//  [8] Valor atribuido
+		//  [9] Valor anterior
+
+		AutoGrLog( "Id do formulário de origem:" + ' [' + AllToChar( aErro[1]  ) + ']' )
+		AutoGrLog( "Id do campo de origem:     " + ' [' + AllToChar( aErro[2]  ) + ']' )
+		AutoGrLog( "Id do formulário de erro:  " + ' [' + AllToChar( aErro[3]  ) + ']' )
+		AutoGrLog( "Id do campo de erro:       " + ' [' + AllToChar( aErro[4]  ) + ']' )
+		AutoGrLog( "Id do erro:                " + ' [' + AllToChar( aErro[5]  ) + ']' )
+		AutoGrLog( "Mensagem do erro:          " + ' [' + AllToChar( aErro[6]  ) + ']' )
+		AutoGrLog( "Mensagem da solução:       " + ' [' + AllToChar( aErro[7]  ) + ']' )
+		AutoGrLog( "Valor atribuido:           " + ' [' + AllToChar( aErro[8]  ) + ']' )
+		AutoGrLog( "Valor anterior:            " + ' [' + AllToChar( aErro[9]  ) + ']' )
+
+		If nItErro > 0
+			AutoGrLog( "Erro no Item:              " + ' [' + AllTrim( AllToChar( nItErro  ) ) + ']' )
+		EndIf
+
+		MostraErro()
+
+	EndIf
+
+	// Desativamos o Model
+	oModel:DeActivate()
+
+	//limpo objetos da memoria
+	FreeObj(oAux)
+	FreeObj(oStruct)
+	FreeObj(oModel)
+
+	RestArea(aAreaU79)
+	RestArea(aAreaU27)
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:EfetivaRegra
+funcao para efetivar a taxa de manutencao e gerar as parcelas no financeiro
+
+@type method
+@version 1.0
+@author g.sampaio
+@since 20/08/2020
+@param cCodProvisionamento, Character, codigo do provisionamento na U26
+@return logical, retorna se efeitvou corretamente o 
+/*/
+Method EfetivaRegra( cCodProvisionamento, lReajuste, lRecuperaExclusao ) Class RegraTaxaManutencao
+
+	Local aArea             as Array
+	Local aAreaU00          as Array
+	Local aAreaU26          as Array
+	Local aAreaU27          as Array
+	Local aAreaSE1          as Array
+	Local aAreaU60 			as Array
+	Local aDadosSE1         as Array
+	Local cMesAno           as Character
+	Local cNaturezaRegra    as Character
+	Local cFormaPagamento   as Character
+	Local dDataAtual		As Date
+	Local lOk               as Logical
+	Local lContinua         as Logical
+	Local lRecorrencia		as Logical
+	Local nTaxaPermanencia	as Numeric
+
+	Private lMsErroAuto as Logical
+
+	Default cCodProvisionamento := ""
+	Default lReajuste           := .F.
+	Default lRecuperaExclusao	:= .F.
+
+	// atribuo valor as variaveis
+	aArea           	:= GetArea()
+	aAreaU00        	:= U00->(GetArea())
+	aAreaU26        	:= U26->(GetArea())
+	aAreaU27        	:= U27->(GetArea())
+	aAreaSE1        	:= SE1->(GetArea())
+	aAreaU60 			:= U60->(GetArea())
+	aDadosSE1	    	:= {}
+	cMesAno         	:= ""
+	cFormaPagamento 	:= ""
+	cNaturezaRegra  	:= SuperGetMv("MV_XNATMN",.F.,"10101") // natureza da taxa de manutencao
+	dDataAtual			:= dDataBase
+	lMsErroAuto	    	:= .F.
+	lContinua       	:= .T.
+	lOk             	:= .T.
+	lRecorrencia		:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	nTaxaPermanencia	:= SuperGetMv("MV_TXPER",.F.,0)
+
+	BEGIN TRANSACTION
+
+		// posiciono na tabela de hist de taxa de manutencao
+		U26->( DbSetOrder(1) )//U26_FILIAL+U26_CODIGO
+		if U26->( MsSeek( xFilial("U26")+cCodProvisionamento ) )
+
+			// nao efetivo regra com status encerrada
+			If U26->U26_STATUS == "3"
+				lContinua := .F.
+			ElseIf U26->U26_STATUS <> "1" .And. !lRecuperaExclusao // se for diferente de provionada e de recupera exclusao nao permito a efetivacao
+				lContinua := .F.
+			ElseIf U26->U26_STATUS == "1" .And. lRecuperaExclusao // se for provisianada e recupera exclusao, nao efetivo a regra
+				lContinua := .F.
+			EndIf
+
+			// posiciono no cadastro do contrato
+			U00->( DbSetOrder(1) ) //U00_FILIAL+U00_CODIGO
+			if lContinua .And. U00->( MsSeek(xFilial("U00")+U26->U26_CONTRA) )
+
+				// posiciono na tabela de parcelas
+				U27->( DbSetOrder(1) )
+				if U27->( MsSeek( xFilial("U27")+U26->U26_CODIGO ) )
+
+					// se a forma de pagamento estiver vinculada a um metodo de pagamento VINDI
+					U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+					if lRecorrencia .And. !Empty(U26->U26_FORPG) .And. U60->(MsSeek(xFilial("U60") + U26->U26_FORPG)) .And. U_NaoExistCliRecor( U00->U00_CLIENT, U00->U00_LOJA, U00->U00_CODIGO )
+
+						// se o metodo de pagamento estiver ativo
+						if U60->U60_STATUS == "A"
+
+							If !lRecuperaExclusao
+
+								// tela para preenchimento do perfil de pagamento
+								FWMsgRun(,{|oSay| lContinua := U_UIncPerfil()},'Aguarde...','Abrindo Perfil de Pagamento...')
+
+							Else
+
+								Help( ,, "Help - RECUPERAMANUT",, "Atenção! A forma de pagamento da manutenção anterior esta habilitada para a recorrencia, inclua o Perfil de Pagamento manualmente.", 1, 0 )
+
+							EndIf
+
+						endif
+
+					endif
+
+					// mudo a data base para a data do provisionamento
+					dDataBase := U26->U26_DATA
+
+					// percorro as taxas geradas
+					While lContinua .And. U27->(!Eof()) .And. U27->U27_FILIAL == xFilial("U27") .And. U27->U27_CODIGO == U26->U26_CODIGO
+
+						SE1->(DbSetOrder(1))
+						If !SeekSE1Seq(xFilial("SE1"), U27->U27_PREFIX, U27->U27_NUM, U27->U27_PARCEL, U27->U27_TIPO, .T.)
+
+							// ateibuo valor as variaveis
+							aDadosSE1	:= {}
+							lMsErroAuto	:= .F.
+							cMesAno 	:= SubStr(DTOC(U27->U27_VENC),4,7)
+
+							// verifico se a forma de pagamento da taxa de manutencao esta preenchida
+							if !Empty(U00->U00_FPTAXA)
+								cFormaPagamento := U00->U00_FPTAXA
+							else
+								cFormaPagamento := U00->U00_FORPG
+							endIf
+
+							// alimento o array do execauto de inclusao de titulos
+							Aadd(aDadosSE1, {"E1_FILIAL"	, xFilial("SE1")									, Nil } )
+							Aadd(aDadosSE1, {"E1_PREFIXO"	, U27->U27_PREFIX          							, Nil } )
+							Aadd(aDadosSE1, {"E1_NUM"		, U27->U27_NUM		 	   							, Nil } )
+							Aadd(aDadosSE1, {"E1_PARCELA"	, U27->U27_PARCEL									, Nil } )
+							Aadd(aDadosSE1, {"E1_TIPO"		, U27->U27_TIPO		 								, Nil } )
+							Aadd(aDadosSE1, {"E1_NATUREZ"	, cNaturezaRegra									, Nil } )
+							Aadd(aDadosSE1, {"E1_CLIENTE"	, U00->U00_CLIENT									, Nil } )
+							Aadd(aDadosSE1, {"E1_LOJA"		, U00->U00_LOJA										, Nil } )
+							Aadd(aDadosSE1, {"E1_EMISSAO"	, dDataBase											, Nil } )
+							Aadd(aDadosSE1, {"E1_VENCTO"	, U27->U27_VENC										, Nil } )
+							Aadd(aDadosSE1, {"E1_VENCREA"	, DataValida(U27->U27_VENC)							, Nil } )
+							Aadd(aDadosSE1, {"E1_VALOR"	    , U27->U27_VALOR									, Nil } )
+							Aadd(aDadosSE1, {"E1_XCONTRA"	, U00->U00_CODIGO									, Nil } )
+							Aadd(aDadosSE1, {"E1_XPARCON"	, cMesAno											, Nil } )
+							Aadd(aDadosSE1, {"E1_XFORPG"	, cFormaPagamento									, Nil } )
+							Aadd(aDadosSE1, {"E1_PORCJUR"	, nTaxaPermanencia									, Nil } )
+							Aadd(aDadosSE1, {"E1_VALJUR"	, Round(U27->U27_VALOR * (nTaxaPermanencia / 100),2)	, Nil } )
+
+							//============================================================================
+							// == PONTO DE ENTRADA PARA MANIPULACAO DO FINANCEIRO DA TAXA DE MANUTENCAO ==
+							//============================================================================
+							if ExistBlock("PECPG43FIN")
+
+								aDadosSE1 := ExecBlock( "PECPG43FIN", .F. ,.F., { aDadosSE1, U00->(Recno()), U26->(Recno()), U27->(Recno()) } )
+
+								// valido o conteudo retornado pelo
+								if len(aDadosSE1) == 0 .Or. ValType( aDadosSE1 ) <> "A"
+									lContinua	:= .F.
+									MsgAlert("Estrutura do Array de títulos da taxa de manutenção inválida.", "PECPG43FIN")
+								endIf
+
+							endIf
+
+							if lContinua
+
+								// quando
+								MSExecAuto({|x,y| FINA040(x,y)},aDadosSE1,3)
+
+								// verifico se teve algum erro no execatuo
+								if lMsErroAuto
+									MostraErro()
+									lContinua := .F.
+									Exit
+								else // deu tudo certo
+
+									lContinua := .T.
+
+									Leave1Code("SE1_MNT"+xFilial("SE1")+U27->U27_PREFIX+;
+										U27->U27_NUM+U27->U27_PARCEL+U27->U27_TIPO	)
+
+								endif
+
+							else
+								Exit
+							endIf
+
+						EndIf
+
+						U27->( DbSkip() )
+					endDo
+
+					// volto a database para a data atual
+					dDataBase := dDataAtual
+
+				endIf
+
+				if lContinua
+
+					If !lRecuperaExclusao
+						// atualiza o valor adicional de manutencao no contrato
+						if U00->(RecLock("U00",.F.))
+							If Self:nRegraMemoria > 0
+								If Self:aRegras[Self:nRegraMemoria, 19] == "1" // se for regra de manutencao
+									U00->U00_TXMANU := U26->U26_TAXA
+									U00->U00_ADIMNT := 0
+								Else
+									U00->U00_ADIMNT := U00->U00_ADIMNT + U26->U26_VLADIC
+								EndIf
+							else
+								U00->U00_ADIMNT := U00->U00_ADIMNT + U26->U26_VLADIC
+							EndIf
+							U00->(MsUnLock())
+						endif
+					EndIf
+
+					// mudo o status do historico de taxa de locacao
+					if U26->(RecLock("U26",.F.))
+						U26->U26_STATUS := "2" // financeiro efetivado
+						U00->(MsUnLock())
+					endif
+
+				else
+					lContinua	:= .F.
+					Alert("Não foi possível gerar a taxa de manutenção do contrato " + AllTrim(U00->U00_CODIGO))
+					DisarmTransaction()
+					BREAK
+				endif
+
+			endIf
+
+		endif
+
+	END TRANSACTION
+
+	RestArea(aAreaU60)
+	RestArea(aAreaSE1)
+	RestArea(aAreaU27)
+	RestArea(aAreaU26)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ValidaReajuste
+Metodo para validar se o contrato é de reajuste
+
+@type method
+@version 1.0
+@author g.sampaio
+@since 19/08/2020
+@param cContrato, Character, codigo do contrato
+@return logical, retorno se existe o reajuste para o contrato
+/*/
+Method ValidaReajuste( cContrato ) Class RegraTaxaManutencao
+
+	Local cQuery    as Character
+	Local lRetorno  as Logical
+
+	// atribuo valor da variavel
+	cQuery      := ""
+	lRetorno    := .F.
+
+	Default cContrato := ""
+
+	if Select("TRBREAJ") > 0
+		TRBREAJ->( DbCloseArea() )
+	endIf
+
+	// query para verificar se o contrato será feito reajuste
+	cQuery += "  SELECT "
+	cQuery += "      	U26.U26_CONTRA AS CODIGO_CONTRATO, "
+	cQuery += "        	U26.U26_PROMAN AS DATA_PROXIMA_MANUTENCAO "
+	cQuery += "  FROM "
+	cQuery += +	RetSqlName("U26") + " U26 "
+	cQuery += " WHERE "
+	cQuery += "  	U26.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U26.U26_STATUS IN ('2') "
+	cQuery += "   	AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += "     AND U26.U26_CONTRA = '" + cContrato + "'"
+	cQuery += "     AND CONCAT(SUBSTRING(U26.U26_PROMAN,3,4),SUBSTRING(U26.U26_PROMAN,1,2)) <= '" + AnoMes(dDataBase) + "' " //"AnoMes" -> aaaamm e "U26_PROMAN"-> mmaaaa
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBREAJ")
+
+	if TRBREAJ->(!Eof())
+		lRetorno := .T.
+	endIf
+
+	if Select("TRBREAJ") > 0
+		TRBREAJ->( DbCloseArea() )
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:RetProxReajuste
+Metodo para retornar quando sera o proximo reajuste
+@type method
+@version 1.0 
+@author g.sampaio
+@since 19/08/2020
+@param nLinha, numeric, posicao dentre as regras
+@param lReajuste, logical, gera reajuste
+@param dDtGeracao, date, data da geracao
+@return Character, retorna o proximo reajuste
+/*/
+Method RetProxReajuste( nLinha, lReajuste, dDtGeracao, lAtivaContrato ) Class RegraTaxaManutencao
+
+	Local cRetorno      as Character             // retorno do metodo
+	Local dDataAuxiliar as Date             // data que sera considerado na taxa de manutencao
+	Local nMesReaj      as Numeric
+	Local nCiclo		as Numeric
+
+	Default nLinha      	:= 0
+	Default lReajuste   	:= .F.
+	Default dDtGeracao  	:= Stod("")
+	Default lAtivaContrato	:= .F.
+
+	// atribuo valor da variavel
+	cRetorno        := ""
+	dDataAuxiliar   := dDataBase
+	nMesReaj        := 0
+
+	If Self:cOperRegra == "A" .And. Self:aRegras[ nLinha, 22 ] == "1"
+		nCiclo := Self:RetPrazoQuitacao() // pego o prazo de quitação
+	Elseif Self:aRegras[ nLinha, 14 ] > 0
+		nCiclo := Self:aRegras[ nLinha, 14 ] // pego o ciclo
+	else
+		nCiclo := Self:aRegras[ nLinha, 9 ]// pego a quantidade de parcelas
+	endIf
+
+	// quando nao estou gerando o reajuste gero com um mes de diferenca
+	if !lReajuste
+
+		// data de geracao - regra por aniversario
+		if !Empty(dDtGeracao)
+
+			// pego a data da geracao conforme a regra
+			dDataAuxiliar   := dDtGeracao
+
+			// quando nao for reajuste eu coloco a taxa de manutencao sempre um mes antes do final do cicio
+			nMesReaj := 1
+
+		elseif Self:aRegras[ nLinha, 08 ] > 0 // regra por enderecamento
+
+			// data do primeiro mes de vencimento
+			dDataAuxiliar   := MonthSum( dDataAuxiliar, Self:aRegras[ nLinha, 08 ] )
+
+			// quando nao for reajuste eu coloco a taxa de manutencao sempre um mes antes do final do cicio
+			nMesReaj := 1
+
+		endIf
+
+		// verifico quantas parcelas serão geradas de acordo com o intervalo entre as parcelas
+		if lAtivaContrato .Or. (Self:cOperRegra == "A" .And. Self:aRegras[ nLinha, 22 ] == "1")
+			cRetorno    :=   StrZero( Month( MonthSum( dDataAuxiliar, nCiclo - nMesReaj ) ), 2 ) + StrZero( Year( MonthSum( dDataAuxiliar, nCiclo - nMesReaj ) ), 4 )
+		else
+			cRetorno    :=   StrZero( Month( MonthSub( dDataAuxiliar, nMesReaj ) ), 2 ) + StrZero( Year( MonthSub( dDataAuxiliar, nMesReaj ) ), 4 )
+		endIf
+
+	else
+
+		// verifico quantas parcelas serão geradas de acordo com o intervalo entre as parcelas
+		cRetorno    :=   StrZero( Month( MonthSum( dDataAuxiliar, nCiclo - nMesReaj ) ), 2 ) + StrZero( Year( MonthSum( dDataAuxiliar, nCiclo - nMesReaj ) ), 4 )
+
+	endIf
+
+Return(cRetorno)
+
+Method RetPrazoQuitacao() Class RegraTaxaManutencao
+
+	Local cQuery   		As Character
+	Local cTipoTit		As Character
+	Local cPrefContrato As Character
+	Local dDataUlt		As Date
+	Local nRetorno  	As Numeric
+
+	// atribuo valor da variavel
+	cQuery      	:= ""
+	cPrefContrato	:= SuperGetMv("MV_XPREFCT",.F.,"CTR")
+	cTipoTit		:= SuperGetMv("MV_XTIPOCT",.F.,"AT")
+	dDataUlt		:= StoD("")
+	nRetorno    	:= 0
+
+	if Select("TRBPRQ") > 0
+		TRBPRQ->( DbCloseArea() )
+	endIf
+
+	// query para verificar se o contrato será feito reajuste
+	// query na SE1 para retornar a ultima parcela
+	cQuery := " SELECT "
+	cQuery += " 	MAX(SE1.E1_VENCTO) AS ULTIMO_VENCIMENTO "
+	cQuery += " FROM "
+	cQuery += " " + RetSqlName("SE1") + " (NOLOCK) SE1 "
+	cQuery += " WHERE "
+	cQuery += " SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE1.E1_FILIAL   = '" + xFilial("SE1") + "' "
+	cQuery += " AND SE1.E1_PREFIXO	= '" + cPrefContrato + "' "
+	cQuery += " AND SE1.E1_TIPO     = '" + cTipoTit + "' "
+	cQuery += " AND SE1.E1_XCONTRA  = '" + U00->U00_CODIGO + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBPRQ")
+
+	if TRBPRQ->(!Eof())
+		dDataUlt := StoD(TRBPRQ->ULTIMO_VENCIMENTO)
+	endIf
+
+	If !Empty(dDataUlt)
+		nRetorno := DateDiffMonth(dDataBase, dDataUlt)
+	EndIf
+
+	if Select("TRBPRQ") > 0
+		TRBPRQ->( DbCloseArea() )
+	endIf
+
+Return(nRetorno)
+
+Method ContratoQuitado() Class RegraTaxaManutencao
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ExisteManutencao
+Metodo para verificar se existe regra de taxa de manutencao para o contrato
+@type method
+@version 1.0 
+@author g.sampaio
+@since 20/08/2020
+@param cContrato, Character, codigo do contrato
+@return logical, retorna se ja existe taxa de manutencao
+/*/
+Method ExisteManutencao( cContrato, cComoGera, cCodProvisionamento, lProvisionada ) Class RegraTaxaManutencao
+
+	Local cQuery    as Character
+	Local lRetorno  as Logical
+
+	Default cContrato 			:= ""
+	Default cComoGera 			:= ""
+	Default cCodProvisionamento := ""
+	Default lProvisionada		:= .F.
+
+	// atribuo valor da variavel
+	cQuery      := ""
+	lRetorno    := .F.
+
+	if Select("TRBU26") > 0
+		TRBU26->( DbCloseArea() )
+	endIf
+
+	// query para verificar se o contrato será feito reajuste
+	cQuery += "  SELECT "
+	cQuery += "      	U26.U26_CONTRA   AS CODIGO_CONTRATO, "
+	cQuery += "      	U26.U26_CODIGO   AS CODIGO_MANUTENCAO, "
+	cQuery += "      	U26.U26_CGERA    AS COMOGERA "
+	cQuery += "  FROM "
+	cQuery += RetSqlName("U26") + " U26 "
+	cQuery += "  	WHERE U26.D_E_L_E_T_ = ' ' "
+	cQuery += "   	AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += "     AND U26.U26_CONTRA = '" + cContrato + "'"
+
+	If lProvisionada
+		cQuery += "     AND U26.U26_STATUS = '1' "
+	Else
+		cQuery += "     AND U26.U26_STATUS IN (' ','1','2') "
+	EndIf
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBU26")
+
+	if TRBU26->(!Eof())
+
+		// retorno
+		lRetorno    := .T.
+
+		// como é gerada a taxa de manutencao
+		cComoGera := TRBU26->COMOGERA
+
+		// codigo do provisionamento
+		cCodProvisionamento	:= TRBU26->CODIGO_MANUTENCAO
+
+	endIf
+
+	if Select("TRBU26") > 0
+		TRBU26->( DbCloseArea() )
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:RetValorIndice
+Funcao para retorar se tem indice e o valor do indice
+@type method
+@version 1.0
+@author g.sampaio
+@since 25/08/2020
+@param cIndice, Character, codigo do indice
+@param nIndice, numeric, valor do indice
+@return logical, retorna que encontrou indice
+/*/
+Method RetValorIndice( cIndice, nIndice, lMsgIndice ) Class RegraTaxaManutencao
+
+	Local cQuery        as Character
+	Local dDataRef		as Date
+	Local lRetorno      as Logical
+	Local nQtdCad		as Numeric
+
+	Default cIndice     := ""
+	Default nIndice     := 0
+	Default lMsgIndice  := .F.
+
+	// atribuo valor as variaveis
+	cQuery 		    := ""
+	dDataRef		:= MonthSub(dDataBase,1)
+	lRetorno        := .T.
+	nQtdCad		    := 0
+
+	// verifico se não existe este alias criado
+	If Select("TRBIND") > 0
+		TRBIND->(DbCloseArea())
+	EndIf
+
+	cQuery := " SELECT "
+	cQuery += " COUNT(*) QTDCAD, "
+	cQuery += " SUM(U29.U29_INDICE) AS INDICE "
+	cQuery += " FROM "
+	cQuery += + RetSqlName("U22") + " U22 "
+	cQuery += " INNER JOIN "
+	cQuery += + RetSqlName("U28") + " U28 "
+	cQuery += "    INNER JOIN "
+	cQuery += + 	 RetSqlName("U29") + " U29 "
+	cQuery += "    ON ( "
+	cQuery += "        U29.D_E_L_E_T_ = ' ' "
+	cQuery += "        AND U28.U28_CODIGO = U29.U29_CODIGO "
+	cQuery += "        AND U28.U28_ITEM = U29.U29_IDANO "
+	cQuery += " 		 AND U29.U29_FILIAL = '" + xFilial("U29") + "' "
+	cQuery += "    ) "
+	cQuery += " ON ( "
+	cQuery += "    U28.D_E_L_E_T_ = ' ' "
+	cQuery += "    AND U22.U22_CODIGO = U28.U28_CODIGO "
+	cQuery += " 	 AND U28.U28_FILIAL = '" + xFilial("U28") + "' "
+	cQuery += "    ) "
+	cQuery += " WHERE "
+	cQuery += " U22.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U22.U22_FILIAL = '" + xFilial("U22") + "' "
+	cQuery += " AND U22.U22_STATUS IN ('A','S') "
+
+	if !Empty(cIndice)
+		cQuery += " AND U22.U22_CODIGO = '" + cIndice + "' "
+	endif
+
+	cQuery += " AND U28.U28_ANO + U29.U29_MES "
+	cQuery += " BETWEEN '" + AnoMes(MonthSub(dDataRef,12)) + "'  AND  '" + AnoMes(dDataRef) + "' "
+
+	// função que converte a query genérica para o protheus
+	cQuery := ChangeQuery(cQuery)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBIND") // Cria uma nova area com o resultado do query
+
+	// se existir contratos a serem reajustados
+	if TRBIND->(!Eof())
+		nIndice    := Round(TRBIND->INDICE,TamSX3("U29_INDICE")[2])
+		nQtdCad	   := TRBIND->QTDCAD
+	endif
+
+	// valido se foi cadastrado os 12 ultimos meses do indice
+	if !lMsgIndice .And. nQtdCad < 12
+
+		// mensagem para o usuario
+		MsgAlert("Não foi realizado o cadastrado dos indices para os últimos 12 meses!","Atenção!")
+
+		lMsgIndice  := .T. // só exibo a mensagem que nao tem indice apenas uma vez
+
+		//se o indice retornado for negativo, zero o mesmo, pois as parcelas nao sofrerao reducao
+		if nIndice < 0
+			nIndice := 0
+		endif
+
+	endif
+
+	// verifico se não existe este alias criado
+	If Select("TRBIND") > 0
+		TRBIND->(DbCloseArea())
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ExcluiManutencao
+Metodo para exclusao de taxa de manutencao
+@type method
+@version 1.0
+@author g.sampaio
+@since 26/08/2020
+@param dDataDe, date, data de inicio
+@param dDataAte, date, data de fim 
+@param cContratoDe, Character, inicio de range de contrato
+@param cContratoAte, Character, fim do range de contrato
+@param cPlano, Character, codigo do produto de cemiterio
+@param cIndice, Character, codigo do indice 
+@param cRotina, Character, codigo da rotina (nao utilizado)
+@return logical, retorno se excluiu a manutencao corretamente
+/*/
+Method ExcluiManutencao( dDataDe, dDataAte, cContratoDe, cContratoAte, cPlano, cIndice, cRotina ) Class RegraTaxaManutencao
+
+	Local aArea			as Array
+	Local cQuery 		as Character
+	Local lRetorno		as Logical
+	Local oModel 		as Object
+
+	Default dDataDe			:= Stod("")
+	Default dDataAte		:= Stod("")
+	Default cContratoDe		:= ""
+	Default cContratoAte	:= ""
+	Default cPlano			:= ""
+	Default cIndice			:= ""
+	Default cRotina			:= ""
+
+	// atribuo os valores das variaveis
+	aArea		:= GetArea()
+	cQuery      := ""
+	lRetorno	:= .T.
+	oModel 		:= FWLoadModel("RCPGA023")
+
+	// verifico se não existe este alias criado
+	If Select("TRBDEL") > 0
+		TRBDEL->(DbCloseArea())
+	EndIf
+
+	cQuery := " SELECT "
+	cQuery += " U26.U26_CODIGO, "
+	cQuery += " U26.U26_DATA, "
+	cQuery += " U26.U26_CONTRA "
+	cQuery += " FROM "
+	cQuery += + RetSqlName("U26") + " U26 "
+	cQuery += " INNER JOIN "
+	cQuery += 	+ RetSqlName("U00") + " U00 "
+	cQuery += " 	ON U00.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+	cQuery += " 	AND U00.U00_CODIGO = U26.U26_CONTRA "
+
+	if !Empty(cPlano)
+		cQuery += " 	AND U00.U00_PLANO IN " + FormatIn( AllTrim(cPlano),";")
+	endif
+
+	if !empty(cContratoAte)
+		cQuery += " AND U00.U00_CODIGO BETWEEN '" + cContratoDe + "' AND '" + cContratoAte + "' "
+	endIf
+
+	cQuery += " WHERE "
+	cQuery += " U26.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += " AND U26.U26_STATUS IN ('1','2') "
+
+	if !Empty(dDataAte)
+		cQuery += " AND U26.U26_DATA BETWEEN '" + DTOS(dDataDe) + "' AND '" + DTOS(dDataAte) + "' "
+	endIf
+
+	if !Empty(cIndice)
+		cQuery += " AND U26.U26_TPINDI = '" + cIndice + "' "
+	endif
+
+	// função que converte a query genérica para o protheus
+	cQuery := ChangeQuery(cQuery)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBDEL") // Cria uma nova area com o resultado do query
+
+	// se existir contratos a serem reajustados
+	if TRBDEL->(!Eof())
+
+		// Inicio o controle de transação
+		BEGIN TRANSACTION
+
+			While TRBDEL->(!Eof())
+
+				U26->(DbSetOrder(1)) // U26_FILIAL + U26_CODIGO
+				if U26->(MsSeek(xFilial("U26") + TRBDEL->U26_CODIGO))
+
+					lActivate 	:= .F.
+					lCommit		:= .F.
+
+					// seto a operação de exclusão
+					oModel:SetOperation(5)
+
+					// ativo o modelo
+					lActivate := oModel:Activate()
+
+					// se o modelo foi ativado com sucesso
+					if lActivate
+
+						// comito a operação
+						lCommit := oModel:CommitData()
+
+						// desativo o modelo
+						oModel:DeActivate()
+
+					else
+
+						if !MsgYesNo("Ocorreu um erro na exclusão da taxa de manutenção referente ao contrato " + AllTrim(U26->U26_CONTRA) + "."  + "Deseja continuar?","Atenção!")
+
+							// aborto a transação
+							DisarmTransaction()
+
+							lRetorno := .F.
+							Exit
+
+						endif
+
+					endif
+
+				endif
+
+				TRBDEL->(DbSkip())
+
+			EndDo
+
+		END TRANSACTION
+
+	else
+		MsgAlert("Não foram encontradas taxas de manutenção para o filtro informado!")
+	endif
+
+	// verifico se não existe este alias criado
+	If Select("TRBDEL") > 0
+		TRBDEL->(DbCloseArea())
+	EndIf
+
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:ValidaManutencao
+Metodo para validar a existencia e o uso da taxa de manutencao por contrato
+de acordo com a ocupacao do endereco
+@type method
+@version 1.0
+@author g.sampaio
+@since 27/08/2020
+@param cCodContrato, Character, codigo do contrato
+@return logical, retorno sobre a manutencao
+/*/
+Method ValidaManutencao( cCodContrato ) Class RegraTaxaManutencao
+
+	Local lRetorno          as Logical
+	Local cQuery            as Character
+	Local cComoGera         as Character
+	Local nContaEndereco    as Numeric
+
+	Default cCodContrato    := ""
+
+	//atribuo valor as variaveis
+	lRetorno        := .F.
+	cQuery          := ""
+	cComoGera       := ""
+	nContaEndereco  := 0
+
+	// verifico se existe taxa de manutencao para o contrato
+	if Self:ExisteManutencao( cCodContrato, @cComoGera )
+
+		// verifico se é diferente de ativacao
+		if AllTrim(cComoGera) <> "1"
+
+			if Select("TRBEND") > 0
+				TRBEND->( DbCloseArea() )
+			endIf
+
+			// query para retornar quantos enderecos ou gavetas existem para aquele contrato
+			cQuery := " SELECT U04.U04_QUADRA, U04.U04_MODULO, U04.U04_JAZIGO "
+			cQuery += " FROM " + RetSqlName("U04") + " U04 "
+			cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+			cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+			cQuery += " AND U04.U04_CODIGO = '" + cCodContrato + "'"
+			cQuery += " AND U04.U04_TIPO   = 'J' "
+			cQuery += " GROUP BY U04.U04_QUADRA, U04.U04_MODULO, U04.U04_JAZIGO"
+
+			MPSysOpenQuery(cQuery, "TRBEND")
+
+			while TRBEND->(!Eof())
+
+				// incrmento o endereco
+				nContaEndereco++
+
+				TRBEND->(DbSkip())
+			endDo
+
+			// se o contrato tiver mais de um registro na U04 eu nao irei deletar a taxa de manutencao
+			if nContaEndereco > 1
+				lRetorno    := .F.
+			else // caso estiver apenas com um ou nenhum registro na U04, deleto a taxa de manutencao
+				lRetorno    := .T.
+			endIf
+
+			if Select("TRBEND") > 0
+				TRBEND->( DbCloseArea() )
+			endIf
+
+		else
+			lRetorno := .T.
+		endIf
+
+	endIf
+
+Return( lRetorno )
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:RetDadosFinRegra
+metodo para retornar os dados financeiros da regra de manutencao
+@type method
+@version 1.0
+@author g.sampaio
+@since 31/08/2020
+@param cCodContrato, Character, codigo do contrato
+@param nValorTaxa, numeric, valor da taxa de manutencao
+@param dDataVencto, date, data de vencimento
+@param nRegra, numeric, posicao da regra
+@return array, retorna os dados financeiros
+/*/
+Method RetDadosFinRegra( cCodContrato, nValorTaxa, dDataVencto, nRegra, cDiaVenci, nCobAdic, nValCobAdic ) Class RegraTaxaManutencao
+
+	Local aRetorno              as Array
+	Local aDadosFin             as Array
+	Local cPrefixo 		        as Character
+	Local cTipo			        as Character
+	Local cParcela              as Character
+	Local dDataAux 				as Date
+	Local nParcela              as Numeric
+	Local nValorParcela         as Numeric
+	Local nJuros				as Numeric
+	Local nParcelas				as Numeric
+	Local nCoeficiente			as Numeric
+	Local nSaldoTaxa			as Numeric
+	Local nVlrParcelaAux		as Numeric
+	Local nSobraParcela			as Numeric
+	Local lJurosComposto		as Logical
+
+	Default cCodContrato    := ""
+	Default nValorTaxa      := 0
+	Default dDataVencto     := Stod("")
+	Default nRegra          := 0
+	Default cDiaVenci 		:= ""
+	Default nValCobAdic		:= 0
+	Default nCobAdic		:= 0
+
+	// pego a parcela
+	aRetorno        := {}
+	aDadosFin       := {}
+	cPrefixo 	    := SuperGetMv("MV_XPREFMN",.F.,"CEM")
+	cTipo           := SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+	cParcela    	:= RetParcela( xFilial("SE1"), cPrefixo, cCodContrato, cTipo )
+	nParcela        := 0
+	nValorParcela   := 0
+	lJurosComposto	:= SuperGetMv("MV_XJRCOMN",.F.,.F.)
+
+	// pego qual é o valor da parcela
+	if Self:aRegras[nRegra, 15] == "1" .Or. Empty(Self:aRegras[nRegra, 15])// valor da parcela
+
+		// valor da cobranca adicional
+		nCobAdic := Self:aRegras[nRegra, 17]
+
+		//verifico se possui cobranca adicional na taxa de manutencao.
+		if nCobAdic > 0
+
+			//verifico se o calculo de juros da taxa sera por juros composto ou simples
+			if lJurosComposto
+				//Modelo de Calculo e de coeficiente financeiro, em caso de duvidas consulte o link abaixo:#COMMAND
+				//https://ajuda.plataformavirtus.com.br/space/VP/1420525626
+				nJuros			:= Self:aRegras[nRegra, 17] / 100
+				nParcelas		:= Self:aRegras[nRegra, 9]
+				nCoeficiente	:= (nJuros / (1 - (1 / ((1 + nJuros) ^ nParcelas) ) ) )
+				nValorParcela 	:= Round((nValorTaxa * nCoeficiente),2)
+				nValCobAdic	  	:= nValorParcela - nValorTaxa // valor da cobranca adicional
+			else
+				nValCobAdic	  := nValorTaxa * (nCobAdic / 100) // valor da cobranca adicional
+				nValorParcela := Round(nValorTaxa + nValCobAdic,2)
+			endif
+		else
+			nValorParcela := nValorTaxa
+		endif
+
+	elseIf Self:aRegras[nRegra, 15] == "2" // valor cheio
+
+		// valor da cobranca adicional
+		nCobAdic := Self:aRegras[nRegra, 17]
+
+		//verifico se possui cobranca adicional na taxa de manutencao
+		if nCobAdic > 0
+
+			//verifico se o calculo de juros da taxa sera por juros composto ou simples
+			if lJurosComposto
+
+				nJuros			:= nCobAdic / 100
+				nParcelas		:= Self:aRegras[nRegra, 9]
+				nCoeficiente	:= (nJuros / (1 - (1 / ((1 + nJuros) ^ nParcelas) ) ) )
+				nValorParcela 	:= Round((nValorTaxa * nCoeficiente),2)
+				nValCobAdic	  	:= nValorParcela - nValorTaxa // valor da cobranca adicional
+
+			else
+				nValCobAdic	  	:= nValorTaxa * (nCobAdic / 100) // valor da cobranca adicional
+				nValorTaxa 		:= nValorTaxa + (nValorTaxa * (nCobAdic / 100))
+				nValorParcela	:= Round(nValorTaxa / Self:aRegras[nRegra, 9], 2)
+
+			endif
+
+		else
+			nValorParcela := Round(nValorTaxa / Self:aRegras[nRegra, 9], 2 ) // faco a divisao do valor cheio pela quantidade de parcelas para chegar ao valor da parcela
+		endif
+
+	endIf
+
+	// arredondo o valor da taxa
+	if Self:aRegras[nRegra, 15] == "1"
+		nSaldoTaxa 	:= Round(nValorParcela * Self:aRegras[nRegra, 9], 2)
+	else
+		nSaldoTaxa	:= Round(nValorTaxa, 2)
+	EndIf
+
+	// pego os valores das sobras
+	If nValorParcela * Self:aRegras[nRegra, 9] <> nSaldoTaxa
+		If nValorParcela * Self:aRegras[nRegra, 9] > nSaldoTaxa
+			nSobraParcela := (nValorParcela * Self:aRegras[nRegra, 9]) - nSaldoTaxa
+		ElseIf nValorParcela * Self:aRegras[nRegra, 9] < nSaldoTaxa
+			nSobraParcela := nSaldoTaxa - (nValorParcela * Self:aRegras[nRegra, 9])
+		EndIf
+	EndIf
+
+	// gero os dados do financeiro
+	For nParcela := 1 To Self:aRegras[nRegra, 9]
+
+		// valor da parcela auxiliar
+		nVlrParcelaAux := nValorParcela
+
+		// caso for a ultima parcela
+		If nParcela == Self:aRegras[nRegra, 9]
+			nValorParcela 	:= nSaldoTaxa	// mando o resto da taxa de manutencao
+		ElseIf nSaldoTaxa - nValorParcela > 0
+			If nSobraParcela > 0 // caso as sobras sejam maior que zero
+				nValorParcela 	:= nValorParcela + 0.01
+				nSaldoTaxa		:= nSaldoTaxa - nValorParcela
+				nSobraParcela	:= nSobraParcela - 0.01
+			Else
+				nSaldoTaxa 		:= nSaldoTaxa - nValorParcela
+			EndIf
+		Else
+			nValorParcela 	:= nSaldoTaxa + nSobraParcela
+			nSaldoTaxa 		:= 0
+			nSobraParcela	:= 0
+		EndIf
+
+		// alimento o array de dados financeiros
+		Aadd( aDadosFin, { cPrefixo, cCodContrato, cParcela, cTipo, nValorParcela, dDataVencto } )
+
+		// retorno o valor da parcela auxiliar
+		nValorParcela := nVlrParcelaAux
+
+		// incremento a parcela
+		cParcela := Soma1(cParcela)
+
+		// incremento a data do vencimento
+		dDataVencto := MonthSum( dDataVencto, Self:aRegras[ nRegra, 10 ] )
+
+		// caso for fevereiro nao faco o tratamento da data
+		If Month(dDataVencto) <> 2
+
+			// faco uma pre validacao da ta
+			dDataAux := StoD(SubStr(DtoS(dDataVencto),1,6) + StrZero(Val(cDiaVenci),2))
+
+			// caso a data der errado, tiro um dia
+			If Empty(dDataAux)
+				dDataVencto := StoD(SubStr(DtoS(dDataVencto),1,6) + StrZero(Val(cDiaVenci)-1,2))
+			Else
+				dDataVencto := dDataAux
+			EndIf
+
+		EndIf
+
+	Next nParcela
+
+	// verifico se o array de dados financeiro
+	if Len(aDadosFin) > 0
+		aRetorno    := aDadosFin
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} RegraTaxaManutencaoSelf:RetValorCiclo
+Funcao para calcular o valor da taxa de acordo com o 
+valor do ciclo
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/09/2022
+@param nVlrTaxaContrato, numeric, valor do contrato a ser considerado
+@param nPosRegra, numeric, posicao da regra
+@return numeric, retorno o valor da taxa corretamente
+/*/
+Method RetValorCiclo(nVlrTaxaContrato, nPosRegra) Class RegraTaxaManutencao
+
+	Local nRetorno	 As Numeric
+
+	Default nVlrTaxaContrato	:= 0
+	Default nPosRegra			:= 0
+
+	// atribui valor a variavel
+	nRetorno := 0
+
+	If nVlrTaxaContrato > 0 .And. Self:aRegras[nPosRegra, 14] > 0 .And. Self:aRegras[nPosRegra, 14] <> 12
+		nRetorno := nVlrTaxaContrato / ( 12 / Self:aRegras[nPosRegra, 14] )
+	else
+		nRetorno := nVlrTaxaContrato
+	EndIf
+
+Return(nRetorno)
+
+Method AlteraDadosManutencao(cCodigoContrato, cCodigoManutencao, cRegra, cFormaPag, cIndice, cFormaPgAntes) Class RegraTaxaManutencao
+
+	Local aArea 	As Array
+	Local aAreaU00	As Array
+	Local aAreaU26	As Array
+	Local lRetorno	As Logical
+
+	Default cCodigoContrato		:= ""
+	Default cCodigoManutencao	:= ""
+	Default cRegra				:= ""
+	Default cFormaPag			:= ""
+	Default cIndice				:= ""
+	Default cFormaPgAntes		:= ""
+
+	aArea 		:= GetArea()
+	aAreaU00	:= U00->(GetArea())
+	aAreaU26	:= U26->(GetArea())
+	lRetorno	:= .T.
+
+	U00->(DbSetOrder(1))
+	If U00->(MsSeek(xFilial("U00")+cCodigoContrato))
+
+		U26->(DbSetOrder(1))
+		If U26->(MsSeek(xFilial("U26")+cCodigoManutencao))
+
+			// para taxa de manutencao efetivada
+			If U26->U26_STATUS == "2"
+
+				// pergunto ao usuário se deseja alterar a forma de pagamento do ciclo atual
+				if MsgYesNo("Deseja alterar a forma de pagamento da taxa de manutenção no Ciclo Atual?")
+
+					// abro a tela de atualizacao da taxa de mantuencao
+					lRetorno := Self:AtualizaTaxaManutencao(cCodigoContrato, cCodigoManutencao, cRegra, cFormaPag, cIndice, cFormaPgAntes)
+
+				Else
+
+					lRetorno := .F.
+
+				endIf
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU26)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+Method AtualizaTaxaManutencao(cCodigoContrato, cCodigoManutencao, cRegra, cFormaPag, cIndice, cFormaPgAntes) Class RegraTaxaManutencao
+
+	Local aArea 			as Array
+	Local aAreaSE1			as Array
+	Local aAreaU26			as Array
+	Local aAreaU27			as Array
+	Local aDadosFin			as Array
+	Local aTitulos			as Array
+	Local cCodManutencao	as Character
+	Local cStatusAnterior	as Character
+	Local cMVForBol			as Character
+	Local cOrigem			as Character
+	Local cOrigemDesc		as Character
+	Local dPrimVencimento	as Date
+	Local lContinua			as Logical
+	Local lUsaPrimVencto	as Logical
+	Local lRecorrencia		as Logical
+	Local nConta			as Numeric
+	Local nValorTaxa		as Numeric
+	Local nSaldoManutencao	as Numeric
+	Local oVirtusFin		as Object
+
+	Default cCodigoContrato		:= ""
+	Default cCodigoManutencao	:= ""
+	Default cRegra				:= ""
+	Default cFormaPag			:= ""
+	Default cIndice				:= ""
+	Default cFormaPgAntes		:= ""
+
+	// atribuo valor
+	aArea 				:= GetArea()
+	aAreaSE1			:= SE1->( GetArea() )
+	aAreaU26			:= U26->( GetArea() )
+	aAreaU27			:= U27->( GetArea() )
+	aTitulos			:= {}
+	aDadosFin			:= {}
+	cCodManutencao		:= ""
+	cStatusAnterior		:= ""
+	dPrimVencimento		:= StoD("")
+	cMVForBol			:= Alltrim( SuperGetMv("MV_XFORBOL", .F., "BO") )
+	lContinua			:= .T.
+	lRecorrencia		:= SuperGetMv("MV_XATVREC",.F.,.F.)
+	lUsaPrimVencto	    := SuperGetMv("MV_XPRIMVC",.F.,.F.)
+	nConta				:= 0
+	nValorTaxa			:= 0
+	cOrigem				:= "RCPGE043"
+	cOrigemDesc			:= "Atualizacao Forma Pagto Taxa Manutencao"
+
+	// pego os dados financeiros
+	FinanceiroRegra( cCodigoContrato, cCodigoManutencao, @nSaldoManutencao, @aTitulos )
+
+	U00->(DbSetOrder(1)) //U00_FILIAL+U00_CODIGO
+	if U00->(MsSeek(xFilial("U00")+cCodigoContrato))
+
+		// inicio a classe financeira do virtus
+		oVirtusFin	:= VirtusFin():New()
+
+		BEGIN TRANSACTION
+
+			U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+			if lRecorrencia .And. U60->(MsSeek(xFilial("U60") + cFormaPgAntes))
+
+				//verifico se o contrato esta em recorrencia, caso nao esteja arquivo o cliente na Vindi
+				if !U60->(MsSeek(xFilial("U60") + U00->U00_FORPG))
+
+					// Envia arquivamento do cliente para Vindi
+					lContinua := U_UVIND20("C", cCodigoContrato, U00->U00_CLIENT, U00->U00_LOJA, cOrigem, cOrigemDesc)
+
+					//se o contrato estiver em recorrencia, apenas excluo as parcelas da manutencao
+				else
+
+					lContinua := U_UExcTitulosVindi(cCodigoContrato, .T., cOrigem, cOrigemDesc)
+
+				endif
+
+			endif
+
+			if lContinua
+
+				// percorro os titulos para atualizacao dos dados
+				For nConta := 1 to Len(aTitulos)
+
+					// verifico se tem recno no financeiro
+					if aTitulos[nConta, 2] > 0
+
+						// posiciono nos titulos
+						SE1->( DbGoTo(aTitulos[nConta, 2]) )
+
+						If SE1->E1_SALDO > 0
+
+							If Empty(dPrimVencimento)
+								dPrimVencimento := SE1->E1_VENCTO
+							EndIf
+
+							// se a forma de pagamento anterior for boleto
+							if !Empty(cFormaPgAntes) .And. cFormaPgAntes == cMVForBol
+
+								// Se a forma de pagamento do título era boleto
+								// deve ser feita a exclusão do bordero
+								lContinua := oVirtusFin:ExcBordTit(SE1->(Recno()))
+
+							endif
+
+							if lContinua
+
+								// excluo o titulo no financeiro
+								lContinua := oVirtusFin:ExcluiTituloFin(SE1->(Recno()))
+
+							endIf
+
+						EndIf
+
+					endIf
+
+				Next nConta
+
+				// posiciono no codigo da manutencao atual
+				U26->(DbSetOrder(1))
+				if lContinua .And. U26->( MsSeek( xFilial("U26")+cCodigoManutencao ) )
+
+					cProximaManutencao := U26->U26_PROMAN
+
+					// atualizo o status da taxa de manutencao para encerrada
+					if U26->( Reclock("U26",.F.) )
+						U26->U26_STATUS := "3" // taxa de manutencao finalizada
+						U26->( MsUnlock() )
+					endIf
+
+				endIf
+
+				if lContinua
+
+					// gero a nova regra de manutencao
+					lContinua := Self:ValidaRegra( U00->U00_CODIGO, dPrimVencimento, Nil, nSaldoManutencao, Nil, cProximaManutencao )
+
+				endIf
+
+				If lContinua
+					lContinua := Self:ExisteManutencao(U00->U00_CODIGO, Nil, @cCodManutencao, .T. )
+				EndIf
+
+				If lContinua
+					Self:EfetivaRegra( cCodManutencao )
+				EndIf
+
+			endif
+
+		END TRANSACTION
+
+	endif
+
+	RestArea(aAreaU27)
+	RestArea(aAreaU26)
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lContinua)
+
+User Function GetProxNumeroU26()
+
+	Local aArea		As Array
+	Local aAreaU26 	As Array
+	Local cQuery 	As Character
+	Local cRetorno	As Character
+
+	// atribui valor das variaveis
+	aArea 		:= GetArea()
+	aAreaU26	:= U26->(GetArea())
+
+	cQuery := " SELECT MAX(U26.U26_CODIGO) MAXCODIGO FROM " + RetSQLName("U26") + " U26 "
+	cQuery += " WHERE U26.U26_FILIAL = '" + xFilial("U26") + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBU26") // Cria uma nova area com o resultado do query
+
+	if TRBU26->(!Eof()) .And. !Empty(TRBU26->MAXCODIGO)
+		cRetorno := Soma1(AllTrim(TRBU26->MAXCODIGO))
+	else
+		cRetorno := StrZero(1,TamSX3("U26_CODIGO")[1])
+	endIf
+
+	U26->(DbSetOrder(1))
+	If U26->(MsSeek(xFilial("U26")+cRetorno))
+		While U26->(MsSeek(xFilial("U26")+cRetorno))
+			cRetorno := Soma1(Alltrim(cRetorno))
+		EndDo
+	EndIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( "U26"+xFilial("U26")+cRetorno )
+		// gero um novo nosso numero
+		cRetorno := Soma1(Alltrim(cRetorno))
+	EndDo
+
+	if Select("TRBU26") > 0
+		TRBU26->(dbCloseArea())
+	endIf
+
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} SeekSE1Seq
+Funcao para sequenciar a SE1
+Campo Parcela
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/01/2024
+@param cFilSE1, character, filial do contas a receber (SE1)
+@param cPrefixo, character, prefixo do titulo
+@param cNumero, character, numero do titulo
+@param cParcela, character, codigo da parcela
+@param cTipo, character, tipo do titulo
+@return logical, retorno logico
+/*/
+Static Function SeekSE1Seq(cFilSE1, cPrefixo, cNumero, cParcela, cTipo, lSeek)
+
+	Local cQuery	:= ""
+	Local lRetorno 	:= .F.
+
+	Default cFilSE1		:= ""
+	Default cPrefixo	:= ""
+	Default cNumero		:= ""
+	Default cParcela	:= ""
+	Default cTipo		:= ""
+	Default lSeek		:= .F.
+
+	// fecho o alias temporario criado
+	If Select("TRBSE1") > 0
+		TRBSE1->(DbCloseArea())
+	EndIf
+
+	// query na SE1 para retornar a ultima parcela
+	cQuery := " SELECT "
+
+	If lSeek
+		cQuery += " SE1.R_E_C_N_O_ AS RECSE1 "
+	Else
+		cQuery += " MAX(SE1.E1_PARCELA) AS ULTIMA_PARCELA "
+	EndIf
+
+	cQuery += " FROM "
+	cQuery += " " + RetSqlName("SE1") + " (NOLOCK) SE1 "
+	cQuery += " WHERE "
+	cQuery += " SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE1.E1_FILIAL   = '" + cFilSE1 + "' "
+	cQuery += " AND SE1.E1_PREFIXO  = '" + cPrefixo + "' "
+	cQuery += " AND SE1.E1_NUM      = '" + cNumero + "' "
+
+	If lSeek
+		cQuery += " AND SE1.E1_PARCELA 	= '" + cParcela + "' "
+	Else
+		cQuery += " AND SE1.E1_PARCELA 	<> ' ' "
+	EndIf
+
+	cQuery += " AND SE1.E1_TIPO     = '" + cTipo + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBSE1") // Cria uma nova area com o resultado do query
+
+	If TRBSE1->(!Eof())
+		If lSeek
+			If TRBSE1->RECSE1 > 0
+				lRetorno := .T.
+				SE1->(DbGoTo(TRBSE1->RECSE1))
+			EndIf
+		Else
+			If !Empty(TRBSE1->ULTIMA_PARCELA) .And. AllTrim(TRBSE1->ULTIMA_PARCELA) > AllTrim(cParcela)
+				cParcela	:= TRBSE1->ULTIMA_PARCELA
+			EndIf
+		EndIf
+	EndIf
+
+	If !Empty(cParcela) .And. !lSeek
+
+		// fecho o alias temporario criado
+		If Select("TRBSE1") > 0
+			TRBSE1->(DbCloseArea())
+		EndIf
+
+		// query na SE1 para retornar a ultima parcela
+		cQuery := " SELECT "
+		cQuery += " 	* "
+		cQuery += " FROM "
+		cQuery += " " + RetSqlName("SE1") + " (NOLOCK) SE1 "
+		cQuery += " WHERE "
+		cQuery += " SE1.D_E_L_E_T_ = ' ' "
+		cQuery += " AND SE1.E1_FILIAL   = '" + cFilSE1 + "' "
+		cQuery += " AND SE1.E1_PREFIXO  = '" + cPrefixo + "' "
+		cQuery += " AND SE1.E1_NUM      = '" + cNumero + "' "
+		cQuery += " AND SE1.E1_PARCELA 	= '" + cParcela + "' "
+		cQuery += " AND SE1.E1_TIPO     = '" + cTipo + "' "
+
+		// crio o alias temporario
+		MPSysOpenQuery(cQuery, "TRBSE1") // Cria uma nova area com o resultado do query
+
+		If TRBSE1->(!Eof())
+			lRetorno := .T.
+		EndIf
+
+	EndIf
+
+	// fecho o alias temporario criado
+	If Select("TRBSE1") > 0
+		TRBSE1->(DbCloseArea())
+	EndIf
+
+Return(lRetorno)
+
+Static Function FinanceiroRegra( cCodigoContrato, cCodigoManutencao, nSaldoManutencao, aTitulos )
+
+	Local cQuery		As Character
+	Local oVirtusFin	As Object
+
+	Default cCodigoContrato		:= ""
+	Default cCodigoManutencao	:= ""
+	Default nSaldoManutencao	:= 0
+	Default aTitulos			:= {}
+
+	cQuery := " SELECT "
+	cQuery += " 	ISNULL(SE1.R_E_C_N_O_, 0) RECSE1, "
+	cQuery += " 	ISNULL(SE1.E1_XFORPG, '') FORPG, "
+	cQuery += " 	U27.U27_PREFIX PREFIXO, "
+	cQuery += " 	U27.U27_NUM NUMERO, "
+	cQuery += " 	U27.U27_PARCEL PARCELA, "
+	cQuery += " 	U27.U27_TIPO TIPO, "
+	cQuery += " 	U27.U27_VALOR VALOR_TAXA, "
+	cQuery += " 	U27.R_E_C_N_O_ RECNOU27 "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " INNER JOIN  "
+	cQuery += RetSQLName("U27") + " U27 "
+	cQuery += " ON U26.D_E_L_E_T_ = '' "
+	cQuery += " 	AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+	cQuery += " 	AND U26.U26_CODIGO = U27.U27_CODIGO "
+	cQuery += " 	AND U26.U26_STATUS = '2' "
+	cQuery += " LEFT JOIN " + RetSqlName("SE1") + " SE1 ON SE1.D_E_L_E_T_ = ' '
+	cQuery += " 	AND SE1.E1_FILIAL 	= '" + xFilial("SE1") + "' "
+	cQuery += " 	AND SE1.E1_PREFIXO 	= U27.U27_PREFIX "
+	cQuery += " 	AND SE1.E1_NUM 		= U27.U27_NUM "
+	cQuery += " 	AND SE1.E1_PARCELA 	= U27.U27_PARCEL "
+	cQuery += " 	AND SE1.E1_TIPO 	= U27.U27_TIPO "
+	cQuery += " 	AND SE1.E1_XCONTRA 	= '" + cCodigoContrato + "' "
+	cQuery += " WHERE U27.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U27.U27_FILIAL = '" + xFilial("U27") + "' "
+	cQuery += " 	AND U27.U27_CODIGO = '" + cCodigoManutencao + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBATU")
+
+	While TRBATU->(!Eof())
+
+		// pego o recno dos titulos
+		Aadd( aTitulos, {TRBATU->RECNOU27, TRBATU->RECSE1})
+
+		// verifico se o recno do titulo e maior que zero
+		If TRBATU->RECSE1 > 0
+
+			// posiciono no registro da SE1
+			SE1->(DbGoTo(TRBATU->RECSE1))
+
+			oVirtusFin := VirtusFin():New()
+			nSaldoManutencao += oVirtusFin:RetSaldoTitulo()
+
+			FreeObj(oVirtusFin)
+			oVirtusFin := Nil
+
+		EndIf
+
+		TRBATU->(DbSkip())
+	EndDo
+
+Return(Nil)
+
+/*/{Protheus.doc} RetParcela
+Função que retorna a próxima parcela do título a ser utilizada
+@type function
+@version 1.0
+@author g.sampaio
+@since 20/08/2020
+@param cFilSE1, Character, filial do contas a receber(SE1)
+@param cPrefixo, Character, prefixo do titulo
+@param cNumero, Character, numero do titulo
+@return character, codigo da proxima parcela
+/*/
+Static Function RetParcela( cFilSE1, cPrefixo, cNumero, cTipo )
+
+	Local aArea		as Array
+	Local aAreaSE1	as Array
+	Local cRetorno 	as Character
+	Local cQuery    as Character
+
+	Default cFilSE1     := ""
+	Default cPrefixo    := ""
+	Default cNumero     := ""
+	Default cTipo       := ""
+
+	// atribuo valores as variaveis
+	aArea		:= GetArea()
+	aAreaSE1	:= SE1->(GetArea())
+	cRet 		:= ""
+	cQuery 		:= ""
+	cRetorno	:= ""
+
+	// verifico se não existe este alias criado
+	If Select("TRBSE1") > 0
+		TRBSE1->(DbCloseArea())
+	EndIf
+
+	// query na SE1 para retornar a ultima parcela
+	cQuery := " SELECT "
+	cQuery += " MAX(SE1.E1_PARCELA) AS ULTIMA_PARCELA "
+	cQuery += " FROM "
+	cQuery += " " + RetSqlName("SE1") + " (NOLOCK) SE1 "
+	cQuery += " WHERE "
+	cQuery += " SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE1.E1_FILIAL   = '" + cFilSE1 + "' "
+	cQuery += " AND SE1.E1_PREFIXO  = '" + cPrefixo + "' "
+	cQuery += " AND SE1.E1_NUM      = '" + cNumero + "' "
+	cQuery += " AND SE1.E1_XCONTRA  = '" + cNumero + "' "
+	cQuery += " AND SE1.E1_TIPO     = '" + cTipo + "' "
+
+	// função que converte a query genérica para o protheus
+	cQuery := ChangeQuery(cQuery)
+
+	// crio o alias temporario
+	MPSysOpenQuery(cQuery, "TRBSE1") // Cria uma nova area com o resultado do query
+
+	// se existir títulos com este tipo
+	if TRBSE1->(!Eof()) .AND. !Empty(TRBSE1->ULTIMA_PARCELA)
+		cRetorno := Soma1(TRBSE1->ULTIMA_PARCELA)
+	else
+		cRetorno := Padl("1",TamSX3("E1_PARCELA")[1],"0")
+	endif
+
+	// fecho o alias temporario criado
+	If Select("TRBSE1") > 0
+		TRBSE1->(DbCloseArea())
+	EndIf
+
+	/////////////////////////////////////////////////////////
+	///////////////// VALIDACAO DE SEGURANCA ////////////////
+	/////////////////////////////////////////////////////////
+	SE1->(DbSetOrder(1))
+	While SeekSE1Seq(cFilSE1, cPrefixo, cNumero, @cRetorno, cTipo)
+		cRetorno := Soma1(cRetorno)
+	EndDo
+
+	// verifico se o codigo esta em uso
+	While !MayIUseCode( "SE1_MNT"+cFilSE1+cPrefixo+cNumero+cRetorno+cTipo )
+		cRetorno := Soma1( Alltrim(cRetorno) ) // gero um novo codigo
+	EndDo
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(cRetorno)

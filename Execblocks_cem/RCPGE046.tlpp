@@ -1,0 +1,68 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE046
+validacao para executar o painel financeiro
+@type function
+@version 
+@author g.sampaio
+@since 13/07/2020
+@param cCodContra, character, codigo do contrato
+@return return_type, return_description
+/*//***********************/
+User Function RCPGE046(cCodContra)
+/***********************/
+
+	Local aArea			as Array
+	Local aAreaU00		as Array
+	Local lContinua 	as Logical
+	Local lNovPnFin		as Logical
+
+	Default	cCodContra	:= ""
+
+    // atribuo valores as variaveis
+    aArea		:= GetArea()
+	aAreaU00	:= U00->( GetArea() )
+	lContinua   := .T.
+	lNovPnFin	:= SuperGetMV("MV_XNVPNFN", .F., .F.) // Habilita o novo painel financeiro
+
+	U00->( DbSetOrder(1) )
+	if U00->( MsSeek( xFilial("U00")+cCodContra) )
+		Do Case
+
+		Case U00->U00_STATUS == "P" //Pré-cadastro
+			MsgInfo("O Contrato se encontra pré-cadastrado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "C" //Cancelado
+			MsgInfo("O Contrato se encontra Cancelado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		Case U00->U00_STATUS == "F" //Finalizado
+			MsgInfo("O Contrato se encontra Finalizado, operação não permitida.","Atenção")
+			lContinua := .F.
+
+		EndCase
+
+	else // caso nao posicione no contrato
+
+		lContinua	:= .F.
+		MsgAlert("Contrato não encontrado!")
+
+	endIf
+
+	// se estiver tudo certo
+	If lContinua
+
+		// Painel Financeiro
+		If lNovPnFin
+			U_RUTILE46() // Novo Painel Financeiro
+		Else
+			U_RCPGE003()
+		EndIf
+	
+	Endif
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(Nil)

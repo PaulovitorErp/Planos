@@ -1,0 +1,2175 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+#include "colors.ch"
+
+/*/{Protheus.doc} RCPGE041
+consulta de obitos
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/02/2020
+/*/
+User Function RCPGE041(aLocaliza, cCGCParam, cNomeTitularParam,cContraSel)
+
+	Local aObjects 			        as Array
+	Local aSizeAut	   		        as Array
+	Local aPosObj			        as Array
+	Local aCords			        as Array
+	Local cTrbenderecados           as Character
+	Local cTrbHistorico		        as Character
+	Local cNomeFalecido             as Character
+	Local cNomeTitular              as Character
+	Local cCGC                      as Character
+	Local dDataDe                   as Date
+	Local dDataAte                  as Date
+	Local nLinhaFiltro1             as Numeric
+	Local nLinhaFiltro2             as Numeric
+	Local nLinhaFiltro3             as Numeric
+	Local nLinhaFiltro4             as Numeric
+	Local nLinhaFiltro5             as Numeric
+	Local nColunaFiltro1            as Numeric
+	Local nColunaFiltro2            as Numeric
+	Local nColunaFiltro3            as Numeric
+	Local nColunaFiltro4            as Numeric
+	Local nColunaFiltro5            as Numeric
+	Local nColunaBotao1             as Numeric
+	Local nColunaBotao2             as Numeric
+	Local nColunaBotao3             as Numeric
+	Local oPanelRod			        as Object
+	Local oPanelFiltro		        as Object
+	Local oPanelEnderecados         as Object
+	Local oPanelHistTransferencia	as Object
+	Local oBrowseEnderecados	    as Object
+	Local oBrowseHistTransf	        as Object
+	Local oDlg				        as Object
+	Local oGetDataDe                as Object
+	Local oGetDataAte               as Object
+	Local oGetCGC                   as Object
+	Local oGetNomeFalecido          as Object
+	Local oGetNomeTitular           as Object
+	Local oSayCGC                   as Object
+	Local oSayDataDe                as Object
+	Local oSayDataAte               as Object
+	Local oSayNomeFalecido          as Object
+	Local oSayNomeTitular           as Object
+	Local oTempEnderecados		    as Object
+	Local oTempHistorico            as Object
+	Local oFontTitulo               as Object
+	Local oFontLabel                as Object
+	Local oAddFiltros               as Object
+	Local oBotaoConsultar           as Object
+	Local oBotaoLimpar              as Object
+	Local oBotaoFiltrosAdicionais   as Object
+	Local oBotaoCancelar            as Object
+	Local oBotaoConfirmar           as Object
+	Local oBotaoVisualizarMapa      as Object
+
+	Default aLocaliza        	:= Array(4)
+	Default cCGCParam        	:= ""
+	Default cNomeTitularParam	:= ""
+	Default cContraSel			:= ""
+
+	// chamo a classe
+	oAddFiltros := AddFiltros():New()
+
+	// valor das variaveis
+	aObjects            := {}
+	aCords              := {}
+	nLinhaFiltro1       := 0
+	nLinhaFiltro2       := 0
+	nLinhaFiltro3       := 0
+	nLinhaFiltro4       := 0
+	nLinhaFiltro5       := 0
+	nColunaFiltro1      := 0
+	nColunaFiltro2      := 0
+	nColunaFiltro3      := 0
+	nColunaFiltro4      := 0
+	nColunaFiltro5      := 0
+	nColunaBotao1       := 0
+	nColunaBotao2       := 0
+	nColunaBotao3       := 0
+	aSizeAut	   	    := MsAdvSize()
+	cCGC                := Space(14)
+	cNomeFalecido       := Space(80)
+	cNomeTitular        := Space(80)
+	dDataDe             := Stod("")
+	dDataAte            := Stod("")
+
+	oFontTitulo         := TFont():New("Arial",,020,,.T.,,,,,.F.,.F.)
+	oFontLabel          := TFont():New("Arial",,018,,.F.,,,,,.F.,.F.)
+
+	If !Empty(cCGCParam)
+		cCGC := cCGCParam + Space(14 - Len(cCGCParam))
+	EndIf
+
+	If !Empty(cNomeTitularParam)
+		cNomeTitular := cNomeTitularParam + Space(80 - Len(cNomeTitularParam))
+	EndIf
+
+	// Largura, Altura, Modifica largura, Modifica altura
+	Aadd( aObjects, { 100,	100, .T., .T. } ) // PANEL COM AS ABAS
+
+	aInfo  	:= { aSizeAut[ 1 ], aSizeAut[ 2 ], aSizeAut[ 3 ], aSizeAut[ 4 ], 2, 2 }
+	aPosObj := MsObjSize( aInfo, aObjects, .T. , .T.)
+
+	// {linha inicial,coluna inicial,largura,altura}
+	Aadd(aCords,{( aSizeAut[6] / 2 ) - 25	    ,	000					, (aSizeAut[5] / 2) + 3		, 025}) // Panel Rodapé
+	Aadd(aCords,{000        				    ,	000					, aCords[1,3]				, (aSizeAut[6] / 2) * 0.25 }) // Panel Filtros
+	Aadd(aCords,{aCords[2,4] + 5			    ,	aCords[2,2]			, aCords[2,3] 		        , ( (aSizeAut[6] / 2) - (aCords[1,4] + aCords[2,4]) ) * 0.5}) // Panel de Enderecados
+	Aadd(aCords,{aCords[3,1] + aCords[3,4] + 5	,	aCords[3,2]			, aCords[3,3] 				, aCords[1,1] - (aCords[3,1] + aCords[3,4] + 5)  }) // Panel de Historico de transferencias
+
+	// ajusta a tela para resolucoes menores
+	AjustaPosFiltros( aSizeAut, aCords, @nLinhaFiltro1, @nLinhaFiltro2, @nLinhaFiltro3,;
+		@nColunaFiltro1, @nColunaFiltro2, @nColunaFiltro3, @nColunaFiltro4, @nColunaFiltro5,;
+		@nColunaBotao1, @nColunaBotao2, @nColunaBotao3 )
+
+	// faco o ajuste do tamanho da fontes
+	AjustaTamanhofonte( aSizeAut, @oFontTitulo, @oFontLabel )
+
+	DEFINE MSDIALOG oDlg TITLE "Consulta Óbitos" FROM aSizeAut[7], 0 TO aSizeAut[6], aSizeAut[5] COLORS 0, 16777215 PIXEL // STYLE DS_MODALFRAME
+
+	// Chamado depois da ativação da dialog
+	oDlg:bStart := {|| IIF(!Empty(cCGCParam) .Or. !Empty(cNomeTitularParam), Consultar( cNomeFalecido,;
+		dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros, @cTrbHistorico, @cTrbenderecados,;
+		@oBrowseEnderecados, @oBrowseHistTransf, @oTempHistorico, @oTempEnderecados,cContraSel), Nil) }
+
+	// ===============================================
+	// Inicio Painel de filtros
+	// ===============================================
+
+	@ aCords[2,1], aCords[2,2] MSPANEL oPanelFiltro 		    PROMPT "" SIZE aCords[2,3], aCords[2,4] OF oDlg COLORS 0, 16777215
+
+	// ===============================================
+	// filtros desejados
+	// ===============================================
+
+	// CSS do objeto group para colorir a borda
+	cCSSGroup := " QGroupBox { "
+	cCSSGroup += " border: 2px solid #0076CE; "
+	cCSSGroup += " padding-top: 0px; "
+	cCSSGroup += " }
+
+	@ 005, 005 GROUP oGroup1 TO aCords[2,4] - 5 , (aCords[2,3]/2) - 5 PROMPT "Realize os filtros desejados" OF oPanelFiltro COLOR 0, 16777215 PIXEL
+	oGroup1:oFont := oFontTitulo
+	oGroup1:SetCss(cCSSGroup)
+
+	@ nLinhaFiltro1, nColunaFiltro1 SAY oSayNomeFalecido PROMPT "Nome do falecido:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ nLinhaFiltro2, nColunaFiltro1 - 1 MSGET oGetNomeFalecido VAR cNomeFalecido PICTURE "@!" SIZE (aCords[2,3]/5)-10, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ nLinhaFiltro1, nColunaFiltro2 SAY oSayDataDe PROMPT "Data de:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ nLinhaFiltro2, nColunaFiltro2 + 1  MSGET oGetDataDe VAR dDataDe PICTURE "@D" SIZE (aCords[2,3]/10), 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ nLinhaFiltro1, nColunaFiltro3 SAY oSayDataAte PROMPT "Data até:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ nLinhaFiltro2, nColunaFiltro3 + 1  MSGET oGetDataAte VAR dDataAte PICTURE "@D" SIZE (aCords[2,3]/10), 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	// ===============================================
+	// dados do titular do contrato
+	// ===============================================
+
+	@ 005, (aCords[2,3]/2) + 5 GROUP oGroup2 TO aCords[2,4] - 5 , aCords[2,3] - 5 PROMPT "Dados do titular/autorizado do contrato" OF oPanelFiltro COLOR 0, 16777215 PIXEL
+	oGroup2:oFont := oFontTitulo
+	oGroup2:SetCss(cCSSGroup)
+
+	@ nLinhaFiltro1, nColunaFiltro4 SAY oSayNomeTitular PROMPT "Nome:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ nLinhaFiltro2, nColunaFiltro4 + 1  MSGET oGetNomeTitular VAR cNomeTitular PICTURE "@!" SIZE (aCords[2,3]/4) - 10, 010 OF oGroup2 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ nLinhaFiltro1, nColunaFiltro5 SAY oSayCGC PROMPT "CPF/CNPJ:" SIZE 100, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+	@ nLinhaFiltro2, nColunaFiltro5 + 1 MSGET oGetCGC VAR cCGC PICTURE "@!" SIZE (aCords[2,3]/8), 010 OF oGroup2 COLORS 0, 16777215 PIXEL HASBUTTON
+
+	// ===============================================
+	// Botoes da tela
+	// ===============================================
+
+	// monto o CSS dos botoes
+	cBotaoCSSCinza  := CSSBotoesCinza( aSizeAut[5] )
+	cBotaoCSSAzul   := CSSBotoesAzul( aSizeAut[5] )
+	cBotaoCSSVerde  := CSSBotoesVerde( aSizeAut[5] )
+
+	// botao de flimpar filtros
+	oBotaoLimpar := TButton():New( nLinhaFiltro3, aCords[2,3] - ((aCords[2,3]/4) + (aCords[2,3]/20)), "Limpar", oPanelFiltro,{ || LimpaConsulta( @cNomeFalecido, @dDataDe, @dDataAte, @cNomeTitular, @cCGC, @oAddFiltros, @oPanelFiltro, @oBotaoFiltrosAdicionais, cBotaoCSSAzul) }, (aCords[2,3]/14), 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoLimpar:SetCss(cBotaoCSSCinza)
+
+	// botao de consultar
+	oBotaoConsultar := TButton():New( nLinhaFiltro3, aCords[2,3] - ((aCords[2,3]/6) + (aCords[2,3]/20)), "Consultar", oPanelFiltro,{ || Consultar( cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		@cTrbHistorico, @cTrbenderecados, @oBrowseEnderecados, @oBrowseHistTransf, @oTempHistorico, @oTempEnderecados,cContraSel ) },;
+		(aCords[2,3]/14), 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoConsultar:SetCss(cBotaoCSSCinza)
+
+	// botao de filtros adicionais
+	oBotaoFiltrosAdicionais := TButton():New( nLinhaFiltro3, aCords[2,3] - (aCords[2,3]/8), "Filtros Adicionais", oPanelFiltro,{ || oAddFiltros:FiltrosAdicionais( aSizeAut[5], @oBotaoFiltrosAdicionais, @oPanelFiltro) }, (aCords[2,3]/10), 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoFiltrosAdicionais:SetCss(cBotaoCSSAzul)
+
+	// ===============================================
+	// Fim Painel de filtros
+	// ===============================================
+
+	// ===============================================
+	// Inicio Painel de Enreçados
+	// ===============================================
+
+	@ aCords[3,1], aCords[3,2] MSPANEL oPanelEnderecados	 	PROMPT "" SIZE aCords[3,3], aCords[3,4] OF oDlg COLORS 0, 16777215
+
+	// grupo para os contratos enderecados
+	@ 005, 005 GROUP oGroup3 TO aCords[3,4] - 5 , aCords[3,3] - 5 PROMPT "Enderecados atualmente:" OF oPanelEnderecados COLOR 0, 16777215 PIXEL
+	oGroup3:oFont := oFontTitulo
+	oGroup3:SetCss(cCSSGroup)
+
+	@ 015, 015 MSPANEL oPanelGridEnderecados	 	PROMPT "" SIZE aCords[3,3] - 025, aCords[3,4] - 035 OF oGroup3 COLORS 0, 16777215
+
+	// monto o grid de contratos
+	EnderecadosGrid( oPanelGridEnderecados, @cTrbenderecados, @oBrowseEnderecados, @oTempEnderecados )
+
+// ===============================================
+// Fim Painel de Enreçados
+// ===============================================
+
+// ===============================================
+// Inicio Painel de Historico de Transferencias
+// ===============================================
+
+	@ aCords[4,1], aCords[4,2] MSPANEL oPanelHistTransferencia 		PROMPT "" SIZE aCords[4,3], aCords[4,4] OF oDlg COLORS 0, 16777215
+
+// grupo para os contratos enderecados
+	@ 005, 005 GROUP oGroup4 TO aCords[3,4] - 5 , aCords[3,3] - 5 PROMPT "Historico de Operações realizadas:" OF oPanelHistTransferencia COLOR 0, 16777215 PIXEL
+	oGroup4:oFont := oFontTitulo
+	oGroup4:SetCss(cCSSGroup)
+
+	@ 015, 015 MSPANEL oPanelGridHistorico	 	PROMPT "" SIZE aCords[4,3] - 025, aCords[4,4] - 035 OF oGroup4 COLORS 0, 16777215
+
+// monto o grid de parcelas
+	HistoricoGrid( oPanelGridHistorico, @cTrbHistorico, @oBrowseHistTransf, @oTempHistorico )
+
+// ==============================================='
+// Inicio rodape
+// ===============================================
+
+	@ aCords[1,1], aCords[1,2] MSPANEL oPanelRod 			    PROMPT "" SIZE aCords[1,3], aCords[1,4] OF oDlg COLORS 0, 16777215
+
+
+// botao de flimpar filtros
+	oBotaoCancelar := TButton():New( 007, (aCords[2,3] - 160), "Cancelar", oPanelRod,{ || oDlg:End() }, 050, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBotaoCancelar:SetCss(cBotaoCSSCinza)
+
+// para a rotina de mapa de cemtierio
+	if AllTrim(FunName()) $ "RCPGA007"
+
+		// botao de flimpar filtros
+		oBotaoVisualizarMapa := TButton():New( 007, (aCords[2,3] - 100), "Visualizar no Mapa", oPanelRod,{ || VisualizarMapa(@aLocaliza) ,oDlg:End() }, 090, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+		oBotaoVisualizarMapa:SetCss(cBotaoCSSVerde)
+
+	else // demais rotinas
+
+		// botao de flimpar filtros
+		oBotaoConfirmar := TButton():New( 007, (aCords[2,3] - 100), "Confirmar", oPanelRod,{ || Confirmar(), oDlg:end() }, 090, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+		oBotaoConfirmar:SetCss(cBotaoCSSAzul)
+
+	endIf
+
+// ==============================================='
+// Fim rodape
+// ===============================================
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+// verifico se o objeto do alias temproario de contratos no banco
+	If ValType( oTempEnderecados ) == "O"
+		oTempEnderecados:Delete()
+	EndIf
+
+// verifico se o objeto do alias temproario de parcelas no banco
+	If ValType( oTempHistorico ) == "O"
+		oTempHistorico:Delete()
+	EndIf
+
+Return(.T.)
+
+/*/{Protheus.doc} ContratoGrid
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/02/2020
+@param oPanel, object, param_description
+@param cArqTrb, character, param_description
+@param aIndContrato, array, param_description
+@param oBrowse, object, param_description
+@param oBrowseRelac, object, param_description
+@param oTempEnderecados, object, param_description
+@return return_type, return_description
+/*/
+Static Function EnderecadosGrid( oPanel, cArqTrb, oBrowse, oTempEnderecados )
+
+	Local lHabTalona	As Logical
+	Local oColumn   	As Object
+
+	Default oPanel              := Nil
+	Default cArqTrb             := ""
+	Default oBrowse             := Nil
+	Default oTempEnderecados    := Nil
+
+	// atribuo valores paras as variaveis
+	oColumn := Nil
+	lHabTalona	:= SuperGetMV("MV_XHABTAL", .F., .F.)
+
+	// defino o nome do arquivo de trabalho
+	If Empty(cArqTrb)
+		cArqTrb := "TRBEND"
+	EndIf
+
+	// crio a estrutura do alias de contrato
+	CriaTabEnderecados( cArqTrb, @oTempEnderecados )
+
+	///////////////////////////////////////////////////////////////////////////
+	////////////////// 		      CRIO O GRID		     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+	oBrowse := FWBrowse():New(oPanel)
+
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias( cArqTrb )
+
+	// Desabilito a opção de impressão
+	oBrowse:DisableReport()
+
+	// Desabilito a opção de Salvar Configuração
+	oBrowse:DisableSaveConfig()
+
+	// Desabilito a opção de Configuração
+	oBrowse:DisableConfig()
+
+	oBrowse:AddLegend("ALLTRIM(TRBEND->TR_STATUS) == 'EFETIVADO'", "RED",	"Endereço Efetivado")
+	oBrowse:AddLegend("ALLTRIM(TRBEND->TR_STATUS) == 'RESERVADO'", "YELLOW",	"Endereço Reservado")
+
+
+	// status da locacao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_ITEM } )	    // campo referente a coluna
+	oColumn:SetTitle("Item")			    // titulo da coluna
+	oColumn:SetSize(5)						// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+
+	// Coluna de locacao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_NMFALE } )	    // campo referente a coluna
+	oColumn:SetTitle("Nome do Falecido")    // titulo da coluna
+	oColumn:SetSize(40)					    // tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de contrato
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_CONTRA } )     // campo referente a coluna
+	oColumn:SetTitle("Codigo Contrato")		// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de codigo do cliente
+	oColumn := FWBrwColumn():New()			    // instancio da classe do objeto
+	oColumn:SetData( { || TR_TITULAR } )		// campo referente a coluna
+	oColumn:SetTitle("Nome do Titular")			// titulo da coluna
+	oColumn:SetSize(40)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			    // adiciono o objeto da coluna no browse
+
+	// Coluna de loja do cliente
+	oColumn := FWBrwColumn():New()			    // instancio da classe do objeto
+	oColumn:SetData( { || TR_DTENDE } )		// campo referente a coluna
+	oColumn:SetTitle("Data")			// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@D")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			    // adiciono o objeto da coluna no browse
+
+	// Coluna de nome do cliente
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_TIPO } )		// campo referente a coluna
+	oColumn:SetTitle("Tipo")			// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	If lHabTalona
+		// Coluna de contrato
+		oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+		oColumn:SetData( { || TR_TALONA } )     // campo referente a coluna
+		oColumn:SetTitle("Talonario")		// titulo da coluna
+		oColumn:SetSize(10)						// tamanho da coluna
+		oColumn:SetPicture("@!")				// mascara da coluna
+		oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	EndIf
+
+	// Coluna de tipo de enderecamento
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TR_ENDERE } )		// campo referente a coluna
+	oColumn:SetTitle("Endereço")	// titulo da coluna
+	oColumn:SetSize(20)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})				// adiciono o objeto da coluna no browse
+
+	oBrowse:Activate()
+
+Return( Nil )
+
+/*/{Protheus.doc} HistoricoGrid
+description
+@type function
+@version 
+@author g.sampaio
+@since 01/03/2020
+@param oPanel, object, param_description
+@param cArqTrb, character, param_description
+@param aIndiceDetalhes, array, param_description
+@param oBrowse, object, param_description
+@param oBrowseRelac, object, param_description
+@param oTempHistorico, object, param_description
+@return return_type, return_description
+/*/
+Static Function HistoricoGrid( oPanel, cArqTrb, oBrowse, oTempHistorico )
+
+	Local lHabTalona	as Logical
+	Local oColumn   	as Object
+
+	Default oPanel          := Nil
+	Default cArqTrb			:= ""
+	Default oBrowse         := Nil
+
+	// declaro as variaveis
+	lHabTalona	:= SuperGetMV("MV_XHABTAL", .F., .F.)
+	oColumn := Nil
+
+	// defino o nome do arquivo de trabalho
+	If Empty(cArqTrb)
+		cArqTrb := "TRBHIST"
+	EndIf
+
+	// gero arquivo temporario para as parcelas
+	CriaTabHistoricoTransf( cArqTrb, @oTempHistorico )
+
+	///////////////////////////////////////////////////////////////////////////
+	////////////////// 		      CRIO O GRID		     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+	oBrowse := FWBrowse():New(oPanel)
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias( cArqTrb )
+
+	// Desabilito a opção de impressão
+	oBrowse:DisableReport()
+
+	// Desabilito a opção de Salvar Configuração
+	oBrowse:DisableSaveConfig()
+
+	// Desabilito a opção de Configuração
+	oBrowse:DisableConfig()
+
+	// Coluna de Prefixo
+	oColumn  := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn :SetData( { || TMP_ITEM } )	// campo referente a coluna
+	oColumn :SetTitle("Item")				// titulo da coluna
+	oColumn :SetSize(5)					// tamanho da coluna
+	oColumn :SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Prefixo
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_NMFALE } )	// campo referente a coluna
+	oColumn:SetTitle("Nome Falecido")				// titulo da coluna
+	oColumn:SetSize(10)					// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Numero
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_CONTRA } )	// campo referente a coluna
+	oColumn:SetTitle("Codigo Contrato")			// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Data de Comissao
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_TITULA } )	// campo referente a coluna
+	oColumn:SetTitle("Titular do Contrato")		// titulo da coluna
+	oColumn:SetSize(20)						// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Vendedor
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_TRANSF } )		// campo referente a coluna
+	oColumn:SetTitle("Data")				// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@D")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Vendedor
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_TPORIG } )		// campo referente a coluna
+	oColumn:SetTitle("Tipo Origem")				// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	If lHabTalona
+
+		// Coluna de Numero
+		oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+		oColumn:SetData( { || TMP_TALONA } )	// campo referente a coluna
+		oColumn:SetTitle("Talonario")			// titulo da coluna
+		oColumn:SetSize(10)						// tamanho da coluna
+		oColumn:SetPicture("@!")				// mascara da coluna
+		oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	EndIf
+
+	// Coluna de Nome do Vendedor
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_ENDORI } )		// campo referente a coluna
+	oColumn:SetTitle("Endereço Origem")					// titulo da coluna
+	oColumn:SetSize(40)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Nome do Vendedor
+	oColumn := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_TPDEST } )		// campo referente a coluna
+	oColumn:SetTitle("Tipo Destino")					// titulo da coluna
+	oColumn:SetSize(10)						// tamanho da coluna
+	oColumn:SetPicture("@!")					// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	// Coluna de Nome do Vendedor
+	oColumn  := FWBrwColumn():New()			// instancio da classe do objeto
+	oColumn:SetData( { || TMP_ENDDES } )	// campo referente a coluna
+	oColumn:SetTitle("Endereço Destino")	// titulo da coluna
+	oColumn:SetSize(40)						// tamanho da coluna
+	oColumn:SetPicture("@!")				// mascara da coluna
+	oBrowse:SetColumns({oColumn})			// adiciono o objeto da coluna no browse
+
+	oBrowse:Activate()
+
+Return( Nil )
+
+/*/{Protheus.doc} CriaTabEnderecados
+funcao para gerar a estrutura do alias temporario
+de contratos para a locacao de nicho
+@type function
+@version 
+@author g.sampaio
+@since 04/03/2020
+@param cArqTrb, character, alias temporario de contrato
+@param oTempEnderecados, object, objeto da estrutura do alias temporario de contratos
+@return return_type, return_description
+/*/
+Static Function CriaTabEnderecados( cArqTrb, oTempEnderecados )
+
+	Local aCampos               as Array
+	Local aIndEnderecados	    as Array
+	Local lHabTalona			as Logical
+
+	Default cArqTrb             := "TRBEND"
+	Default oTempEnderecados    := Nil
+
+	// declaracao das variaveis
+	aCampos             := {}
+	aIndEnderecados	    := {"TR_ITEM","TR_CONTRA"}
+	lHabTalona			:= SuperGetMV("MV_XHABTAL", .F., .F.)
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////    MONTO A ESTRUTURA DA TABELA    //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Array contendo os campos da tabela temporária
+	Aadd( aCampos, { "TR_ITEM" 		, "C" , 6 	 , 0 })
+	Aadd( aCampos, { "TR_NMFALE"	, "C" , 40 	 , 0 })
+	Aadd( aCampos, { "TR_CONTRA"	, "C" , 6    , 0 })
+	Aadd( aCampos, { "TR_TITULAR"	, "C" , 40 	 , 0 })
+	Aadd( aCampos, { "TR_DTENDE"	, "D" , 10 	 , 0 })
+	Aadd( aCampos, { "TR_TIPO"	    , "C" , 20	 , 0 })
+
+	If lHabTalona
+		Aadd( aCampos, { "TR_TALONA"	, "C" , 6	 , 0 })
+	EndIf
+
+	Aadd( aCampos, { "TR_ENDERE"	, "C" , 60   , 0 })
+	Aadd( aCampos, { "TR_STATUS"	, "C" , 10   , 0 })
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////      CRIO A TABELA TEMPORARIA     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Antes de criar a tabela, verificar se a mesma já foi aberta
+	If Select( cArqTrb ) > 0
+		(cArqTrb)->(DbCloseArea())
+	Endif
+
+	// zero o objeto
+	if oTempEnderecados <> NIL
+		FreeObj(oTempEnderecados)
+	endIf
+
+	//-------------------
+	//Criação do objeto
+	//-------------------
+	oTempEnderecados := FWTemporaryTable():New( cArqTrb )
+	oTempEnderecados:SetFields( aCampos )
+	oTempEnderecados:AddIndex("01", aIndEnderecados )
+
+	//------------------
+	//Criação da tabela
+	//------------------
+	oTempEnderecados:Create()
+
+Return( Nil )
+
+/*/{Protheus.doc} CriaTabHistoricoTransf
+funcao para gerar a estrutura do alias temporario
+de historico de transferencia para consulta obito
+@type function
+@version 
+@author g.sampaio
+@since 04/03/2020
+@param cArqTrb, character, alias temporario de parcelas
+@param oTempEnderecados, object, objeto da estrutura do alias temporario de parcelas
+@return return_type, return_description
+/*/
+Static Function CriaTabHistoricoTransf( cArqTrb, oTempHistorico )
+
+	Local aCampos			as Array
+	Local aIndHistorico	    as Array
+	Local lHabTalona		as Logical
+
+	Default cArqTrb         := "TRBHIST"
+
+	// abrindo os valores
+	aCampos			:= {}
+	aIndHistorico	:= {"TMP_ITEM","TMP_CONTRA"}
+	lHabTalona		:= SuperGetMV("MV_XHABTAL", .F., .F.)
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////    MONTO A ESTRUTURA DA TABELA    //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Array contendo os campos da tabela temporária
+	Aadd( aCampos, { "TMP_ITEM" 	    , "C" , 6   , 0	})
+	Aadd( aCampos, { "TMP_ENDDES"		, "C" , 60  , 0	})
+	Aadd( aCampos, { "TMP_NMFALE" 	    , "C" , 40	, 0	})
+	Aadd( aCampos, { "TMP_CONTRA" 	    , "C" , 6	, 0	})
+	Aadd( aCampos, { "TMP_TITULA"       , "C" , 40 	, 0	})
+	Aadd( aCampos, { "TMP_TRANSF" 		, "D" , 10 	, 0	})
+	Aadd( aCampos, { "TMP_TPORIG" 		, "C" , 20  , 0	})
+
+	If lHabTalona
+		Aadd( aCampos, { "TMP_TALONA" 	    , "C" , 6	, 0	})
+	EndIf
+
+	Aadd( aCampos, { "TMP_ENDORI"		, "C" , 60 	, 0	})
+	Aadd( aCampos, { "TMP_TPDEST"		, "C" , 20  , 0	})
+
+
+	///////////////////////////////////////////////////////////////////////////
+	//////////////////      CRIO A TABELA TEMPORARIA     //////////////////////
+	///////////////////////////////////////////////////////////////////////////
+
+	//Antes de criar a tabela, verificar se a mesma já foi aberta
+	If Select( cArqTrb ) > 0
+		(cArqTrb)->(DbCloseArea())
+	Endif
+
+	//-------------------
+	//Criação do objeto
+	//-------------------
+	oTempHistorico := FWTemporaryTable():New( cArqTrb )
+	oTempHistorico:SetFields( aCampos )
+	oTempHistorico:AddIndex("01", aIndHistorico )
+
+	//------------------
+	//Criação da tabela
+	//------------------
+	oTempHistorico:Create()
+
+Return( Nil )
+
+/*/{Protheus.doc} CSSBotoesCinza
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesCinza( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #d2d2d2; "
+	cRetorno    += " border: 1px solid #696969;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cRetorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #000000;}"
+	cRetorno    += " QPushButton:hover { background-color: #696969;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #d2d2d2;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesAzul
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesAzul( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #35ACCA; "
+	cRetorno    += " border: 1px solid #1f6779;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #35ACCA;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesVerde
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesVerde( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #1FD203; "
+	cRetorno    += " border: 1px solid #107800;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #107800;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #1FD203;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} Consultar
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@param cTrbHistorico, character, param_description
+@param cTrbenderecados, character, param_description
+@param oBrowseEnderecados, object, param_description
+@param oBrowseHistTransf, object, param_description
+@param oTempHistorico, object, param_description
+@param oTempEnderecados, object, param_description
+@return return_type, return_description
+/*/
+Static function Consultar( cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbHistorico, cTrbenderecados, oBrowseEnderecados, oBrowseHistTransf, oTempHistorico, oTempEnderecados,cContraSel )
+
+	Local lEnd              as Logical
+	Local oProcess          as Object
+
+	// atribuo valores iniciais para as variaveis
+	lEnd    := .F.
+
+	Default cNomeFalecido           := ""
+	Default dDataDe                 := Stod("")
+	Default dDataAte                := Stod("")
+	Default cNomeTitular            := ""
+	Default cCGC                    := ""
+	Default oAddFiltros             := Nil
+	Default cTrbenderecados         := "TRBEND"
+	Default cTrbHistorico           := "TRBHIST"
+	Default oBrowseEnderecados      := NIL
+	Default oBrowseHistTransf       := NIL
+	Default oTempHistorico          := NIL
+	Default oTempEnderecados        := NIL
+	Default cContraSel 				:= ""
+
+	// faco a validacao dos parametros de filtros da consulta
+	if ValidaParam( cNomeFalecido, dDataDe, dDataAte, cNomeTitular, @cCGC, oAddFiltros )
+
+		// crio a barra de processamento
+		oProcess := MsNewProcess():New({|lEnd| ProcessaDados( @oProcess, @lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+			@cTrbHistorico, @cTrbenderecados, @oBrowseEnderecados, @oBrowseHistTransf, @oTempHistorico, @oTempEnderecados,cContraSel ) },"Consultando dados...","Aguarde! Consultando dados de óbitos...",.T.)
+
+		oProcess:Activate()
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ProcessaDados
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@param oProcess, object, param_description
+@param lEnd, logical, param_description
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@param cTrbHistorico, character, param_description
+@param cTrbenderecados, character, param_description
+@param oBrowseEnderecados, object, param_description
+@param oBrowseHistTransf, object, param_description
+@param oTempHistorico, object, param_description
+@param oTempEnderecados, object, param_description
+@return return_type, return_description
+/*/
+Static Function ProcessaDados( oProcess, lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbHistorico, cTrbenderecados, oBrowseEnderecados, oBrowseHistTransf, oTempHistorico, oTempEnderecados,cContraSel )
+
+	Default oProcess                := Nil
+	Default lEnd                    := .F.
+	Default cNomeFalecido           := ""
+	Default dDataDe                 := Stod("")
+	Default dDataAte                := Stod("")
+	Default cNomeTitular            := ""
+	Default cCGC                    := ""
+	Default oAddFiltros             := Nil
+	Default cTrbenderecados         := "TRBEND"
+	Default cTrbHistorico           := "TRBHIST"
+	Default oBrowseEnderecados      := NIL
+	Default oBrowseHistTransf       := NIL
+	Default oTempHistorico          := NIL
+	Default oTempEnderecados        := NIL
+
+	// consulta os registros enderecados
+	ConsultaEnderecados( @oProcess, @lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbenderecados, @oBrowseEnderecados, @oTempEnderecados, cContraSel )
+
+	// consulta o historico de transferencias
+	ConsultaHistTransferencias( @oProcess, @lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbHistorico, @oBrowseHistTransf, @oTempHistorico, cContraSel )
+ 
+Return(Nil)
+
+/*/{Protheus.doc} RCPGE27A
+Funcao para gerar os registros em alias temporarios
+@author g.sampaio
+@since 13/06/2019
+@version P12
+@param aCampos
+@param cFwAlias
+@return nulo
+/*/
+
+Static Function GravaDados( aCampos, cFwAlias, lGeraDados, oBrowseDados )
+
+	Local aDados	as Array
+	Local aAux		as Array
+	Local nX		as Numeric
+	Local nI		as Numeric
+
+	Default aCampos		    := {}
+	Default cFwAlias	    := ""
+	Default lGeraDados	    := .F.
+	Default oBrowseDados    := Nil
+
+	// atribuo os valores das variaveis
+	aAux    := {}
+	aDados  := {}
+
+	// limpa os registros ja existentes
+	LimpaDados( cFwAlias )
+
+	// verifico se existe alias temporario
+	If !Empty(cFwAlias)
+
+		// caso forem gerados registros vazios
+		If lGeraDados
+
+			aAux := {}
+			For nX := 1 To Len( aCampos )
+
+				If aCampos[nX,2] == "L" // para o marcar
+
+					Aadd( aAux, { aCampos[nX, 1] , .T. } )
+
+				ElseIf aCampos[nX,2] == "C" // tipo caracter
+
+					Aadd( aAux, { aCampos[nX, 1] , "" } )
+
+				ElseIf aCampos[nX,2] == "D" // tipo data
+
+					Aadd( aAux, { aCampos[nX, 1] , StoD("") } )
+
+				ElseIf aCampos[nX,2] == "N" // tipo numerico
+
+					Aadd( aAux, { aCampos[nX, 1] , 0 } )
+
+				EndIf
+
+			Next nX
+
+			// monto o array aDados
+			Aadd( aDados, aAux  )
+
+		Else
+
+			// a estrutura do aCampos se torna o aDados
+			aDados := aCampos
+
+		EndIf
+
+		// posiciono no ultimo registro do alias
+		(cFwAlias)->( DbGoBottom() )
+
+		// inicio a transacao
+		BEGIN TRANSACTION
+
+			For nX := 1 To Len( aDados )
+
+				// travo o registro para gravacao
+				If (cFwAlias)->( RecLock( cFwAlias, .T. ) )
+
+					For nI := 1 To Len( aDados[nX] )
+						&( cFwAlias + "->" + aDados[nX,nI,1] ) := aDados[nX,nI,2]
+					Next nI
+
+					(cFwAlias)->( MsUnLock() )
+
+				Else
+
+					(cFwAlias)->( DisarmTransaction() )
+
+				EndIf
+
+			Next nX
+
+		END TRANSACTION
+
+		// posiciono no primeiro registro do alias
+		(cFwAlias)->( DbGoTop() )
+
+	EndIf
+
+	// verifico se a variavel oBrowseContrato e objeto
+	If ValType( oBrowseDados ) == "O"
+
+		// atualizo o objeto
+		oBrowseDados:Refresh(.T.)
+
+		// atualizo a construcao do browse
+		oBrowseDados:UpdateBrowse(.T.)
+
+	EndIf
+
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaDados
+Mostra o log do ultimo processamento
+
+@author g.sampaio
+@since 19/07/2016
+@version undefined
+@param cLog, characters, descricao
+@type function
+/*/
+
+Static Function LimpaDados( cFwAlias )
+
+	Default cFwAlias    := ""
+
+	// posiciono no primeiro registro
+	(cFwAlias)->( DbGoTop() )
+
+	// percorro todo o alias ate o seu fim
+	While ( cFwAlias )->( !Eof() )
+
+		BEGIN TRANSACTION
+
+			If ( cFwAlias )->( RecLock( cFwAlias, .F. ) )
+
+				// deleto o registro do alias
+				( cFwAlias )->( DbDelete() )
+
+			Else
+				( cFwAlias )->( MsUnLock() )
+			EndIf
+
+		END TRANSACTION
+
+		( cFwAlias )->( DbSkip() )
+	EndDo
+
+Return(Nil)
+
+/*/{Protheus.doc} ConsultaEnderecados
+description
+@type function
+@version 
+@author g.sampaio
+@since 27/07/2020
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@param cTrbEnderecados, character, param_description
+@param oBrowseEnderecados, object, param_description
+@param oTempEnderecados, object, param_description
+@param cContraSel, character, Contrato selecionado na tela de consulta cliente
+@return return_type, return_description
+/*/
+Static Function ConsultaEnderecados( oProcess, lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbEnderecados, oBrowseEnderecados, oTempEnderecados, cContraSel )
+
+	Local aAuxEnderecos             as Array
+	Local aDadosEnderecos           as Array
+	Local cQuery                    as Character
+	Local lHabTalona				as Logical
+	Local nItem                     as Numeric
+
+	Default oProcess                := Nil
+	Default lEnd                    := .F.
+	Default cNomeFalecido           := ""
+	Default dDataDe                 := Stod("")
+	Default dDataAte                := Stod("")
+	Default cNomeTitular            := ""
+	Default cCGC                    := ""
+	Default oAddFiltros             := Nil
+	Default cTrbenderecados         := "TRBEND"
+	Default oBrowseEnderecados      := NIL
+	Default oTempEnderecados        := NIL
+	Default cContraSel				:= ""
+
+	// atribuir valores de variaveis
+	aAuxEnderecos   := {}
+	aDadosEnderecos := {}
+	lHabTalona		:= SuperGetMV("MV_XHABTAL", .F., .F.)
+	nItem           := 0
+
+	// verifico se o alias esta em uso
+	if Select("TMPEND") > 0
+		TMPEND->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " 	U04.U04_QUEMUT NOMEFALE, "
+	cQuery += " 	U00.U00_CODIGO CONTRATO, "
+
+	If lHabTalona
+		cQuery += " 	U00.U00_TALONA TALONA, "
+	EndIf
+
+	cQuery += " 	U00.U00_NOMCLI TITULAR, "
+	cQuery += " 	U04.U04_DTUTIL DATAENDERECO, "
+	cQuery += " 	U04.U04_TIPO   TIPOEND, "
+	cQuery += " 	U04.U04_QUADRA JAZ_QUADRA, "
+	cQuery += " 	U04.U04_MODULO JAZ_MODULO, "
+	cQuery += " 	U04.U04_JAZIGO JAZ_JAZIGO, "
+	cQuery += " 	U04.U04_GAVETA JAZ_GAVETA, "
+	cQuery += " 	U04.U04_CREMAT CRE_CREMAT, "
+	cQuery += " 	U04.U04_NICHOC CRE_NICHOC, "
+	cQuery += " 	U04.U04_OSSARI OSS_OSSARIO, "
+	cQuery += " 	U04.U04_NICHOO OSS_NICHOO, "
+	cQuery += " 	CASE WHEN U04.U04_QUEMUT <> ' ' THEN 'EFETIVADO' ELSE 'RESERVADO' END AS STATUS_END "
+	cQuery += " FROM " + RetSqlName("U00") + " U00 "
+	cQuery += " INNER JOIN " + RetSqlName("U04") + " U04 ON U04.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "'"
+	cQuery += " AND U04.U04_CODIGO = U00.U00_CODIGO "
+	cQuery += " LEFT JOIN "  + RetSqlName("U02") + " U02 ON U02.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'"
+	cQuery += " AND U02.U02_CODIGO = U00.U00_CODIGO "
+
+	// para mapa do cemiterio consulto apenas endereco de jazigo para registros enderecados
+	if AllTrim(FunName()) $ "RCPGA007"
+		cQuery += " AND U04.U04_TIPO = 'J' "
+	endIf
+
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+
+	// nome falecido
+	if !Empty(cNomeFalecido)
+		cQuery += " AND U04.U04_QUEMUT LIKE '%" + AllTrim(cNomeFalecido) + "%' "
+	endIf
+
+	// data de sepultamento
+	if !Empty(dDataAte)
+		cQuery += " AND U04.U04_DTUTIL BETWEEN '" + Dtos(dDataDe) + "' AND '" + Dtos(dDataAte) + "'"
+	endIf
+
+	// nnome do titular
+	if !Empty(cNomeTitular)
+		cQuery += " AND (U00.U00_NOMCLI LIKE '%" + AllTrim(cNomeTitular) + "%' OR U02.U02_NOME LIKE '%" + AllTrim(cNomeTitular) + "%')"
+	endIf
+
+	// CGC do titular
+	if !Empty(cCGC)
+		cQuery += " AND (U00.U00_CGC LIKE '%" + AllTrim(cCGC) + "%' OR U02.U02_CPF LIKE '%" + AllTrim(cCGC) + "%')"
+	endIf
+
+	// Contrato
+	if !Empty(cContraSel)
+		cQuery += " AND U00.U00_CODIGO = '" + cContraSel + "' "
+	endIf
+
+	if ValType(oAddFiltros) == "O"
+
+		// verifico se tem dados de endereco preenchidos
+		if oAddFiltros:lPreenchido
+
+			//================================
+			// crematorio
+			//================================
+			if !Empty(oAddFiltros:cCrematorio)
+				cQuery += " AND U04.U04_CREMAT = '" + oAddFiltros:cCrematorio + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoCrema)
+				cQuery += " AND U04.U04_NICHOC = '" + oAddFiltros:cNichoCrema + "'"
+			endIf
+
+			//================================
+			// jazigo
+			//================================
+			if !Empty(oAddFiltros:cQuadra)
+				cQuery += " AND U04.U04_QUADRA = '" + oAddFiltros:cQuadra + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cModulo)
+				cQuery += " AND U04.U04_MODULO = '" + oAddFiltros:cModulo + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cJazigo)
+				cQuery += " AND U04.U04_JAZIGO = '" + oAddFiltros:cJazigo + "'"
+			endIf
+
+			//================================
+			// ossuario
+			//================================
+			if !Empty(oAddFiltros:cOssuario)
+				cQuery += " AND U04.U04_OSSARI = '" + oAddFiltros:cOssuario + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoOssu)
+				cQuery += " AND U04.U04_NICHOO = '" + oAddFiltros:cNichoOssu + "'"
+			endIf
+
+		endIf
+
+	endIf
+
+	// group by para resumir os dados de endereçamento caso forem iguais
+	// devido a utilizar a U02 como filtro
+	cQuery += " GROUP BY U04.U04_QUEMUT, "
+	cQuery += "        	U00.U00_CODIGO, "
+
+	If lHabTalona
+		cQuery += " 	U00.U00_TALONA, "
+	EndIf
+
+	cQuery += "    		U00.U00_NOMCLI, "
+	cQuery += "        	U04.U04_DTUTIL, "
+	cQuery += "        	U04.U04_TIPO, "
+	cQuery += "        	U04.U04_QUADRA, "
+	cQuery += "        	U04.U04_MODULO, "
+	cQuery += "        	U04.U04_JAZIGO, "
+	cQuery += "        	U04.U04_GAVETA, "
+	cQuery += "        	U04.U04_CREMAT, "
+	cQuery += "        	U04.U04_NICHOC, "
+	cQuery += "        	U04.U04_OSSARI, "
+	cQuery += "        	U04.U04_NICHOO "
+
+	cQuery += " UNION ALL "
+
+	cQuery += " SELECT UJV.UJV_NOME NOMEFALE, "
+	cQuery += "    U00.U00_CODIGO CONTRATO, "
+
+	If lHabTalona
+		cQuery += " 	U00.U00_TALONA TALONA, "
+	EndIf
+
+	cQuery += "    U00.U00_NOMCLI TITULAR, "
+	cQuery += "    UJV.UJV_DTSEPU DATAENDERECO, "
+	cQuery += "    (CASE WHEN UJV.UJV_QUADRA <> ' '  THEN 'J' "
+	cQuery += "    WHEN UJV.UJV_OSSARI <> ' '  THEN 'O' "
+	cQuery += "    ELSE 'C' END) AS TIPOEND, "
+	cQuery += "    UJV.UJV_QUADRA JAZ_QUADRA, "
+	cQuery += "    UJV.UJV_MODULO JAZ_MODULO, "
+	cQuery += "    UJV.UJV_JAZIGO JAZ_JAZIGO, "
+	cQuery += "    UJV.UJV_GAVETA JAZ_GAVETA, "
+	cQuery += "    UJV.UJV_CREMAT CRE_CREMAT, "
+	cQuery += "    UJV.UJV_NICHOC CRE_NICHOC, "
+	cQuery += "    UJV.UJV_OSSARI OSS_OSSARIO, "
+	cQuery += "    UJV.UJV_NICHOO OSS_NICHOO, "
+	cQuery += "    'RESERVADO' AS STATUS_END "
+	cQuery += " FROM "
+	cQuery += RetSQLName("U00") + " U00 "
+	cQuery += " INNER JOIN "
+	cQuery += RetSQLName("UJV") + " UJV "
+	cQuery += " ON UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "' "
+	cQuery += " AND UJV.UJV_CONTRA = U00.U00_CODIGO "
+	cQuery += " AND UJV.UJV_STENDE <> 'E' "
+	cQuery += " AND ((UJV.UJV_QUADRA <> ' ' OR UJV.UJV_CREMAT <> ' ') OR UJV.UJV_OSSARI <> ' ') "
+	cQuery += " LEFT JOIN "
+	cQuery += RetSQLName("U02") + " U02 "
+	cQuery += " ON U02.D_E_L_E_T_ = ' '
+	cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'
+	cQuery += " AND U02.U02_CODIGO = U00.U00_CODIGO "
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U00.U00_FILIAL = '" + xFilial("U00") + "'  	"
+
+	// para mapa do cemiterio consulto apenas endereco de jazigo para registros enderecados
+	if AllTrim(FunName()) $ "RCPGA007"
+		cQuery += " AND UJV.UJV_QUADRA <> ' ' "
+	endIf
+
+	// nome falecido
+	if !Empty(cNomeFalecido)
+		cQuery += " AND UJV.UJV_NOME LIKE '%" + AllTrim(cNomeFalecido) + "%' "
+	endIf
+
+	// data de sepultamento
+	if !Empty(dDataAte)
+		cQuery += " AND UJV.UJV_DTSEPU BETWEEN '" + Dtos(dDataDe) + "' AND '" + Dtos(dDataAte) + "'"
+	endIf
+
+	// nnome do titular
+	if !Empty(cNomeTitular)
+		cQuery += " AND (U00.U00_NOMCLI LIKE '%" + AllTrim(cNomeTitular) + "%' OR U02.U02_NOME LIKE '%" + AllTrim(cNomeTitular) + "%')"
+	endIf
+
+	// CGC do titular
+	if !Empty(cCGC)
+		cQuery += " AND (U00.U00_CGC LIKE '%" + AllTrim(cCGC) + "%' OR U02.U02_CPF LIKE '%" + AllTrim(cCGC) + "%')"
+	endIf
+
+	// Contrato
+	if !Empty(cContraSel)
+		cQuery += " AND U00.U00_CODIGO = '" + cContraSel + "' "
+	endIf
+
+
+	if ValType(oAddFiltros) == "O"
+
+		// verifico se tem dados de endereco preenchidos
+		if oAddFiltros:lPreenchido
+
+			//================================
+			// crematorio
+			//================================
+			if !Empty(oAddFiltros:cCrematorio)
+				cQuery += " AND UJV.UJV_CREMAT = '" + oAddFiltros:cCrematorio + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoCrema)
+				cQuery += " AND UJV.UJV_NICHOC = '" + oAddFiltros:cNichoCrema + "'"
+			endIf
+
+			//================================
+			// jazigo
+			//================================
+			if !Empty(oAddFiltros:cQuadra)
+				cQuery += " AND UJV.UJV_QUADRA = '" + oAddFiltros:cQuadra + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cModulo)
+				cQuery += " AND UJV.UJV_MODULO = '" + oAddFiltros:cModulo + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cJazigo)
+				cQuery += " AND UJV.UJV_JAZIGO = '" + oAddFiltros:cJazigo + "'"
+			endIf
+
+			//================================
+			// ossuario
+			//================================
+			if !Empty(oAddFiltros:cOssuario)
+				cQuery += " AND UJV.UJV_OSSARI = '" + oAddFiltros:cOssuario + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoOssu)
+				cQuery += " AND UJV.UJV_NICHOO = '" + oAddFiltros:cNichoOssu + "'"
+			endIf
+
+		endIf
+
+	endIf
+
+	// group by para resumir os dados de endereçamento caso forem iguais
+	// devido a utilizar a U02 como filtro
+	cQuery += " GROUP BY UJV.UJV_NOME, "
+	cQuery += "      U00.U00_CODIGO, "
+
+	If lHabTalona
+		cQuery += "      U00.U00_TALONA, "
+	EndIf
+
+	cQuery += "      U00.U00_NOMCLI, "
+	cQuery += "      UJV.UJV_DTSEPU, "
+	cQuery += "      UJV.UJV_QUADRA, "
+	cQuery += "      UJV.UJV_MODULO, "
+	cQuery += "      UJV.UJV_JAZIGO, "
+	cQuery += "      UJV.UJV_GAVETA, "
+	cQuery += "      UJV.UJV_CREMAT, "
+	cQuery += "      UJV.UJV_NICHOC, "
+	cQuery += "      UJV.UJV_OSSARI, "
+	cQuery += "      UJV.UJV_NICHOO "
+
+	cQuery += " ORDER BY DATAENDERECO,JAZ_QUADRA,JAZ_MODULO,JAZ_JAZIGO,CRE_CREMAT,CRE_NICHOC,OSS_OSSARIO,OSS_NICHOO "
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPEND' )
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua1(1)
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua1("Consultando registros endereçados...")
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua2(TMPEND->(Reccount()))
+
+	TMPEND->(DbGoTop())
+
+	// crio alias conforme os parametros
+	while TMPEND->(!Eof())
+
+		// zerp o arrau de enderecps
+		aAuxEnderecos := {}
+
+		// item
+		nItem++
+
+		if TMPEND->TIPOEND == "C" // tipo de endereco crematorio
+
+			// descricao do tipo de endereco
+			cTipoEnderecos  := "Crematorio"
+
+			// descricao do endereco
+			cDescriEndereco := "Crematorio " + TMPEND->CRE_CREMAT + " | Nicho " + TMPEND->CRE_NICHOC
+
+		elseIf TMPEND->TIPOEND == "J"// tipo de enderco jazigo
+
+			// descricao do tipo de endereco
+			cTipoEnderecos  := "Jazigo"
+
+			// descricao do endereco
+			cDescriEndereco := "Quadra " + TMPEND->JAZ_QUADRA + " | Modulo " + TMPEND->JAZ_MODULO + " | Jazigo " + TMPEND->JAZ_JAZIGO + " | Gaveta " + TMPEND->JAZ_GAVETA
+
+		elseIf TMPEND->TIPOEND == "O"// ossuario
+
+			// descricao do tipo de endereco
+			cTipoEnderecos  := "Ossário"
+
+			// descricao do endereco
+			cDescriEndereco := "Ossário " + TMPEND->OSS_OSSARIO + " | Nicho " + TMPEND->OSS_NICHOO
+
+		endIf
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua2("Registro: " +  StrZero(nItem,6) + " - " + cDescriEndereco )
+
+
+		// array auxiliar dos contratos
+		Aadd( aAuxEnderecos, { "TR_ITEM" 	    , StrZero(nItem,6)	    })
+		Aadd( aAuxEnderecos, { "TR_NMFALE"	    , TMPEND->NOMEFALE      })
+		Aadd( aAuxEnderecos, { "TR_CONTRA"	    , TMPEND->CONTRATO  	})
+		Aadd( aAuxEnderecos, { "TR_TITULAR"	    , TMPEND->TITULAR	    })
+		Aadd( aAuxEnderecos, { "TR_DTENDE"	    , Stod(TMPEND->DATAENDERECO)	})
+		Aadd( aAuxEnderecos, { "TR_TIPO"	    , cTipoEnderecos   	    })
+
+		If lHabTalona
+			Aadd( aAuxEnderecos, { "TR_TALONA"	    , TMPEND->TALONA  	})
+		EndIf
+
+		Aadd( aAuxEnderecos, { "TR_ENDERE"	    , cDescriEndereco	    })
+		Aadd( aAuxEnderecos, { "TR_STATUS"	    , TMPEND->STATUS_END    })
+
+		// preencho o array de dados
+		Aadd( aDadosEnderecos, aAuxEnderecos )
+
+		TMPEND->(DbSkip())
+	endDo
+
+	// vou popular a tabela de dados - detalhes
+	CriaTabEnderecados( cTrbenderecados, @oTempEnderecados )
+
+	// chama a funcao para gravar os registros de tipo
+	GravaDados( aDadosEnderecos, cTrbenderecados, /*lGeraDados*/, @oBrowseEnderecados )
+
+	// verifico se o alias esta em uso
+	if Select("TMPEND") > 0
+		TMPEND->(DbCloseArea())
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ConsultaHistTransferencias
+description
+@type function
+@version 
+@author g.sampaio
+@since 27/07/2020
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@param cTrbHistorico, character, param_description
+@param oBrowseHistTransf, object, param_description
+@param oTempHistorico, object, param_description
+@return return_type, return_description
+/*/
+Static Function ConsultaHistTransferencias( oProcess, lEnd, cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros,;
+		cTrbHistorico, oBrowseHistTransf, oTempHistorico, cContraSel )
+
+	Local aAuxHistorico         as Array
+	Local aDadosHistorico       as Array
+	Local cQuery                as Character
+	Local cTipoEndOrigem        as Character
+	Local cTipoEndDestino       as Character
+	Local cDescriEnderecoOrigem as Character
+	Local cDescriEndrecoDestino as Character
+	Local lHabTalona			as Logical
+	Local nItem                 as Numeric
+
+	Default oProcess            := Nil
+	Default lEnd                := .F.
+	Default cNomeFalecido       := ""
+	Default dDataDe             := Stod("")
+	Default dDataAte            := Stod("")
+	Default cNomeTitular        := ""
+	Default cCGC                := ""
+	Default oAddFiltros         := Nil
+	Default cTrbHistorico       := "TRBHIST"
+	Default oBrowseHistTransf   := NIL
+	Default oTempHistorico      := NIL
+	Default cContraSel			:= ""
+
+	// atribuir valores de variaveis
+	aAuxHistorico   := {}
+	aDadosHistorico := {}
+	lHabTalona		:= SuperGetMV("MV_XHABTAL", .F., .F.)
+	nItem           := 0
+
+	if Select("TMPHIST") > 0
+		TMPHIST->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " 	U38.U38_QUEMUT NOMEFALE,"
+	cQuery += " 	U00.U00_CODIGO CONTRATO,"
+
+	If lHabTalona
+		cQuery += " 	U00.U00_TALONA TALONA,"
+	EndIf
+
+	cQuery += " 	U00.U00_NOMCLI TITULAR,"
+	cQuery += " 	U38.U38_DTUTIL DATAENDERECO,"
+	cQuery += " 	U38.U38_DATA   TRF_DATA,"
+	cQuery += " 	U38.U38_QUADRA ORI_QUADRA,"
+	cQuery += " 	U38.U38_MODULO ORI_MODULO,"
+	cQuery += " 	U38.U38_JAZIGO ORI_JAZIGO,"
+	cQuery += " 	U38.U38_GAVETA ORI_GAVETA,"
+	cQuery += " 	U38.U38_OSSARI ORI_OSSARIO,"
+	cQuery += " 	U38.U38_NICHOO ORI_NICHOO,"
+	cQuery += " 	U38.U38_QDDEST DES_QUADRA,"
+	cQuery += " 	U38.U38_MDDEST DES_MODULO,"
+	cQuery += " 	U38.U38_JZDEST DES_JAZIGO,"
+	cQuery += " 	U38.U38_GVDEST DES_GAVETA,"
+	cQuery += " 	U38.U38_CRDEST DES_CREMAT,"
+	cQuery += " 	U38.U38_NCDEST DES_NICHOC,"
+	cQuery += " 	U38.U38_OSDEST DES_OSSARIO,"
+	cQuery += " 	U38.U38_NODEST DES_NICHOO"
+	cQuery += " FROM " + RetSqlName("U00") + " U00 "
+	cQuery += " INNER JOIN " + RetSqlName("U38") + " U38 ON U38.D_E_L_E_T_ = ' '"
+	cQuery += " AND U38.U38_FILIAL = '" + xFilial("U38") + "' "
+	cQuery += " AND (U38.U38_CTRORI = U00.U00_CODIGO OR U38.U38_CTRDES = U00.U00_CODIGO )"
+	cQuery += " LEFT JOIN "  + RetSqlName("U02") + " U02 ON U02.D_E_L_E_T_ = ' '"
+	cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'"
+	cQuery += " AND U02.U02_CODIGO = U00.U00_CODIGO "
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+
+	// nome falecido
+	if !Empty(cNomeFalecido)
+		cQuery += " AND U38.U38_QUEMUT LIKE '%" + AllTrim(cNomeFalecido) + "%' "
+	endIf
+
+	// data de sepultamento
+	if !Empty(dDataAte)
+		cQuery += " AND U38.U38_DTUTIL BETWEEN '" + Dtos(dDataDe) + "' AND '" + Dtos(dDataAte) + "'"
+	endIf
+
+	// nnome do titular
+	if !Empty(cNomeTitular)
+		cQuery += " AND (U00.U00_NOMCLI LIKE '%" + AllTrim(cNomeTitular) + "%' OR U02.U02_NOME LIKE '%" + AllTrim(cNomeTitular) + "%')"
+	endIf
+
+	// CGC do titular
+	if !Empty(cCGC)
+		cQuery += " AND (U00.U00_CGC LIKE '%" + AllTrim(cCGC) + "%' OR U02.U02_CPF LIKE '%" + AllTrim(cCGC) + "%')"
+	endIf
+
+	// Contrato
+	if !Empty(cContraSel)
+		cQuery += " AND U00.U00_CODIGO = '" + cContraSel + "' "
+	endIf
+
+	if ValType(oAddFiltros) == "O"
+
+		// verifico se tem dados de endereco preenchidos
+		if oAddFiltros:lPreenchido
+
+			//================================
+			// jazigo
+			//================================
+			if !Empty(oAddFiltros:cQuadra)
+				cQuery += " AND (U38.U38_QUADRA = '" + oAddFiltros:cQuadra + "' OR U38.U38_QDDEST = '" + oAddFiltros:cQuadra + "')"
+			endIf
+
+			if !Empty(oAddFiltros:cModulo)
+				cQuery += " AND (U38.U38_MODULO = '" + oAddFiltros:cModulo + "' OR U38.U38_MDDEST = '" + oAddFiltros:cModulo + "')"
+			endIf
+
+			if !Empty(oAddFiltros:cJazigo)
+				cQuery += " AND (U38.U38_JAZIGO = '" + oAddFiltros:cJazigo + "' OR U38.U38_JZDEST = '" + oAddFiltros:cJazigo + "')"
+			endIf
+
+			//================================
+			// ossuario
+			//================================
+			if !Empty(oAddFiltros:cOssuario)
+				cQuery += " AND (U38.U38_OSSARI = '" + oAddFiltros:cOssuario + "' OR U38.U38_OSDEST = '" + oAddFiltros:cOssuario + "')"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoOssu)
+				cQuery += " AND (U38.U38_NICHOO = '" + oAddFiltros:cNichoOssu + "' OR U38.U38_NODEST = '" + oAddFiltros:cNichoOssu + "')"
+			endIf
+
+			//================================
+			// crematorio
+			//================================
+			if !Empty(oAddFiltros:cCrematorio)
+				cQuery += " AND U38.U38_CRDEST = '" + oAddFiltros:cCrematorio + "'"
+			endIf
+
+			if !Empty(oAddFiltros:cNichoCrema)
+				cQuery += " AND U38.U38_NCDEST = '" + oAddFiltros:cNichoCrema + "'"
+			endIf
+
+		endIf
+
+	endIf
+
+	cQuery += " GROUP BY U38.U38_QUEMUT, "
+	cQuery += " U00.U00_CODIGO, "
+
+	If lHabTalona
+		cQuery += " U00.U00_TALONA, "
+	EndIf
+
+	cQuery += " U00.U00_NOMCLI, "
+	cQuery += " U38.U38_DTUTIL, "
+	cQuery += " U38.U38_DATA, "
+	cQuery += " U38.U38_QUADRA, "
+	cQuery += " U38.U38_MODULO, "
+	cQuery += " U38.U38_JAZIGO, "
+	cQuery += " U38.U38_GAVETA, "
+	cQuery += " U38.U38_OSSARI, "
+	cQuery += " U38.U38_NICHOO, "
+	cQuery += " U38.U38_QDDEST, "
+	cQuery += " U38.U38_MDDEST, "
+	cQuery += " U38.U38_JZDEST, "
+	cQuery += " U38.U38_GVDEST, "
+	cQuery += " U38.U38_CRDEST, "
+	cQuery += " U38.U38_NCDEST, "
+	cQuery += " U38.U38_OSDEST, "
+	cQuery += " U38.U38_NODEST "
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPHIST' )
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua1(1)
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua1("Consultando registros de histórico de transferências...")
+
+	// atualizo o objeto de processamentp
+	oProcess:SetRegua2(TMPHIST->(Reccount()))
+
+	while TMPHIST->(!Eof())
+
+		// zerp o arrau de enderecps
+		aAuxHistorico           := {}
+		cTipoEndOrigem          := ""
+		cTipoEndDestino         := ""
+		cDescriEnderecoOrigem   := ""
+		cDescriEndrecoDestino   := ""
+
+		// item
+		nItem++
+
+		//====================================
+		// dados de enderecamento de origem
+		//====================================
+
+		If !Empty(TMPHIST->ORI_QUADRA)// tipo de enderco jazigo
+
+			// descricao do tipo de endereco
+			cTipoEndOrigem          := "Jazigo"
+
+			if !Empty(TMPHIST->ORI_GAVETA)
+
+				// descricao do endereco
+				cDescriEnderecoOrigem   := "Quadra " + TMPHIST->ORI_QUADRA + " | Modulo " + TMPHIST->ORI_MODULO + " | Jazigo " + TMPHIST->ORI_JAZIGO + " | Gaveta " + TMPHIST->ORI_GAVETA
+
+			else
+
+				// descricao do endereco
+				cDescriEnderecoOrigem   := "Quadra " + TMPHIST->ORI_QUADRA + " | Modulo " + TMPHIST->ORI_MODULO + " | Jazigo " + TMPHIST->ORI_JAZIGO
+
+			endIf
+
+		elseIf !Empty(TMPHIST->ORI_OSSARIO)// ossuario
+
+			// descricao do tipo de endereco
+			cTipoEndOrigem  := "Ossário"
+
+			// descricao do endereco
+			cDescriEnderecoOrigem   := "Ossário " + TMPHIST->ORI_OSSARIO + " | Nicho " + TMPHIST->ORI_NICHOO
+
+		endIf
+
+		//====================================
+		// dados de enderecamento de destino
+		//====================================
+
+		// pego os dados de
+		if !Empty(TMPHIST->DES_CREMAT)// tipo de endereco crematorio
+
+			// descricao do tipo de endereco
+			cTipoEndDestino          := "Crematorio"
+
+			// descricao do endereco
+			cDescriEndrecoDestino   := "Crematorio " + TMPHIST->DES_CREMAT + " | Nicho " + TMPHIST->DES_NICHOC
+
+		elseIf !Empty(TMPHIST->DES_QUADRA)// tipo de enderco jazigo
+
+			// descricao do tipo de endereco
+			cTipoEndDestino  := "Jazigo"
+
+			if !Empty(TMPHIST->DES_GAVETA)
+
+				// descricao do endereco
+				cDescriEndrecoDestino := "Quadra " + TMPHIST->DES_QUADRA + " | Modulo " + TMPHIST->DES_MODULO + " | Jazigo " + TMPHIST->DES_JAZIGO + " | Gaveta " + TMPHIST->DES_GAVETA
+
+			else
+
+				// descricao do endereco
+				cDescriEndrecoDestino := "Quadra " + TMPHIST->DES_QUADRA + " | Modulo " + TMPHIST->DES_MODULO + " | Jazigo " + TMPHIST->DES_JAZIGO
+
+			endIf
+
+		elseIf !Empty(TMPHIST->DES_OSSARIO)// ossuario
+
+			// descricao do tipo de endereco
+			cTipoEndDestino  := "Ossário"
+
+			// descricao do endereco
+			cDescriEndrecoDestino := "Ossário " + TMPHIST->DES_OSSARIO + " | Nicho " + TMPHIST->DES_NICHOO
+
+		endIf
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua2("Registro: " +  StrZero(nItem,6) + " - Origem: " + cDescriEnderecoOrigem + "Destino: " + cDescriEndrecoDestino )
+
+		// array auxiliar dos contratos
+		Aadd( aAuxHistorico, { "TMP_ITEM" 	    , StrZero(nItem,6)	            })
+		Aadd( aAuxHistorico, { "TMP_NMFALE"	    , TMPHIST->NOMEFALE              })
+		Aadd( aAuxHistorico, { "TMP_CONTRA"	    , TMPHIST->CONTRATO  	        })
+		Aadd( aAuxHistorico, { "TMP_TITULA"	    , TMPHIST->TITULAR	            })
+		Aadd( aAuxHistorico, { "TMP_TRANSF"	    , Stod(TMPHIST->DATAENDERECO)	})
+		Aadd( aAuxHistorico, { "TMP_TPORIG"	    , cTipoEndOrigem   	            })
+
+		If lHabTalona
+			Aadd( aAuxHistorico, { "TMP_TALONA"	    , TMPHIST->TALONA  	        })
+		EndIf
+
+		Aadd( aAuxHistorico, { "TMP_ENDORI"	    , cDescriEnderecoOrigem	        })
+		Aadd( aAuxHistorico, { "TMP_TPDEST"	    , cTipoEndDestino   	        })
+		Aadd( aAuxHistorico, { "TMP_ENDDES"	    , cDescriEndrecoDestino	        })
+
+		// preencho o array de dados
+		Aadd( aDadosHistorico, aAuxHistorico )
+
+		TMPHIST->(DbSkip())
+	endDo
+
+	// vou executar a consulta de historico de retirada de cinzas
+	If !(AllTrim(FunName()) $ "RCPGA007")
+
+		// verifico se o alias esta em uso
+		if Select("TMPHIST") > 0
+			TMPHIST->(DbCloseArea())
+		endIf
+
+		//=======================================================================================
+		// Vou buscar todos os dados do historico para considerar os dados de retirada de cinzas
+		//======================================================================================
+
+		cQuery := " SELECT "
+		cQuery += " U30.U30_QUEMUT NOMEFALE, "
+		cQuery += " U00.U00_CODIGO CONTRATO, "
+		cQuery += " U00.U00_NOMCLI TITULAR, "
+		cQuery += " U30.U30_DTUTIL DATAENDERECO, "
+		cQuery += " U30.U30_DTHIST DATAHIST, "
+		cQuery += " U30.U30_CREMAT CREMAT, "
+		cQuery += " U30.U30_NICHOC NICHOC "
+		cQuery += " FROM " + RetSqlName("U30") + " U30 "
+		cQuery += " INNER JOIN " + RetSqlName("U00") + " U00 ON U00.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+		cQuery += " AND U00.U00_CODIGO = U30.U30_CODIGO "
+		cQuery += " LEFT JOIN "  + RetSqlName("U02") + " U02 ON U02.D_E_L_E_T_ = ' '"
+		cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'"
+		cQuery += " AND U02.U02_CODIGO = U00.U00_CODIGO "
+		cQuery += " WHERE U30.D_E_L_E_T_ = ' '"
+		cQuery += " AND U30.U30_FILIAL = '" + xFilial("U30") + "' "
+		cQuery += " AND U30.U30_CREMAT <> ' '"
+
+		// nome falecido
+		if !Empty(cNomeFalecido)
+			cQuery += " AND U30.U30_QUEMUT LIKE '%" + AllTrim(cNomeFalecido) + "%' "
+		endIf
+
+		// data de sepultamento
+		if !Empty(dDataAte)
+			cQuery += " AND U30.U30_DTUTIL BETWEEN '" + Dtos(dDataDe) + "' AND '" + Dtos(dDataAte) + "' "
+		endIf
+
+		// nnome do titular
+		if !Empty(cNomeTitular)
+			cQuery += " AND (U00.U00_NOMCLI LIKE '%" + AllTrim(cNomeTitular) + "%' OR U02.U02_NOME LIKE '%" + AllTrim(cNomeTitular) + "%')"
+		endIf
+
+		// CGC do titular
+		if !Empty(cCGC)
+			cQuery += " AND (U00.U00_CGC LIKE '%" + AllTrim(cCGC) + "%' OR U02.U02_CPF LIKE '%" + AllTrim(cCGC) + "%')"
+		endIf
+
+		if ValType(oAddFiltros) == "O"
+
+			// verifico se tem dados de endereco preenchidos
+			if oAddFiltros:lPreenchido
+
+				//================================
+				// crematorio
+				//================================
+				if !Empty(oAddFiltros:cCrematorio)
+					cQuery += " AND U30.U30_CREMAT = '" + oAddFiltros:cCrematorio + "'"
+				endIf
+
+				if !Empty(oAddFiltros:cNichoCrema)
+					cQuery += " AND U30.U30_NICHOC = '" + oAddFiltros:cNichoCrema + "'"
+				endIf
+
+			endIf
+
+		endIf
+
+		TcQuery cQuery New Alias "TMPHIST"
+
+		// atualizo o objeto de processamentp
+		oProcess:SetRegua2(TMPHIST->(Reccount()))
+
+		while TMPHIST->(!Eof())
+
+			// zerp o arrau de enderecps
+			aAuxHistorico           := {}
+			cTipoEndOrigem          := ""
+			cDescriEndrecoDestino   := ""
+
+			// item
+			nItem++
+
+			//====================================
+			// dados de enderecamento de origem
+			//====================================
+
+			// descricao do tipo de endereco
+			cTipoEndOrigem  := "Retirada de Cinzas"
+
+			// descricao do endereco
+			cDescriEnderecoOrigem   := "Crematorio " + TMPHIST->CREMAT + " | Nicho " + TMPHIST->NICHOC
+
+			// atualizo o objeto de processamento
+			oProcess:IncRegua2("Registro: " +  StrZero(nItem,6) + " - Retirada de Cinzas: " + cDescriEnderecoOrigem )
+
+			// array auxiliar dos contratos
+			Aadd( aAuxHistorico, { "TMP_ITEM" 	    , StrZero(nItem,6)	            })
+			Aadd( aAuxHistorico, { "TMP_NMFALE"	    , TMPHIST->NOMEFALE              })
+			Aadd( aAuxHistorico, { ""	    , TMPHIST->CONTRATO  	        })
+			Aadd( aAuxHistorico, { "TMP_TITULA"	    , TMPHIST->TITULAR	            })
+			Aadd( aAuxHistorico, { "TMP_TRANSF"	    , Stod(TMPHIST->DATAENDERECO)	})
+			Aadd( aAuxHistorico, { "TMP_TPORIG"	    , cTipoEndOrigem   	            })
+			Aadd( aAuxHistorico, { "TMP_ENDORI"	    , cDescriEnderecoOrigem	        })
+			Aadd( aAuxHistorico, { "TMP_TPDEST"	    , ""   	                        })
+			Aadd( aAuxHistorico, { "TMP_ENDDES"	    , ""	                        })
+
+			// preencho o array de dados
+			Aadd( aDadosHistorico, aAuxHistorico )
+
+			TMPHIST->(DbSkip())
+		endDo
+
+	endIf
+
+	// vou popular a tabela de dados - detalhes
+	CriaTabHistoricoTransf( cTrbHistorico, @oTempHistorico)
+
+	// chama a funcao para gravar os registros de tipo
+	GravaDados( aDadosHistorico, cTrbHistorico, /*lGeraDados*/, @oBrowseHistTransf )
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaPosFiltros
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@param aSizeAut, array, param_description
+@param aCords, array, param_description
+@param nLinhaFiltro1, numeric, param_description
+@param nLinhaFiltro2, numeric, param_description
+@param nLinhaFiltro3, numeric, param_description
+@param nColunaFiltro1, numeric, param_description
+@param nColunaFiltro2, numeric, param_description
+@param nColunaFiltro3, numeric, param_description
+@param nColunaFiltro4, numeric, param_description
+@param nColunaBotao1, numeric, param_description
+@param nColunaBotao2, numeric, param_description
+@param nColunaBotao3, numeric, param_description
+@return return_type, return_description
+/*/    // ajusta a tela para resolucoes menores
+Static Function AjustaPosFiltros( aSizeAut, aCords, nLinhaFiltro1, nLinhaFiltro2, nLinhaFiltro3,;
+		nColunaFiltro1, nColunaFiltro2, nColunaFiltro3, nColunaFiltro4,nColunaFiltro5,;
+		nColunaBotao1, nColunaBotao2, nColunaBotao3 )
+
+	Default aSizeAut        := {}
+	Default aCords          := {}
+	Default nLinhaFiltro1   := 0
+	Default nLinhaFiltro2   := 0
+	Default nLinhaFiltro3   := 0
+	Default nColunaFiltro1  := 0
+	Default nColunaFiltro2  := 0
+	Default nColunaFiltro3  := 0
+	Default nColunaFiltro4  := 0
+	Default nColunaFiltro5  := 0
+	Default nColunaBotao1   := 0
+	Default nColunaBotao2   := 0
+	Default nColunaBotao3   := 0
+
+	// verifico se o tamanho da tela é menor que 1900 pixels
+	if Len(aSizeAut) > 0 .And. aSizeAut[5] < 1900
+
+		// linhas
+		nLinhaFiltro1   := 019
+		nLinhaFiltro2   := 029
+		nLinhaFiltro3   := aCords[2,4] - (aCords[2,4]/4) - 7
+
+		// colunas
+		nColunaFiltro1  := 015
+		nColunaFiltro2  := (aCords[2,3]/5) + 20
+		nColunaFiltro3  := (aCords[2,3]/3) + 10
+		nColunaFiltro4  := (aCords[2,3]/2) + 10
+		nColunaFiltro5  := (aCords[2,3]/2) + (aCords[2,3]/4) + 20
+
+	else // tela com grande definicao
+
+		// linhas
+		nLinhaFiltro1   := 025
+		nLinhaFiltro2   := 040
+		nLinhaFiltro3   := aCords[2,4] - (aCords[2,4]/4)
+
+		// colunas
+		nColunaFiltro1  := 015
+		nColunaFiltro2  := (aCords[2,3]/5) + 20
+		nColunaFiltro3  := (aCords[2,3]/3) + 10
+		nColunaFiltro4  := (aCords[2,3]/2) + 10
+		nColunaFiltro5  := (aCords[2,3]/2) + (aCords[2,3]/4) + 20
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaTamanhofonte
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@param aSizeAut, array, param_description
+@param oFontTitulo, object, param_description
+@param oFontLabel, object, param_description
+@return return_type, return_description
+/*/
+Static Function AjustaTamanhofonte( aSizeAut, oFontTitulo, oFontLabel )
+
+	Default aSizeAut    := {}
+	Default oFontTitulo := Nil
+	Default oFontLabel  := Nil
+
+	// verifico se o tamanho da tela é menor que 1900 pixels
+	if Len(aSizeAut) > 0 .And. aSizeAut[5] < 1900
+		oFontTitulo := TFont():New("Arial",,012,,.T.,,,,,.F.,.F.)
+		oFontLabel := TFont():New("Arial",,014,,.F.,,,,,.F.,.F.)
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaConsulta
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@param oPanelFiltro, object, param_description
+@param oBotaoFiltrosAdicionais, object, param_description
+@param cBotaoCSSAzul, character, param_description
+@return return_type, return_description
+/*/
+Static Function LimpaConsulta( cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros, oPanelFiltro, oBotaoFiltrosAdicionais, cBotaoCSSAzul)
+
+	Default cNomeFalecido           := ""
+	Default dDataDe                 := stod("")
+	Default dDataAte                := stod("")
+	Default cNomeTitular            := ""
+	Default cCGC                    := ""
+	Default oAddFiltros             := Nil
+	Default oPanelFiltro            := Nil
+	Default oBotaoFiltrosAdicionais := Nil
+	Default cBotaoCSSAzul           := Nil
+
+	// limpa dados de consulta
+	cCGC                := Space(14)
+	cNomeFalecido       := Space(80)
+	cNomeTitular        := Space(80)
+	dDataDe             := Stod("")
+	dDataAte            := Stod("")
+	oAddFiltros         := Nil
+
+	// atualizo os objetos de tela
+	oBotaoFiltrosAdicionais:SetCss(cBotaoCSSAzul)
+	oBotaoFiltrosAdicionais:Refresh()
+	oPanelFiltro:Refresh()
+
+	// inicio o objeto novamente
+	oAddFiltros := AddFiltros():New()
+
+Return(Nil)
+
+/*/{Protheus.doc} Confirmar
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@return return_type, return_description
+/*/
+Static Function Confirmar()
+
+	Local lRetorno  as Logical
+
+	// atribuo valor a variavel
+	lRetorno  := .T.
+
+	// para a rotina de contrato
+	if Alltrim(FunName()) $ "RCPGA001"
+
+		// posiciono no primeiro registro do banco
+		U00->(DbGoTop())
+
+		// posiciono no contrato
+		U00->(DbSetOrder(1))
+		if U00->( DbSeek( xFilial("U00")+TRBEND->TR_CONTRA ) )
+			lRetorno    := .T.
+		else
+			lRetorno    := .F.
+		endIf
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VisualizarMapa
+description
+@type function
+@version 
+@author g.sampaio
+@since 03/08/2020
+@param aLocaliza, array, param_description
+@return return_type, return_description
+/*/
+Static Function VisualizarMapa(aLocaliza)
+
+	Local cContrato     as Character
+	Local cQuadra       as Character
+	Local cModulo       as Character
+	Local cJazigo       as Character
+
+	Default aLocaliza   := array(4)
+
+	// para o tipo de endereco jazigo
+	if SubStr(TRBEND->TR_TIPO,1,1) == "J" .And. Alltrim(TRBEND->TR_STATUS) == "EFETIVADO"
+
+		// preencho variaveis para o retorno
+		cContrato   := TRBEND->TR_CONTRA
+		cQuadra     := SubStr(TRBEND->TR_ENDERE,8,TamSX3("U10_QUADRA")[1])
+		cModulo     := SubStr(TRBEND->TR_ENDERE,20,TamSX3("U10_MODULO")[1])
+		cJazigo     := SubStr(TRBEND->TR_ENDERE,33,TamSX3("U10_CODIGO")[1])
+
+		// array do local do jazigo no mapa
+		aLocaliza   := {cContrato,cQuadra,cModulo,cJazigo}
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidaParam
+funcao para validar os parametros da rotina
+
+@type function
+@version 
+@author g.sampaio
+@since 16/11/2020
+@param cNomeFalecido, character, param_description
+@param dDataDe, date, param_description
+@param dDataAte, date, param_description
+@param cNomeTitular, character, param_description
+@param cCGC, character, param_description
+@param oAddFiltros, object, param_description
+@return return_type, return_description
+/*/
+Static Function ValidaParam( cNomeFalecido, dDataDe, dDataAte, cNomeTitular, cCGC, oAddFiltros )
+
+	Local lRetorno as Logical
+
+	Default cNomeFalecido   := ""
+	Default dDataDe         := Stod("")
+	Default dDataAte        := Stod("")
+	Default cNomeTitular    := ""
+	Default cCGC            := ""
+	Default oAddFiltros     := Nil
+
+	// atribuo valor as variaveis
+	lRetorno    := .T.
+
+	// caso tenha mascara no CGC eu faco o tratamento
+	if !Empty(cCGC)
+
+		// retiro os pontos
+		cCGC := StrTran(cCGC,".","")
+
+		// retiro os tracos
+		cCGC := StrTran(cCGC,"-","")
+
+	endIf
+
+Return(lRetorno)

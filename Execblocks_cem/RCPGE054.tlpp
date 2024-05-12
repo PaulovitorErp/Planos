@@ -1,0 +1,100 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} RCPGE054
+funcao para estornar o financeiro
+
+@type function
+@version 
+@author g.sampaio
+@since 07/10/2020
+@param nRecnoU26, numeric, param_description
+@param lExcluiProvisionamento, logical, param_description
+@return return_type, return_description
+/*/
+User Function RCPGE054( nRecnoU26, lExcluiProvisionamento )
+
+    Local aArea     as Array
+    Local aAreaU26  as Array
+    Local aAreaU27  as Array
+    Local lRetorno  as Logical
+
+    Default nRecnoU26               := 0
+    Default lExcluiProvisionamento  := .F.
+
+    // atribuo valor as variaveis
+    aArea       := GetArea()
+    aAreaU26    := U26->( GetArea() )
+    aAreaU27    := U27->( GetArea() )
+    lRetorno    := .T.
+
+    // posiciono no recno
+    U26->( DbGoTo(nRecnoU26) )
+
+    U27->(DbSetOrder(1)) // U27_FILIAL + U27_CODIGO + U27_ITEM
+    if U27->(DbSeek(xFilial("U27") + U26->U26_CODIGO))
+
+        BEGIN TRANSACTION
+
+            While U27->(!Eof()) .AND. U27->U27_FILIAL == xFilial("U27") .AND. U27->U27_CODIGO == U26->U26_CODIGO
+
+                SE1->(DbSetOrder(1)) // E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+                if SE1->(DbSeek(xFilial("SE1") + U27->U27_PREFIX + U27->U27_NUM + U27->U27_PARCEL + U27->U27_TIPO))
+
+                    // verifico se existem titulos em aberto
+                    if SE1->E1_VALOR == SE1->E1_SALDO
+
+                        // chamo a classe de financeiro da plataforma virtus
+                        oVirtusFin := VirtusFin():New()
+
+                        // faço a exclusão do título do bordero
+                        oVirtusFin:ExcBordTit( SE1->(Recno()) )
+
+                        // faço a exclusão do título a receber
+                        lRetorno := oVirtusFin:ExcluiTituloFin( SE1->(Recno()) )
+
+                        // verifico se deu tudo certo
+                        if lRetorno
+
+                            // verifico se excluo registro, deleto quando for realizar o cancelamento do titulo
+                            if lExcluiProvisionamento
+
+                                // excluo o registro do provisionamento
+                                if U27->(Reclock("U27",.F.))
+                                    U27->(DbDelete())
+                                    U27->(MsUnlock())
+                                else
+                                    U27->(DisarmTransaction())
+                                endif
+
+                            endIf
+
+                        else
+                            Exit
+                        endif
+
+                    elseIf IsInCallStack("U_RCPGA23EF") // quando for a rotina de estorno
+
+                        lRetorno := .F.
+                        Help( ,, "Help - RCPGE054",, "Não é possível estornar o financeiro desta taxa de manutenção pois existem títulos que já foram baixados!", 1, 0 )
+                    endIf
+
+                endif
+
+                U27->(DbSkip())
+
+            EndDo
+
+            if !lRetorno
+                DisarmTransaction()
+            endIf
+
+        END TRANSACTION
+
+    endif
+
+    RestArea(aAreaU27)
+    RestArea(aAreaU26)
+    RestArea(aArea)
+
+Return(lRetorno)
+

@@ -1,0 +1,406 @@
+#Include "PROTHEUS.CH"
+
+/*/{Protheus.doc} RCPGE052
+Funcao para liberar o desconto do vendedor no contrato
+@type function
+@version 
+@author g.sampaio
+@since 19/09/2020
+@param cCodContrato, character, param_description
+@return return_type, return_description
+/*/
+User Function RCPGE052( cCodContrato )
+
+    Local aArea                 as Array
+    Local aAreaU00              as Array
+    Local cCliente              as Character
+    Local cVendedor             as Character
+    Local cContrato             as Character
+    Local cPictureValores       as Character
+    Local cCSSGroup             as Character
+    Local dDataBloqueio         as Date
+    Local nValorBruto           as Numeric
+    Local nValorComDesconto     as Numeric
+    Local nValorDesconto        as Numeric
+    Local nLimiteVendedor       as Numeric
+    Local nDescontoSuperior     as Numeric
+    Local nLimiteSuperior       as Numeric
+    Local oFontTitulo           as Object
+    Local oFontLabel            as Object
+    Local oGetCliente           as Object
+    Local oGetVendedor          as Object
+    Local oGetContrato          as Object
+    Local oGetDataBloqueio      as Object
+    Local oGetValorBruto        as Object
+    Local oGetValorComDesconto  as Object
+    Local oGetValorDesconto     as Object
+    Local oGetLimiteVendedor    as Object
+    Local oGetDescontoSuperior  as Object
+    Local oGetLimiteSuperior    as Object
+    Local oSayCliente           as Object
+    Local oSayVendedor          as Object
+    Local oSayContrato          as Object
+    Local oSayDataBloqueio      as Object
+    Local oSayValorBruto        as Object
+    Local oSayValorComDesconto  as Object
+    Local oSayDesconto          as Object
+    Local oSayLimiteSuperior    as Object
+    Local oSayLimiteVendedor    as Object
+    Local oSayDescontoSuperior  as Object
+    Local oBotaoLiberar         as Object
+    Local oBotaoRejeitar        as Object
+    Local oBotaoSair            as Object
+    Local oDlgLiberaDesc        as Object
+    Local oRegraNegociacao      as Object
+
+    Default cCodContrato    := ""
+
+    // atribuo valores as variaveis
+    aArea               := GetArea()
+    aAreaU00            := U00->(GetArea())
+    cCSSGroup           := ""
+    cCliente            := ""
+    cVendedor           := ""
+    cContrato           := ""
+    dDataBloqueio       := Stod("")
+    nValorBruto         := 0
+    nValorComDesconto   := 0
+    nValorDesconto      := 0
+    nLimiteVendedor     := 0
+    nLimiteSuperior     := 0
+    nDescontoSuperior   := 0
+    cPictureValores     := "@E 999,999.99"
+    oFontTitulo         := TFont():New("Arial",,020,,.T.,,,,,.F.,.F.)
+    oFontLabel          := TFont():New("Arial",,018,,.F.,,,,,.F.,.F.)
+
+    // posiciono contrato
+    U00->( DbSetOrder(1) )
+    if U00->( MsSeek( xFilial("U00")+cCodContrato ) ) .And. U00->U00_DSCBLQ $ "1/2" // deixo liberar contratos bloqueados e rejeitados
+
+        // inicio o objeto com a classe de regra de negocicao
+        oRegraNegociacao    := RegraNegociacao():New( U00->U00_REGNEG, U00->U00_FORPG )
+
+        // valido a regra exata que o contrato esta
+        oRegraNegociacao:ValidaRegra( U00->U00_QTDPAR )
+
+        // verifico se o usuario que esta tentando liberar é um superior do vendedor
+        if oRegraNegociacao:lTemRegra .And. oRegraNegociacao:AlcadasLiberacao( U00->U00_VENDED )
+
+            // alimento os campos do contrato
+            cCliente            := AllTrim(U00->U00_CLIENT) + " - " + AllTrim(U00->U00_LOJA) + " - " + AllTrim(U00->U00_NOMCLI)
+            cVendedor           := AllTrim(U00->U00_VENDED) + " - " + AllTrim(U00->U00_NOMVEN)
+            cContrato           := U00->U00_CODIGO
+            dDataBloqueio       := U00->U00_DTBLOQ
+            nValorBruto         := U00->U00_VLRBRU
+            nValorComDesconto   := U00->U00_VALOR
+            nValorDesconto      := U00->U00_DESCON
+            nLimiteVendedor     := oRegraNegociacao:LimiteDesconto(1, nValorBruto)
+            nLimiteSuperior     := oRegraNegociacao:LimiteDesconto(2, nValorBruto)
+
+            // CSS do objeto group para colorir a borda
+            cCSSGroup := " QGroupBox { "
+            cCSSGroup += " border: 2px solid #0076CE; "
+            cCSSGroup += " padding-top: 0px; "
+            //cCSSGroup += " background-color: #FFFFFF;" // comentado por problema de compatibilidade digna
+            cCSSGroup += " color: #000000;"            
+            cCSSGroup += " }
+
+            DEFINE MSDIALOG oDlgLiberaDesc TITLE "Liberação de Desconto do Contrato" FROM 000, 000  TO 350, 700 COLORS 0, 16777215 PIXEL
+
+            @ 001, 004 GROUP oGroup1 TO 172, 350 PROMPT "Liberação de Desconto do Contrato" OF oDlgLiberaDesc COLOR 0, 16777215 PIXEL
+            oGroup1:oFont := oFontTitulo
+            oGroup1:SetCss(cCSSGroup)
+
+            @ 015, 010 SAY oSayCliente PROMPT "Cliente" SIZE 040, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 014, 075 MSGET oGetCliente VAR cCliente WHEN .F. SIZE 224, 010 OF oGroup1 COLORS 0, 16777215 PIXEL
+
+            @ 035, 010 SAY oSayVendedor PROMPT "Vendedor" SIZE 040, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 034, 075 MSGET oGetVendedor VAR cVendedor WHEN .F. SIZE 224, 010 OF oGroup1 COLORS 0, 16777215 PIXEL
+
+            @ 055, 010 SAY oSayContrato PROMPT "Contrato" SIZE 040, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 054, 075 MSGET oGetContrato VAR cContrato WHEN .F. SIZE 060, 010 OF oGroup1 COLORS 0, 16777215 PIXEL
+
+            @ 055, 165 SAY oSayDataBloqueio PROMPT "Data do Bloqueio" SIZE 070, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 054, 235 MSGET oGetDataBloqueio VAR dDataBloqueio WHEN .F. SIZE 076, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 075, 010 SAY oSayValorBruto PROMPT "Valor Bruto" SIZE 050, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 074, 075 MSGET oGetValorBruto VAR nValorBruto WHEN .F. PICTURE cPictureValores SIZE 060, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 075, 165 SAY oSayValorComDesconto PROMPT "Valor com Desconto" SIZE 080, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 074, 235 MSGET oGetValorComDesconto VAR nValorComDesconto WHEN .F. PICTURE cPictureValores SIZE 076, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 095, 010 SAY oSayDesconto PROMPT "Desconto" SIZE 036, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 094, 075 MSGET oGetValorDesconto VAR nValorDesconto WHEN .F. PICTURE cPictureValores SIZE 060, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 095, 165 SAY oSayLimiteVendedor PROMPT "Limite Vendedor" SIZE 060, 009 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 094, 235 MSGET oGetLimiteVendedor VAR nLimiteVendedor WHEN .F. PICTURE cPictureValores SIZE 076, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 115, 010 SAY oSayDescontoSuperior PROMPT "Desconto Superior" SIZE 060, 007 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 114, 075 MSGET oGetDescontoSuperior VAR nDescontoSuperior PICTURE cPictureValores VALID ValDescontoSuperior(nDescontoSuperior, nLimiteSuperior) SIZE 060, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            @ 115, 165 SAY oSayLimiteSuperior PROMPT "Limite Superior" SIZE 050, 009 OF oGroup1 FONT oFontLabel COLORS 0, 16777215 PIXEL
+            @ 114, 235 MSGET oGetLimiteSuperior VAR nLimiteSuperior PICTURE cPictureValores WHEN .F. SIZE 076, 010 OF oGroup1 COLORS 0, 16777215 PIXEL HASBUTTON
+
+            // CSS do botao
+            cBotaoCSSCinza      := CSSBotoesCinza()
+            cBotaoCSSVermelho   := CSSBotoesVermelho()
+            cBotaoCSSVerde      := CSSBotoesVerde()
+
+            // botao de flimpar filtros
+            oBotaoSair := TButton():New( 145, 165, "Sair", oGroup1,{ || oDlgLiberaDesc:End() }, 045, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+            oBotaoSair:SetCss(cBotaoCSSCinza)
+
+            // botao de consultar
+            oBotaoRejeitar := TButton():New( 145, 220, "Rejeitar", oGroup1,{ || RejeitarDesconto(), oDlgLiberaDesc:End() }, 045, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+            oBotaoRejeitar:SetCss(cBotaoCSSVermelho)
+
+            // botao de consultar
+            oBotaoLiberar := TButton():New( 145, 275, "Liberar", oGroup1,{ || LiberarDesconto(nDescontoSuperior), oDlgLiberaDesc:End() }, 045, 015,,,.F.,.T.,.F.,,.F.,,,.F. )
+            oBotaoLiberar:SetCss(cBotaoCSSVerde)
+
+            ACTIVATE MSDIALOG oDlgLiberaDesc CENTERED
+
+        else
+
+            // mensagem para o usuario
+            MsgAlert("Rotina não disponivel para o seu usuário, apenas o supervisor ou gerente do vendedor";
+                + " do contrato " + Alltrim(U00->U00_VENDED) + " - " + Alltrim(U00->U00_NOMVEN) + "  tem acesso a está rotina!","Bloqueio de Desconto")
+
+        endIf
+
+    endIf
+
+    RestArea( aAreaU00 )
+    RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} CSSBotoesCinza
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesCinza( nTamanhoTela )
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+    // implementacao do CSS
+    cRetorno    := " QPushButton { background: #d2d2d2; "
+    cRetorno    += " border: 1px solid #696969;"
+    cRetorno    += " outline:0;"
+    cRetorno    += " border-radius: 5px;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cRetorno    += " font-weight: bold;"
+    cRetorno    += " padding: 6px;"
+    cRetorno    += " color: #000000;}"
+    cRetorno    += " QPushButton:hover { background-color: #696969;"
+    cRetorno    += " border-style: inset;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cREtorno    += " font-weight: bold;"
+    cRetorno    += " border-color: #d2d2d2;"
+    cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesCinza
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesVermelho( nTamanhoTela )
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+    // implementacao do CSS
+    cRetorno    := " QPushButton { background: #e38d8d; "
+    cRetorno    += " border: 1px solid #b52121;"
+    cRetorno    += " outline:0;"
+    cRetorno    += " border-radius: 5px;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cRetorno    += " font-weight: bold;"
+    cRetorno    += " padding: 6px;"
+    cRetorno    += " color: #000000;}"
+    cRetorno    += " QPushButton:hover { background-color: #b52121;"
+    cRetorno    += " border-style: inset;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cREtorno    += " font-weight: bold;"
+    cRetorno    += " border-color: #e38d8d;"
+    cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesCinza
+description
+@type function
+@version 
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesVerde( nTamanhoTela )
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+    // implementacao do CSS
+    cRetorno    := " QPushButton { background: #99e09b; "
+    cRetorno    += " border: 1px solid #085c0b;"
+    cRetorno    += " outline:0;"
+    cRetorno    += " border-radius: 5px;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cRetorno    += " font-weight: bold;"
+    cRetorno    += " padding: 6px;"
+    cRetorno    += " color: #000000;}"
+    cRetorno    += " QPushButton:hover { background-color: #085c0b;"
+    cRetorno    += " border-style: inset;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cREtorno    += " font-weight: bold;"
+    cRetorno    += " border-color: #99e09b;"
+    cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} ValDescontoSuperior
+Validacao do desconto do superior
+
+@type function
+@version 
+@author g.sampaio
+@since 21/09/2020
+@param nDescontoSuperior, numeric, param_description
+@param nLimiteSuperior, numeric, param_description
+@return return_type, return_description
+/*/
+Static Function ValDescontoSuperior(nDescontoSuperior, nLimiteSuperior)
+
+    Local lRetorno  as Logical
+
+    Default nDescontoSuperior   := 0
+    Default nLimiteSuperior     := 0
+
+    // atribuo valor a variavel
+    lRetorno    := .T.
+
+    // verifico se o desconto do superior é maior que o limite
+    if nDescontoSuperior > nLimiteSuperior
+        lRetorno    := .F.
+        MsgAlert("O Desconto do Superior é maior que o limite permitido na Regra de Negociação!")
+    endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} LiberarDesconto
+funcao para liberar o desconto do contrato
+
+@type function
+@version 
+@author g.sampaio
+@since 21/09/2020
+@return return_type, return_description
+/*/
+Static Function LiberarDesconto(nDescontoSuperior)
+
+    BEGIN TRANSACTION
+
+        if U00->( RecLock("U00", .F.) )
+            U00->U00_DSCBLQ := "3"
+            U00->U00_USRLIB := __cUserId
+            U00->U00_DTLIBE := dDatabase
+
+            // caso o superior altere o desconto informado
+            if nDescontoSuperior > 0
+                U00->U00_DESCON := nDescontoSuperior
+                U00->U00_VALOR  := U00->U00_VLRBRU - nDescontoSuperior
+            endIf
+
+            U00->( MsUnlock() )
+
+            // mensagem para o usuario
+            MsgInfo("Desconto liberado com Sucesso!")
+        else
+            U00->( DisarmTransaction() )
+        endIf
+
+    END TRANSACTION
+
+Return(Nil)
+
+/*/{Protheus.doc} RejeitarDesconto
+funcao para rejeitar o desconto do contrato
+
+@type function
+@version 
+@author g.sampaio
+@since 21/09/2020
+@return return_type, return_description
+/*/
+Static Function RejeitarDesconto()
+
+    BEGIN TRANSACTION
+
+        if U00->( RecLock("U00", .F.) )
+            U00->U00_DSCBLQ := "2"
+            U00->( MsUnlock() )
+
+            // mensagem para o usuario
+            MsgInfo("Desconto do contrato Rejeitado!")
+        else
+            U00->( DisarmTransaction() )
+        endIf
+
+    END TRANSACTION
+
+Return(Nil)

@@ -1,0 +1,9 @@
+#include "totvs.ch"
+
+User Function RCPGE074()
+
+	Local lRetorno  As Logical
+
+	lRetorno    := .T.
+
+Return(lRetorno)

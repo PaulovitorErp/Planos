@@ -1,0 +1,636 @@
+#include "totvs.ch"
+#INCLUDE "tbiconn.CH"
+#INCLUDE "topconn.ch"
+
+/*/{Protheus.doc} AddFiltros
+Classe para alimentar o botao de filtros adicionais
+
+@type class
+@version 
+@author g.sampaio
+@since 10/09/2020
+/*/
+Class AddFiltros
+
+    public data cQuadra        as Character
+    public data cModulo        as Character
+    public data cJazigo        as Character
+    public data cCrematorio    as Character
+    public data cNichoCrema    as Character
+    public data cOssuario      as Character
+    public data cNichoOssu     as Character
+    public data lPreenchido    as Logical
+
+    public Method New() Constructor
+    public Method FiltrosAdicionais()
+    public Method Adicionar()
+    public Method LimpaVar()
+
+EndClass
+
+/*/{Protheus.doc} AddFiltros::New
+description
+@type method
+@version 
+@author g.sampaio
+@since 21/07/2020
+@return return_type, return_description
+/*/
+Method New() Class AddFiltros
+
+    Local aArea := GetArea()
+
+    // atibuo as variáveis dos filtros adicionais
+    ::cQuadra	    := Space(Tamsx3("U04_QUADRA")[1])
+    ::cModulo	    := Space(Tamsx3("U04_MODULO")[1])
+    ::cJazigo		:= Space(Tamsx3("U04_JAZIGO")[1])
+    ::cCrematorio	:= Space(Tamsx3("U04_CREMAT")[1])
+    ::cNichoCrema	:= Space(Tamsx3("U04_NICHOC")[1])
+    ::cOssuario		:= Space(Tamsx3("U04_OSSARI")[1])
+    ::cNichoOssu	:= Space(Tamsx3("U04_NICHOO")[1])
+    ::lPreenchido   := .F.
+
+    RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} FiltrosAdicionais
+description
+@type function
+@version 
+@author g.sampaio
+@since 21/07/2020
+@return return_type, return_description
+/*/
+Method FiltrosAdicionais( nTamanhoTela, oBotaoFiltrosAdicionais, oPanelFiltro ) Class AddFiltros
+
+    Local oButton1      as Object
+    Local oButton2      as Object
+    Local oButton3      as Object
+    Local oGet1         as Object
+    Local oGet2         as Object
+    Local oGet3         as Object
+    Local oGet4         as Object
+    Local oGet5         as Object
+    Local oGet6         as Object
+    Local oGet7         as Object
+    Local oGroup1       as Object
+    Local oGroup2       as Object
+    Local oGroup3       as Object
+    Local oGroup4       as Object
+    Local oSay1         as Object
+    Local oSay2         as Object
+    Local oSay3         as Object
+    Local oSay4         as Object
+    Local oSay5         as Object
+    Local oSay6         as Object
+    Local oSay7         as Object
+    Local oDlgFilAdd    as Object
+
+    Public __xQuadraFilAdd      := Nil
+    Public __xModuloFilAdd      := Nil
+    Public __xJazigoFilAdd      := Nil
+    Public __xCrematorioFilAdd  := NIL
+    Public __xNichoCremFilAdd   := NIL
+    Public __xOssarioFilAdd     := NIL
+    Public __xNichoOssFilAdd    := NIL
+
+    Default nTamanhoTela    := 0
+
+    DEFINE MSDIALOG oDlgFilAdd TITLE "Adicionar - Filtros Adicionais" FROM 000, 000  TO 400, 800 COLORS 0, 16777215 PIXEL
+
+    @ 002, 002 GROUP oGroup1 TO 195, 395 PROMPT "Filtros Adicionais" OF oDlgFilAdd COLOR 0, 16777215 PIXEL
+
+    //===========================================
+    // Jazigos
+    //===========================================
+
+    @ 010, 005 GROUP oGroup2 TO 062, 391 PROMPT "Jazigos" OF oDlgFilAdd COLOR 0, 16777215 PIXEL
+
+    @ 035, 015 SAY oSay1 PROMPT "Quadra" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 034, 050 MSGET oGet1 VAR ::cQuadra F3 "U08ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON VALID( ValPublicVar(::cQuadra, @__xQuadraFilAdd) )
+
+    @ 035, 140 SAY oSay2 PROMPT "Modulo" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 034, 170 MSGET oGet2 VAR ::cModulo F3 "U09ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    @ 035, 268 SAY oSay3 PROMPT "Jazigo" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 034, 297 MSGET oGet3 VAR ::cJazigo F3 "U10ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    //===========================================
+    // Crematorio
+    //===========================================
+
+    @ 065, 005 GROUP oGroup3 TO 115, 390 PROMPT "Crematório" OF oDlgFilAdd COLOR 0, 16777215 PIXEL
+
+    @ 085, 015 SAY oSay4 PROMPT "Crematorio" SIZE 050, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 084, 050 MSGET oGet4 VAR ::cCrematorio F3 "U11ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    @ 085, 140 SAY oSay5 PROMPT "Nicho" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 084, 171 MSGET oGet5 VAR ::cNichoCrema F3 "U12ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    //===========================================
+    // Ossuario
+    //===========================================
+
+    @ 115, 005 GROUP oGroup4 TO 169, 389 PROMPT "Ossuário" OF oDlgFilAdd COLOR 0, 16777215 PIXEL
+
+    @ 145, 015 SAY oSay6 PROMPT "Ossuario" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 144, 050 MSGET oGet6 VAR ::cOssuario F3 "U13ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    @ 145, 140 SAY oSay7 PROMPT "Nicho" SIZE 025, 007 OF oDlgFilAdd COLORS 0, 16777215 PIXEL
+    @ 144, 174 MSGET oGet7 VAR ::cNichoOssu F3 "U14ADD" SIZE 060, 010 OF oDlgFilAdd COLORS 0, 16777215 PIXEL HASBUTTON
+
+    @ 175, 351 BUTTON oButton1 PROMPT "Adicionar" SIZE 037, 012 OF oDlgFilAdd PIXEL Action ( ::Adicionar( nTamanhoTela, oBotaoFiltrosAdicionais, oPanelFiltro ), oDlgFilAdd:End())
+    @ 175, 310 BUTTON oButton2 PROMPT "Cancelar" SIZE 037, 012 OF oDlgFilAdd PIXEL Action ( ::LimpaVar(@oDlgFilAdd),oDlgFilAdd:End())
+    @ 175, 269 BUTTON oButton3 PROMPT "Limpar" SIZE 037, 012 OF oDlgFilAdd PIXEL Action ::LimpaVar(@oDlgFilAdd)
+
+    ACTIVATE MSDIALOG oDlgFilAdd CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaVar
+description
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+Method LimpaVar(oDlgFilAdd) Class AddFiltros
+
+    // limpo os valores das variaveis
+    ::cQuadra	    := Space(Tamsx3("U04_QUADRA")[1])
+    ::cModulo	    := Space(Tamsx3("U04_MODULO")[1])
+    ::cJazigo		:= Space(Tamsx3("U04_JAZIGO")[1])
+    ::cCrematorio	:= Space(Tamsx3("U04_CREMAT")[1])
+    ::cNichoCrema	:= Space(Tamsx3("U04_NICHOC")[1])
+    ::cOssuario		:= Space(Tamsx3("U04_OSSARI")[1])
+    ::cNichoOssu	:= Space(Tamsx3("U04_NICHOO")[1])
+    ::lPreenchido   := .F.
+    
+    // limpo tambem as variaveis publicas
+    __xQuadraFilAdd      := Nil
+    __xModuloFilAdd      := Nil
+    __xJazigoFilAdd      := Nil
+    __xCrematorioFilAdd  := NIL
+    __xNichoCremFilAdd   := NIL
+    __xOssarioFilAdd     := NIL
+    __xNichoOssFilAdd    := NIL
+
+    oDlgFilAdd:Refresh()
+
+Return(Nil)
+
+/*/{Protheus.doc} AddFiltros::Adicionar
+metodo adicionar
+@type method
+@version 
+@author g.sampaio
+@since 05/08/2020
+@param nTamanhoTela, numeric, param_description
+@param oBotaoFiltrosAdicionais, object, param_description
+@param oPanelFiltro, object, param_description
+@return return_type, return_description
+/*/
+Method Adicionar( nTamanhoTela, oBotaoFiltrosAdicionais, oPanelFiltro ) Class AddFiltros
+
+    Local cCSSPreenchido    as Character
+
+    Default nTamanhoTela    := 0
+
+    // verifico se os campos estao preenchidos
+    if !empty(::cQuadra) .Or. !empty(::cModulo) .Or. !empty(::cJazigo) .Or. !empty(::cCrematorio) .Or.;
+            !empty(::cNichoCrema) .Or. !empty(::cOssuario) .Or. !empty(::cNichoOssu)
+
+        // preencho a variavel de preenchido
+        ::lPreenchido   := .T.
+
+    endIf
+
+    // verifico se esta preenchido
+    if ::lPreenchido
+
+        // implementacao do CSS
+        cCSSPreenchido    := " QPushButton { background: #fff01f; "
+        cCSSPreenchido    += " border: 1px solid #918913;"
+        cCSSPreenchido    += " outline:0;"
+        cCSSPreenchido    += " border-radius: 5px;"
+        cCSSPreenchido    += " font-family: Arial;"
+
+        if nTamanhoTela < 1900
+            cCSSPreenchido    += " font-size: 10px;"
+        else
+            cCSSPreenchido    += " font-size: 14px;"
+        endIf
+
+        cCSSPreenchido    += " font-weight: bold;"
+        cCSSPreenchido    += " padding: 6px;"
+        cCSSPreenchido    += " color: #000000;}"
+        cCSSPreenchido    += " QPushButton:hover { background-color: #918913;"
+        cCSSPreenchido    += " border-style: inset;"
+        cCSSPreenchido    += " font-family: Arial;"
+
+        if nTamanhoTela < 1900
+            cCSSPreenchido    += " font-size: 10px;"
+        else
+            cCSSPreenchido    += " font-size: 14px;"
+        endIf
+
+        cCSSPreenchido    += " font-weight: bold;"
+        cCSSPreenchido    += " border-color: #fff01f;"
+        cCSSPreenchido    += " color: #ffffff; }"
+
+    else
+
+        // implementacao do CSS
+        cRetorno    := " QPushButton { background: #35ACCA; "
+        cRetorno    += " border: 1px solid #1f6779;"
+        cRetorno    += " outline:0;"
+        cRetorno    += " border-radius: 5px;"
+        cRetorno    += " font-family: Arial;"
+
+        if nTamanhoTela < 1900
+            cRetorno    += " font-size: 10px;"
+        else
+            cRetorno    += " font-size: 14px;"
+        endIf
+
+        cREtorno    += " font-weight: bold;"
+        cRetorno    += " padding: 6px;"
+        cRetorno    += " color: #ffffff;}"
+        cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+        cRetorno    += " border-style: inset;"
+        cRetorno    += " font-family: Arial;"
+
+        if nTamanhoTela < 1900
+            cRetorno    += " font-size: 10px;"
+        else
+            cRetorno    += " font-size: 14px;"
+        endIf
+
+        cREtorno    += " font-weight: bold;"
+        cRetorno    += " border-color: #35ACCA;"
+        cRetorno    += " color: #ffffff; }"
+
+    endIf
+    
+    // limpo o conteudo das variaveis publicas
+    __xQuadraFilAdd      := Nil
+    __xModuloFilAdd      := Nil
+    __xJazigoFilAdd      := Nil
+    __xCrematorioFilAdd  := NIL
+    __xNichoCremFilAdd   := NIL
+    __xOssarioFilAdd     := NIL
+    __xNichoOssFilAdd    := NIL
+
+    // atualzo as propriedades dos filstros adicionais
+    oBotaoFiltrosAdicionais:SetCSS(cCSSPreenchido)
+    oBotaoFiltrosAdicionais:Refresh()
+    oPanelFiltro:Refresh()
+
+Return(Nil)
+
+/*/{Protheus.doc} U08ADD
+Consulta especifica de quadra
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return Logical, verdadeiro
+/*/
+User Function U08ADD()
+
+    Local aArea     as Array
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U08")
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xQuadraFilAdd := aCpoRet[1]
+        endif
+
+    else
+        __xQuadraFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU08ADD
+retorno consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU08ADD()
+Return(__xQuadraFilAdd)
+
+/*/{Protheus.doc} U09ADD
+description
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function U09ADD()
+
+    Local aArea     as Array
+    Local cFiltro   as Character
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    // atribuo o valor das variaveis
+    if !Empty(__xQuadraFilAdd)
+        cFiltro := "U09_QUADRA == '" + __xQuadraFilAdd + "'"
+    endIf
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U09",,, .F.,,,,,, cFiltro)
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xModuloFilAdd := aCpoRet[1]
+        endif
+
+    else
+        __xModuloFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU09ADD
+description
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU09ADD()
+Return(__xModuloFilAdd)
+
+/*/{Protheus.doc} U10ADD
+description
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function U10ADD()
+
+    Local aArea     as Array
+    Local cFiltro   as Character
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    // atribuo o valor das variaveis
+    if !Empty(__xQuadraFilAdd)
+        cFiltro := "U10_QUADRA == '" + __xQuadraFilAdd + "'"
+    endIf
+
+    if !Empty(__xModuloFilAdd)
+        if Empty(cFiltro)
+            cFiltro := "U10_MODULO == '" + __xModuloFilAdd + "' "
+        else
+            cFiltro += ".And. U10_MODULO == '" + __xModuloFilAdd + "'"
+        endIf
+    endIf
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U10JAZ",,, .F.,,,,,, cFiltro)
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xJazigoFilAdd := aCpoRet[1]
+        endif
+    else
+        __xJazigoFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU10ADD
+description
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU10ADD()
+Return(__xJazigoFilAdd)
+
+/*/{Protheus.doc} U11ADD
+Consulta especifica de quadra
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return Logical, verdadeiro
+/*/
+User Function U11ADD()
+
+    Local aArea     as Array
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U11")
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xCrematorioFilAdd := aCpoRet[1]
+        endif
+    else
+        __xCrematorioFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU11ADD
+retorno consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU11ADD()
+Return(__xCrematorioFilAdd)
+
+/*/{Protheus.doc} U12ADD
+Consulta especifica de quadra
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return Logical, verdadeiro
+/*/
+User Function U12ADD()
+
+    Local aArea     as Array
+    Local cFiltro   as Character
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    // atribuo o valor das variaveis
+    if !Empty(__xCrematorioFilAdd)
+        cFiltro := "U12_CREMAT == '" + __xCrematorioFilAdd + "'"
+    endIf
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U12",,, .F.,,,,,, cFiltro)
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xNichoCremFilAdd := aCpoRet[1]
+        endif
+    
+    else
+        __xNichoCremFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU12ADD
+retorno consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU12ADD()
+Return(__xNichoCremFilAdd)
+
+/*/{Protheus.doc} U13ADD
+Consulta especifica de quadra
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return Logical, verdadeiro
+/*/
+User Function U13ADD()
+
+    Local aArea     as Array
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U13")
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xOssarioFilAdd := aCpoRet[1]
+        endif
+
+    else
+        __xOssarioFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU08ADD
+retorno consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU13ADD()
+Return(__xOssarioFilAdd)
+
+/*/{Protheus.doc} U12ADD
+Consulta especifica de quadra
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return Logical, verdadeiro
+/*/
+User Function U14ADD()
+
+    Local aArea     as Array
+    Local cFiltro   as Character
+
+    // atribuo valor a variavel
+    aArea := GetArea()
+
+    // atribuo o valor das variaveis
+    if !Empty(__xOssarioFilAdd)
+        cFiltro := "U14_OSSARI == '" + __xOssarioFilAdd + "'"
+    endIf
+
+    //realizo a consulta padrao
+    if ConPad1(,,,"U14OSS",,, .F.,,,,,, cFiltro)
+
+        //valido se houve retorno da consulta padrao
+        if Len(aCpoRet) > 0
+            __xNichoOssFilAdd := aCpoRet[1]
+        endif
+    else
+        __xNichoOssFilAdd := Nil
+    endIf
+
+    RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} RETU12ADD
+retorno consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 02/08/2020
+@return return_type, return_description
+/*/
+User Function RETU14ADD()
+Return(__xNichoOssFilAdd)
+
+/*/{Protheus.doc} ValPublicVar
+funcao para validar o conteudo da variavel 
+publica da consulta espefica
+@type function
+@version 
+@author g.sampaio
+@since 06/08/2020
+@param cCampoConteudo, character, param_description
+@param xVarPublica, param_type, param_description
+@return return_type, return_description
+/*/
+Static Function ValPublicVar( cCampoConteudo, xVarPublica)
+
+Default cCampoConteudo := ""
+
+// verifico se o campo esta preenchido
+if Empty(AllTrim(cCampoConteudo))
+    xVarPublica := Nil
+endIf
+
+Return(.T.)

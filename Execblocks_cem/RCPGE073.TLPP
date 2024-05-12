@@ -1,0 +1,2709 @@
+#include "totvs.ch"
+
+// dados dos itens do faturamento
+#DEFINE POS_CODIGO 		1
+#DEFINE POS_ITEM 		2
+#DEFINE POS_SERVICO		3
+#DEFINE POS_DESCONTO	4
+#DEFINE POS_QTD 		5
+#DEFINE POS_VALUNIT 	6
+#DEFINE POS_VALTOTAL 	7
+#DEFINE POS_MOK			8
+#DEFINE POS_HIST		9
+#DEFINE POS_CODFAT		10
+#DEFINE POS_ITEFAT		11
+
+// dados do multifaturamento
+#DEFINE PCLI_OK			1
+#DEFINE PCLI_STATUS		2
+#DEFINE PCLI_CLIENT		3
+#DEFINE PCLI_LOJA		4
+#DEFINE PCLI_NOME		5
+#DEFINE PCLI_PEDIDO		6
+#DEFINE PCLI_ITEM		7
+#DEFINE PCLI_PRODUTO	8
+#DEFINE PCLI_VALOR		9
+
+// dados do servico
+#DEFINE PSER_OK 		1
+#DEFINE PSER_STATUS 	2
+#DEFINE PSER_ITEM 		3
+#DEFINE PSER_SERVICO	4
+#DEFINE PSER_DESCRIC	5
+#DEFINE PSER_VALUNIT 	6
+#DEFINE PSER_DESCONT	7
+#DEFINE PSER_QTD		8
+#DEFINE PSER_VALTOTAL 	9
+
+User Function RCPGE073()
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento
+Classe de MultiFaturamento
+@type class
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+/*/
+	Class VirtusMultiFaturamento
+
+		Public Data aItensFaturamento   	As Array				// variavel de itens do faturamento
+		Public Data aClientesFaturamento	As Array				// variavel de clientes do faturamento
+		Public Data aFaturamento			As Array				// variavel do array de faturamento
+		Public Data aMultiItemFat			As Array				// variavel para armazenar os itens do multifaturamento
+		Public Data aItensPedido			As Array 				// variavel para armazenar os itens do pedido do cliente
+		Public Data cCodigoApontamento  	As Character			// variavel do codigo do apontamento
+		Public Data cStatus             	As Character
+		Public Data cProdutoFaturamento		As Character
+		Public Data cTipoOperacao			As Character
+		Public Data cNaturezaFaturamento	As Character
+		Public Data cCondPagFaturamento		As Character
+		Public Data cTabelaPrcFaturamento	As Character
+		Public Data cPedidosGerados			As Character
+		Public Data cCodigoFaturamento		As Character
+		Public Data cTipoFaturamento		As Character
+		Public Data cTipoMultiFat			As Character
+		Public Data cMsgNFS					As Character
+		Public Data lOk                 	As Logical
+		Public Data nValorTotal         	As Numeric
+		Public Data nDesconto           	AS Numeric
+		Public Data nValorFinal         	As Numeric
+		Public Data nValorAFaturar      	As Numeric
+		Public Data nValorPedido 			As Numeric
+		Public Data nTipoFat				As Numeric
+
+		Public Method New() Constructor
+
+		// multi faturamento
+		Public Method ValidaFaturamento()		// metodo para validar os dados para o multifaturamento
+		Public Method MultiFaturamento()		// metodo para iniciar a tela do multifaturamento
+		Public Method ClientesFaturamento()		// metodo para verificar os dados do cliente faturamento
+		Public Method AtualizaDados()			// metodo para atualizar os dados da classe
+		Public Method GerarPedido()				// metodo para gerar o pedido de vendas
+		Public Method ExcluirPedido()			// metodo para excluir o pedido de vendas
+		Public Method GerarDocSaida()			// metodo para gerar o documento de saida
+		Public Method GravaHistorico()			// metodo para gravar o historico
+		Public Method ValidaPedido()			// metodo para validar o pedido de vendas
+		Public Method AtualizaItens()			// metodo para atualizar os itens do pedido e mensagem da NF
+		Public Method StatusMultiFat()			// metodo para retornar o status do multifaturamento
+		Public Method Parametros()				// metodo para tratar parametros
+		Public Method RecalculaValor()			// metodo para recalcular o valor do pedido
+
+	EndClass
+
+/*/{Protheus.doc} VirtusMultiFaturamento::New
+Metodo construtor da classe
+@type method
+@version 1.0 
+@author g.sampaio
+@since 17/08/2023
+@param cTipo, character, tipo de faturamento
+@param cCodigo, character, codigo do apontamento ou transferencia
+/*/
+Method New(cTipo, cCodigo) Class VirtusMultiFaturamento
+
+	Local aArea     As Array
+	Local aAreaUJV  As Array
+	Local aAreaU38  As Array
+	Local lRetorno  As Logical
+
+	Default cTipo   := ""   // tipo do faturamento A-Apto.Serivo;T-Transf.End
+	Default cCodigo := ""   // codigo do apontamento ou transferencia
+
+	// atribui valor as variavies locais
+	aArea       := GetArea()
+	aAreaUJV    := UJV->(GetArea())
+	aAreaU38    := U38->(GetArea())
+	lRetorno    := .T.
+
+	// inicio as variaveis da classe
+	Self:aItensFaturamento  	:= {}
+	Self:aClientesFaturamento	:= {}
+	Self:aFaturamento			:= {}
+	Self:aMultiItemFat			:= {}
+	Self:aItensPedido			:= {}
+	Self:cStatus            	:= ""
+	Self:cCodigoApontamento 	:= ""
+	Self:cCodigoFaturamento		:= ""
+	Self:cTipoMultiFat			:= ""
+	Self:cMsgNFS				:= Space(TamSX3("C5_XMENNFS")[1])
+	Self:cTipoFaturamento		:= cTipo
+	Self:cProdutoFaturamento	:= SuperGetMV("MV_XPROMFA", .F., Space(TamSX3("B1_COD")[1]))
+	Self:cTipoOperacao			:= SuperGetMV("MV_XTPOMFA", .F., Space(2))
+	Self:cNaturezaFaturamento	:= SuperGetMV("MV_XNATMFA", .F., Space(TamSX3("ED_CODIGO")[1]))
+	Self:cCondPagFaturamento	:= SuperGetMV("MV_XCPGMFA", .F., "001")
+	Self:cTabelaPrcFaturamento	:= "" //SuperGetMV("MV_XTABMFA", .F., "001")
+	Self:lOk                	:= .T.
+	Self:nValorTotal        	:= 0
+	Self:nDesconto         	 	:= 0
+	Self:nValorFinal        	:= 0
+	Self:nValorAFaturar     	:= 0
+	Self:nValorPedido			:= 0
+	Self:nTipoFat				:= 0
+
+	If cTipo == "A" // apontamento de servico
+
+		UJV->(DbSetOrder(1))
+		If UJV->(MsSeek(xFilial("UJV")+cCodigo))
+
+			If !Empty(UJV->UJV_TABPRC)
+				Self:cTabelaPrcFaturamento	:= UJV->UJV_TABPRC
+			EndIf
+
+			Self:cCodigoApontamento := UJV->UJV_CODIGO
+			Self:ValidaFaturamento()
+		Else
+			Self:lOk := .F.
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU38)
+	RestArea(aAreaUJV)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::ValidaFaturamento
+Metodo para validar e iniciar os dados do faturamento
+@type method
+@version 1.0
+@author g.sampaio
+@since 17/08/2023
+/*/
+Method ValidaFaturamento() Class VirtusMultiFaturamento
+
+	Local cQuery As Character
+
+	// zera as variaveis
+	Self:nValorTotal 	:= 0
+	Self:nDesconto 		:= 0
+	Self:nValorFinal    := 0
+	Self:nValorAFaturar := 0
+
+	If Self:cTipoFaturamento == "A" // apontamento de cemiterio
+
+		cQuery := " SELECT "
+		cQuery += " 	UJV.UJV_CODIGO AS CODIGO, "
+		cQuery += " 	'CAB' AS ITEM, "
+		cQuery += " 	UJV.UJV_SERVIC AS SERVICO, "
+		cQuery += " 	UJV.UJV_DESCON AS DESCONTO, "
+		cQuery += " 	1 AS QTDE, "
+		cQuery += "     DA1.DA1_PRCVEN AS VALUNIT, "
+		cQuery += " 	DA1.DA1_PRCVEN AS VALORTOTAL, "
+		cQuery += "	    UJV.UJV_MOK AS MOK, "
+		cQuery += "	    (CASE WHEN ISNULL(U87_PRODUT,'') <> '' THEN 'S' ELSE 'N' END) AS HISTORICO  "
+		cQuery += " FROM " + RetSQLName("UJV") + " UJV "
+		cQuery += " INNER JOIN  "
+		cQuery += RetSQLName("DA1") + " DA1 "
+		cQuery += "     ON DA1.D_E_L_E_T_ = ' ' "
+		cQuery += "     AND DA1.DA1_FILIAL = '" + xFilial("DA1") + "' "
+
+		If !Empty(Self:cTabelaPrcFaturamento)
+			cQuery += "		AND DA1.DA1_CODTAB = '" + Self:cTabelaPrcFaturamento + "' "
+		Else
+			cQuery += "		AND DA1.DA1_CODTAB = UJV.UJV_TABPRC "
+		EndIf
+
+		cQuery += "     AND DA1.DA1_CODPRO = UJV.UJV_SERVIC "
+		cQuery += " LEFT JOIN " + RetSQLName("U87") + " U87 ON U87.D_E_L_E_T_ = ' '  "
+		cQuery += "     AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+		cQuery += " 	AND U87.U87_APONTA = UJV.UJV_CODIGO  "
+		cQuery += " 	AND U87.U87_PRODUT =  UJV.UJV_SERVIC "
+		cQuery += " WHERE UJV.D_E_L_E_T_ = ' ' "
+		cQuery += "     AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "' "
+		cQuery += "     AND UJV.UJV_CODIGO = '" + Self:cCodigoApontamento + "'"
+		cQuery += " UNION ALL "
+		cQuery += " SELECT "
+		cQuery += "	    UJX.UJX_CODIGO AS CODIGO, "
+		cQuery += "	    UJX.UJX_ITEM AS ITEM, "
+		cQuery += "	    UJX.UJX_SERVIC AS SERVICO, "
+
+		If UJX->(FieldPos("UJX_DESCON")) > 0
+			cQuery += "	    UJX.UJX_DESCON AS DESCONTO, "
+		Else
+			cQuery += "	    0 AS DESCONTO, "
+		EndIf
+
+		cQuery += "	    UJX.UJX_QTDE AS QTDE, "
+		cQuery += "	    UJX.UJX_VLUNIT AS VALUNIT, "
+		cQuery += "	    UJX.UJX_VALOR AS VALORTOTAL, "
+		cQuery += "	    UJX.UJX_MOK AS MOK, "
+		cQuery += "	    (CASE WHEN ISNULL(U87_PRODUT,'') <> '' THEN 'S' ELSE 'N' END) AS HISTORICO  "
+		cQuery += " FROM " + RetSQLName("UJX") + " UJX "
+		cQuery += " LEFT JOIN " + RetSQLName("U87") + " U87 ON U87.D_E_L_E_T_ = ' '  "
+		cQuery += "     AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+		cQuery += " 	AND U87.U87_APONTA = UJX.UJX_CODIGO  "
+		cQuery += " 	AND U87.U87_PRODUT =  UJX.UJX_SERVIC "
+		cQuery += " WHERE UJX.D_E_L_E_T_ = ' ' "
+		cQuery += "     AND UJX.UJX_FILIAL = '" + xFilial("UJX") + "' "
+		cQuery += "     AND UJX.UJX_CODIGO = '" + Self:cCodigoApontamento + "'"
+		cQuery += " ORDER BY CODIGO, ITEM "
+
+		// funcao que converte a query generica para o protheus
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, "TRBITE" )
+
+		// limpa o array
+		Self:aItensFaturamento := {}
+
+		While TRBITE->(!Eof())
+
+			Aadd( Self:aItensFaturamento, {TRBITE->CODIGO, TRBITE->ITEM, TRBITE->SERVICO, TRBITE->DESCONTO, TRBITE->QTDE, TRBITE->VALUNIT, TRBITE->VALORTOTAL, TRBITE->MOK, TRBITE->HISTORICO })
+
+			Self:nValorTotal += TRBITE->VALORTOTAL
+
+			If TRBITE->DESCONTO > 0
+				Self:nDesconto += TRBITE->DESCONTO
+			EndIf
+
+			TRBITE->(DBSkip())
+		EndDo
+
+		Self:nValorFinal    := Self:nValorTotal - Self:nDesconto
+		Self:nValorAFaturar := Self:nValorTotal
+
+		// valido se o apontamento ja tem faturamento
+		Self:ClientesFaturamento()
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::ClientesFaturamento
+Metodo para retornar os dados do cliente
+que ja tem faturamento
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+/*/
+Method ClientesFaturamento() Class VirtusMultiFaturamento
+
+	Local aAux 		As Array
+	Local cQuery 	As Character
+
+	aAux	:= {}
+	cQuery	:= ""
+
+	Self:aClientesFaturamento 	:= {}
+
+	cQuery	:= " SELECT "
+	cQuery	+= " 	U87.U87_CODIGO, "
+	cQuery	+= " 	U87.U87_ITEM, "
+	cQuery	+= " 	U87.U87_CLIENT, "
+	cQuery	+= " 	U87.U87_LOJA, "
+	cQuery	+= " 	U87.U87_PEDIDO, "
+	cQuery	+= " 	U87.U87_SERIE, "
+	cQuery	+= " 	U87.U87_DOCSAI, "
+	cQuery	+= " 	U87.U87_ITEAPT, "
+	cQuery	+= " 	U87.U87_PRODUT, "
+	cQuery	+= " 	U87.U87_TIPAPT, "
+	cQuery	+= " 	U87.U87_TPOPER, "
+	cQuery	+= " 	U87.U87_NATURE, "
+	cQuery	+= " 	U87.U87_VALPED "
+	cQuery	+= " FROM " + RetSQLName("U87") + " U87 "
+	cQuery	+= " WHERE U87.D_E_L_E_T_ = ' ' "
+	cQuery	+= " AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+	cQuery 	+= " AND U87.U87_APONTA = '" + Self:cCodigoApontamento + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBCLI")
+
+	While TRBCLI->(!Eof())
+
+		If Empty(Self:cCodigoFaturamento)
+			Self:cCodigoFaturamento	:= TRBCLI->U87_CODIGO
+		EndIf
+
+		If Empty(Self:cTipoMultiFat)
+
+			Self:cTipoMultiFat 			:= TRBCLI->U87_TIPAPT
+			Self:cProdutoFaturamento	:= TRBCLI->U87_PRODUT
+			Self:cTipoOperacao			:= TRBCLI->U87_TPOPER
+			Self:cNaturezaFaturamento	:= TRBCLI->U87_NATURE
+
+		EndIf
+
+		aAux := {}
+		If !Empty(TRBCLI->U87_PEDIDO) .And. !Empty(TRBCLI->U87_DOCSAI)
+			Aadd( aAux, .F.)
+			Aadd( aAux, "F")
+		elseIf !Empty(TRBCLI->U87_PEDIDO) .And. Empty(TRBCLI->U87_DOCSAI)
+			Aadd( aAux, .F.)
+			Aadd( aAux, "A")
+		Else
+			Aadd( aAux, .T.)
+			Aadd( aAux, "P")
+		EndIf
+
+		Aadd( aAux, TRBCLI->U87_CLIENT)
+		Aadd( aAux, TRBCLI->U87_LOJA)
+		Aadd( aAux, Posicione("SA1",1,xFilial("SA1")+TRBCLI->U87_CLIENT+TRBCLI->U87_LOJA,"A1_NOME"))
+		Aadd( aAux, TRBCLI->U87_PEDIDO)
+		Aadd( aAux, TRBCLI->U87_ITEAPT)
+		Aadd( aAux, TRBCLI->U87_PRODUT)
+		Aadd( aAux, TRBCLI->U87_VALPED)
+		Aadd( aAux, TRBCLI->U87_CODIGO)
+		Aadd( aAux, TRBCLI->U87_ITEM)
+
+		// atualiza o valor a faturar
+		If Self:nValorAFaturar > 0
+			Self:nValorAFaturar	:= Self:nValorAFaturar - TRBCLI->U87_VALPED
+		EndIf
+
+		Aadd( Self:aClientesFaturamento, aAux)
+
+		TRBCLI->(DBSkip())
+	EndDo
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::MultiFaturamento
+Metodo para iniciar o Multi Faturamento
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+/*/
+Method MultiFaturamento() Class VirtusMultiFaturamento
+
+	Local cPerg			As Character
+	Local lContinua		As Logical
+
+	cPerg 		:= "MULTIFAT"
+	lContinua	:= .T.
+	// chamo o metodo para retornar os dados
+	Self:ValidaFaturamento()
+
+	If !Empty(Self:cTipoMultiFat)
+		Self:nTipoFat := iif(Self:cTipoMultiFat=="V",1,2)
+		TelaMultiFat(Self, Self:nTipoFat)
+	Else
+
+		// enquanto o usuário não cancelar a tela de perguntas
+		While lContinua
+
+			// cria a caixa de perguntas
+			lContinua := Self:Parametros()
+
+			If lContinua
+
+				Self:ValidaFaturamento()
+
+				Self:nTipoFat	:= MV_PAR01
+
+				Self:cProdutoFaturamento	:= MV_PAR02
+				Self:cTipoOperacao			:= MV_PAR03
+
+				If Empty(Self:cNaturezaFaturamento)
+					Self:cNaturezaFaturamento := SuperGetMv("MV_XNATAPC",.F.,"OUTROS")
+				EndIf
+
+				If Self:nTipoFat == 1 .And. !Empty(Self:cProdutoFaturamento) // produto
+					Self:cNaturezaFaturamento	:= Posicione("SB1",1,xFilial("SB1")+Self:cProdutoFaturamento,"B1_XNATURE")
+				EndIf
+
+				Self:cCondPagFaturamento	:= MV_PAR04
+
+				TelaMultiFat(Self, Self:nTipoFat)
+
+			EndIf
+
+		EndDo
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::Parametros
+Metodo para abrir a tela de parametros da rotina
+@type method
+@version 1.0
+@author g.sampaio
+@since 10/01/2024
+@return logical, retorna se o usuario preenchou a tela ou cancelou
+/*/
+Method Parametros() Class VirtusMultiFaturamento
+
+	Local aPergs 		As Array
+	Local aX3Cbox       As Array
+	Local aMvPar		As Array
+	Local cX3Cbox       As Character
+	Local lRetorno		As Logical
+	Local nMV			As Numeric
+
+	// atribui valor as variaveis
+	aPergs 		:= {}
+	aX3Cbox     := {}
+	aMvPar		:= {}
+	cX3Cbox     := ""
+	lRetorno	:= .F.
+	nMV			:= 0
+
+	// parametros da rotina
+	aAdd(aPergs, {2, "Tipo Faturamento", 2, {"1=Valor","2=Item"}, 90, ".T.", .T.})
+	aAdd(aPergs, {1, "Produto Faturamento",  Self:cProdutoFaturamento,  "", ".T.", "SB1", ".T.", 90,  .F.})
+	aAdd(aPergs, {1, "Tipo de Operacao",  Self:cTipoOperacao,  "", ".T.", "DJ", ".T.", 10,  .T.})
+	aAdd(aPergs, {1, "Condição de Pagamento",  Self:cCondPagFaturamento,  "", ".T.", "SE4", ".T.", 10,  .F.})
+
+	// chamo a tela de parambox
+	If ParamBox(aPergs,"Dados para Multi-Faturamento", /*aRet*/, {|| .T.}, /*aButtons*/, /*lCentered*/, /*nPosx*/, /*nPosy*/, /*oDlgWizard*/, "RUTIL049", .T., .T.)
+		lRetorno := .T.
+
+		// tratamento de problema de compatibilidade da funcao PARAMBOX
+		// onde o primeiro item vem como numerico quando o tipo e combo (2)
+		If ValType(MV_PAR01) == "C"
+			MV_PAR01 := Val(MV_PAR01)
+		EndIf
+
+		For nMV := 1 To 40
+			aAdd( aMvPar, &( "MV_PAR" + StrZero( nMv, 2, 0 ) ) )
+		Next nMV
+
+		For nMv := 1 To Len( aMvPar )
+			&( "MV_PAR" + StrZero( nMv, 2, 0 ) ) := aMvPar[ nMv ]
+		Next nMv
+
+	endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::GerarPedido
+Metodo para gerar o pedido de vendas
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param aClientes, array, array de clientes
+@param nTipoFat, numeric, tipo do faturamento 1=Valor;2=Item
+/*/
+Method GerarPedido(aClientes, nTipoFat, aProdutos) Class VirtusMultiFaturamento
+
+	Local aArea				As Array
+	Local aAreaSC5			As Array
+	Local aAreaSC6			As Array
+	Local aPEAPTC5CEM		As Array
+	Local aCabSC5			As Array
+	Local aDadosC6			As Array
+	Local aItemSC6			As Array
+	Local cPulaLinha		As Character
+	Local lContinua			As Logical
+	Local nI 				As Numeric
+	Local nCliente			As Numeric
+	Local nPedido			As Numeric
+	Local nProduto			As Numeric
+	Local nItem 			As Numeric
+
+	Private lMsErroAuto		As Logical
+
+	Default aClientes 	:= {}
+	Default nTipoFat 	:= 0
+	Default aProdutos 	:= {}
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaSC5	:= SC5->(GetArea())
+	aAreaSC6	:= SC6->(GetArea())
+	aCabSC5		:= {}
+	aItemSC6	:= {}
+	aDadosC6	:= {}
+	aPEAPTC5CEM	:= {}
+	nI			:= 0
+	nCliente	:= 0
+	nPedido		:= 0
+	lMsErroAuto	:= .F.
+	lContinua	:= .T.
+	cPulaLinha	:= Chr(13) + Chr(10)
+	lContinua 	:= Self:ValidaPedido(aClientes, nTipoFat)
+
+	If lContinua
+
+		BEGIN TRANSACTION
+
+			For nCliente := 1 To Len(Self:aFaturamento)
+
+				lMsErroAuto	:= .F.
+
+				If Self:aFaturamento[nCliente, PCLI_OK] .And. Empty(Self:aFaturamento[nCliente, PCLI_PEDIDO])
+
+					// atualizo a mensagem da nota com os itens
+					Self:AtualizaItens(Self:aFaturamento[nCliente, PCLI_CLIENT], Self:aFaturamento[nCliente, PCLI_LOJA], nTipoFat)
+
+					aCabSC5 	:= {}
+					aDadosC6	:= {}
+					AAdd(aCabSC5, {"C5_TIPO" 	, "N" 								,Nil})
+					AAdd(aCabSC5, {"C5_CLIENTE" , Self:aFaturamento[nCliente, PCLI_CLIENT] 	,Nil})
+					AAdd(aCabSC5, {"C5_LOJACLI" , Self:aFaturamento[nCliente, PCLI_LOJA] 	,Nil})
+					AAdd(aCabSC5, {"C5_CONDPAG" , Self:cCondPagFaturamento			,Nil})
+					AAdd(aCabSC5, {"C5_TABELA" 	, Self:cTabelaPrcFaturamento		,Nil})
+					AAdd(aCabSC5, {"C5_EMISSAO" , dDataBase 						,Nil})
+					AAdd(aCabSC5, {"C5_MOEDA" 	, 1 								,Nil})
+					AAdd(aCabSC5, {"C5_NATUREZ" , Self:cNaturezaFaturamento	 		,Nil})
+					AAdd(aCabSC5, {"C5_XCONTRA"	, UJV->UJV_CONTRA					,Nil})
+					AAdd(aCabSC5, {"C5_XAPONTC"	, Self:cCodigoApontamento			,Nil})
+					AAdd(aCabSC5, {"C5_XATENDE"	, UJV->UJV_USRATE					,Nil})
+					AAdd(aCabSC5, {"C5_XNOMEFA"	, UJV->UJV_NOME						,Nil})
+					AAdd(aCabSC5, {"C5_XMENNFS"	, Self:cMsgNFS						,Nil})
+
+					// customiacao do cabecalho do Pedido de Vendas
+					If ExistBlock("PEAPTC5CEM")
+						aPEAPTC5CEM := ExecBlock("PEAPTC5CEM", .F., .F.)
+						If Len(aPEAPTC5CEM) > 0
+							For nI := 1 to Len(aPEAPTC5CEM)
+								aAdd(aCabSC5,{aPEAPTC5CEM[nI, 1], aPEAPTC5CEM[nI, 2], aPEAPTC5CEM[nI, 3]})
+							Next nI
+						EndIf
+					EndIf
+
+					If nTipoFat == 1 // faturamento por valor
+
+						aItemSC6 	:= {}
+						Self:nValorPedido := 0
+						AAdd(aItemSC6,{"C6_ITEM" 	, StrZero(1,TamSX3("C6_ITEM")[1])			,Nil})
+						AAdd(aItemSC6,{"C6_PRODUTO" , Self:cProdutoFaturamento 					,Nil})
+						AAdd(aItemSC6,{"C6_OPER" 	, Self:cTipoOperacao						,Nil})
+						AAdd(aItemSC6,{"C6_QTDVEN" 	, 1											,Nil})
+						AAdd(aItemSC6,{"C6_PRCVEN" 	, Self:aFaturamento[nCliente, PCLI_VALOR]			,Nil})
+						Self:nValorPedido := Self:aFaturamento[nCliente, PCLI_VALOR]
+
+						// customiacao 7do itens do Pedido de Vendas
+						If ExistBlock("PEAPTC6CEM")
+							aPEAPTC6CEM := ExecBlock("PEAPTC6CEM", .F., .F.)
+							If Len(aPEAPTC6CEM) > 0
+								For nI := 1 to Len(aPEAPTC6CEM)
+									aAdd(aItemSC6,{aPEAPTC6CEM[nI, 1], aPEAPTC6CEM[nI, 2], aPEAPTC6CEM[nI, 3]})
+								Next nI
+							EndIf
+						EndIf
+
+						AAdd(aDadosC6,aItemSC6)
+
+					ElseIf nTipoFat == 2 // faturamento por item
+
+						Self:nValorPedido := 0
+
+						For nItem := 1 To Len(Self:aItensPedido)
+
+							aItemSC6 	:= {}
+							AAdd(aItemSC6,{"C6_ITEM" 	, StrZero(nItem,TamSX3("C6_ITEM")[1])			,Nil})
+							AAdd(aItemSC6,{"C6_PRODUTO" , Self:aItensPedido[nItem, 2] 					,Nil})
+							AAdd(aItemSC6,{"C6_OPER" 	, Self:cTipoOperacao							,Nil})
+							AAdd(aItemSC6,{"C6_QTDVEN" 	, Self:aItensPedido[nItem, 5]					,Nil})
+							AAdd(aItemSC6,{"C6_PRCVEN" 	, Self:aItensPedido[nItem, 3]-Self:aItensPedido[nItem, 4]				,Nil})
+							Self:nValorPedido += Self:aItensPedido[nItem, 6]
+
+							// customiacao 7do itens do Pedido de Vendas
+							If ExistBlock("PEAPTC6CEM")
+								aPEAPTC6CEM := ExecBlock("PEAPTC6CEM", .F., .F.)
+								If Len(aPEAPTC6CEM) > 0
+									For nI := 1 to Len(aPEAPTC6CEM)
+										aAdd(aItemSC6,{aPEAPTC6CEM[nI, 1], aPEAPTC6CEM[nI, 2], aPEAPTC6CEM[nI, 3]})
+									Next nI
+								EndIf
+							EndIf
+
+							AAdd(aDadosC6,aItemSC6)
+
+						Next nItem
+
+					EndIf
+
+					// verifico se existem dados para serem faturados
+					If Len(aDadosC6) > 0 .And. Len(aCabSC5) > 0
+
+						MSExecAuto({|X,Y,Z|Mata410(X,Y,Z)},aCabSC5,aDadosC6,3)
+
+						If lMsErroAuto
+							lRet := .F.
+							MostraErro()
+							DisarmTransaction()
+						Else
+							Self:cPedidosGerados += "Pedido: " + SC5->C5_NUM + " - Cliente: " + Self:aFaturamento[nCliente, PCLI_NOME] + cPulaLinha
+							Self:GravaHistorico(nTipoFat, "PV", SC5->C5_NUM)
+
+							For nPedido := 1 To Len(aClientes)
+
+								// valido os itens para preencher o pedido
+								If aClientes[nPedido, PCLI_OK] .And. Empty(aClientes[nPedido, PCLI_PEDIDO]) .And. aClientes[nPedido, PCLI_CLIENT] + aClientes[nPedido, PCLI_LOJA] == SC5->C5_CLIENTE + SC5->C5_LOJACLI
+
+									// atualizo os dados do array
+									aClientes[nPedido, PCLI_STATUS]	:= "A"
+									aClientes[nPedido, PCLI_PEDIDO] := SC5->C5_NUM
+
+								EndIf
+
+							Next nPedido
+
+							// faturamento por item
+							If nTipoFat == 2
+
+								For nItem := 1 To Len(Self:aItensPedido)
+
+									nProduto := aScan(aProdutos, {|x| x[PSER_ITEM] + x[PSER_SERVICO] == Self:aItensPedido[nItem, 1] + Self:aItensPedido[nItem, 2]  })
+
+									aProdutos[nProduto, PSER_STATUS] := "A"
+
+								Next nItem
+
+							EndIf
+
+							// atualizo o status do apontamento
+							Self:StatusMultiFat()
+
+						EndIf
+
+					EndIf
+
+				ElseIf Self:aFaturamento[nCliente, PCLI_OK] .And. !Empty(Self:aFaturamento[nCliente, PCLI_PEDIDO])
+					MsgAlert("Cliente já tem pedido de vendas gerado!")
+
+				EndIf
+
+			Next nCliente
+
+		END TRANSACTION
+
+		If !Empty(Self:cPedidosGerados)
+			MsgInfo("Pedido(s) Gerado(s)" + cPulaLinha + Self:cPedidosGerados )
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSC6)
+	RestArea(aAreaSC5)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::StatusMultiFat
+Metodo para retornar o status do multifaturamento
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+/*/
+Method StatusMultiFat() Class VirtusMultiFaturamento
+
+	Local aArea 		As Array
+	Local aAreaUJV		As Array
+	Local cQuery		As Character
+	Local cStatusMulti	As Character
+	Local nItem			As Numeric
+	Local nTotItens		As Numeric
+	Local nTotFat 		As Numeric
+
+	aArea 			:= GetArea()
+	aAreaUJV		:= UJV->(GetArea())
+	cQuery			:= ""
+	cStatusMulti	:= ""
+	nItem			:= 0
+	nTotItens		:= 0
+	nTotFat			:= 0
+
+	cQuery := " SELECT UJV.UJV_CODIGO AS CODIGO, "
+	cQuery += "       'CAB' AS ITEM, "
+	cQuery += "       UJV.UJV_SERVIC AS SERVICO, "
+	cQuery += "       UJV.UJV_DESCON AS DESCONTO, "
+	cQuery += "       1 AS QTDE, "
+	cQuery += "       UJV.UJV_MOK AS MOK, "
+	cQuery += "       (CASE "
+	cQuery += "            WHEN ISNULL(U87_PRODUT, '') <> '' THEN 'S' "
+	cQuery += "            ELSE 'N' "
+	cQuery += "        END) AS HISTORICO "
+	cQuery += " FROM " + RetSqlName("UJV") + " UJV "
+	cQuery += " LEFT JOIN " + RetSqlName("U87") + " U87 ON U87.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+	cQuery += " 	AND U87.U87_APONTA = UJV.UJV_CODIGO "
+	cQuery += " 	AND U87.U87_PRODUT = UJV.UJV_SERVIC "
+	cQuery += " WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += "  	AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "' "
+	cQuery += "  	AND UJV.UJV_CODIGO = '" + Self:cCodigoApontamento + "' "
+	cQuery += " UNION ALL "
+	cQuery += " SELECT UJX.UJX_CODIGO AS CODIGO, "
+	cQuery += "       UJX.UJX_ITEM AS ITEM, "
+	cQuery += "       UJX.UJX_SERVIC AS SERVICO, "
+	cQuery += "       0 AS DESCONTO, "
+	cQuery += "       UJX.UJX_QTDE AS QTDE, "
+	cQuery += "       UJX.UJX_MOK AS MOK, "
+	cQuery += "       (CASE "
+	cQuery += "            WHEN ISNULL(U87_PRODUT, '') <> '' THEN 'S' "
+	cQuery += "            ELSE 'N' "
+	cQuery += "        END) AS HISTORICO "
+	cQuery += " FROM " + RetSqlName("UJX") + " UJX "
+	cQuery += " LEFT JOIN " + RetSqlName("U87") + " U87 ON U87.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+	cQuery += "		AND U87.U87_APONTA = UJX.UJX_CODIGO "
+	cQuery += "		AND U87.U87_PRODUT = UJX.UJX_SERVIC "
+	cQuery += " WHERE UJX.D_E_L_E_T_ = ' ' "
+	cQuery += "  	AND UJX.UJX_FILIAL = '" + xFilial("UJX") + "'  "
+	cQuery += "  	AND UJX.UJX_CODIGO = '" + Self:cCodigoApontamento + "' "
+	cQuery += " ORDER BY CODIGO, "
+	cQuery += "         ITEM "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBU87")
+
+	While TRBU87->(!Eof())
+
+		// se tiver faturado e com historico
+		If TRBU87->MOK == "2" .And. TRBU87->HISTORICO == "S"
+			nTotFat++
+		EndIf
+
+		nTotItens++
+
+		TRBU87->(DbSkip())
+	EndDo
+
+	// defino o status do faturamento
+	If (Self:nTipoFat == 2 .And. nTotFat == nTotItens) .Or. (Self:nTipoFat == 1 .And. Self:nValorAFaturar == 0)
+		cStatusMulti	:= "3" // faturamento total
+	ElseIf (Self:nTipoFat == 2 .And. nTotFat > 0 .And. nTotFat <> nTotItens) .Or. (Self:nTipoFat == 1 .And. Self:nValorAFaturar > 0)
+		cStatusMulti	:= "2" // faturado parcialmente
+	Else
+		cStatusMulti	:= "1" // sem faturamento
+	EndIf
+
+	UJV->(DbSetOrder(1))
+	If UJV->(MsSeek(xFilial("UJV")+Self:cCodigoApontamento))
+		If UJV->(Reclock("UJV", .F.))
+			UJV->UJV_STSMFA	:= cStatusMulti
+			UJV->(MsUnlock())
+		Else
+			UJV->(DisarmTransaction())
+		EndIf
+	EndIf
+
+	RestArea(aAreaUJV)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::AtualizaItens
+Metodo para atualizar com os itens do pedido e mensagem da nota
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param cCliente, character, cliente faturamento
+@param cLoja, character, loja do faturamento
+/*/
+Method AtualizaItens(cCliente, cLoja, nTipoFat) Class VirtusMultiFaturamento
+
+	Local aArea			As Array
+	Local aAreaSB1		As Array
+	Local cPulaLinha 	As Character
+	Local nPos			As Numeric
+	Local nPosItem		As Numeric
+	Local nLinha 		As Numeric
+
+	Default cCliente	:= ""
+	Default cLoja		:= ""
+	Default nTipoFat	:= 0
+
+	aArea		:= GetArea()
+	aAreaSB1	:= SB1->(GetArea())
+	cPulaLinha	:= Chr(13) + Chr(10)
+	nPos		:= 0
+
+	Self:cMsgNFS := ""
+	Self:cMsgNFS += cPulaLinha
+	Self:cMsgNFS += "SERVICOS FATURADOS: "
+	Self:cMsgNFS += cPulaLinha
+
+	Self:aItensPedido := {}
+
+	For nLinha := 1 To Len(Self:aMultiItemFat)
+
+		If !Empty(Self:aMultiItemFat[nLinha, PCLI_PRODUTO]) .And. Self:aMultiItemFat[nLinha, PCLI_CLIENT] == cCliente .And. Self:aMultiItemFat[nLinha, PCLI_LOJA] == cLoja
+
+			// monto a mensagem para a nota
+			Self:cMsgNFS += AllTrim(Posicione("SB1",1,xFilial("SB1")+Self:aMultiItemFat[nLinha, PCLI_PRODUTO],"B1_DESC")) + ".............................. R$ " + Transform(Self:aMultiItemFat[nLinha, PCLI_VALOR],"@E 999,999.99")
+			Self:cMsgNFS += cPulaLinha
+
+			// faturamento por item
+			If nTipoFat == 2
+
+				nPosItem := aScan(Self:aItensFaturamento, {|x| x[POS_SERVICO] == Self:aMultiItemFat[nLinha, PCLI_PRODUTO] })
+
+				If nPosItem > 0
+					Aadd(Self:aItensPedido, {Self:aMultiItemFat[nLinha, PCLI_ITEM], Self:aItensFaturamento[nLinha, POS_SERVICO], Self:aItensFaturamento[nPosItem, POS_VALUNIT], Self:aItensFaturamento[nPosItem, POS_DESCONTO], Self:aItensFaturamento[nPosItem, POS_QTD], Self:aItensFaturamento[nLinha, POS_VALTOTAL]})
+				Else
+					Aadd(Self:aItensPedido, {Self:aMultiItemFat[nLinha, PCLI_ITEM], Self:aMultiItemFat[nLinha, PCLI_PRODUTO], Self:aMultiItemFat[nLinha, PCLI_VALOR], Self:aMultiItemFat[nPosItem, PCLI_DESCONT], 1, Self:aMultiItemFat[nLinha, PCLI_VALOR]})
+				EndIf
+
+			EndIf
+
+		EndIf
+
+	Next nLinha
+
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::ValidaPedido
+Metodo para validar a geracao do pedido de vendas
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param aClientes, array, array de clientes
+@param nTipoFat, numeric, tipo do faturamento
+@return logical, retorno do pedido de vendas
+/*/
+Method ValidaPedido(aClientes, nTipoFat) Class VirtusMultiFaturamento
+
+	Local aAux 			As Array
+	Local cCliente 		As Character
+	Local cLoja			As Character
+	Local cMensagem		As Character
+	Local lRetorno		As Logical
+	Local nCliente		As Numeric
+	Local nSomaVal		As Numeric
+
+	Default aClientes	:= {}
+	Default nTipoFat	:= 0
+
+	// atribui valor as variaveis
+	aAux 		:= {}
+	cMensagem	:= ""
+	cCliente	:= ""
+	cLoja		:= ""
+	lRetorno	:= .T.
+	nCliente	:= 0
+	nSomaVal	:= 0
+
+	// limpo as variaveis da class
+	Self:cCodigoFaturamento	:= ""
+	Self:aFaturamento 		:= {}
+	Self:aMultiItemFat		:= {}
+
+	// validacao da natureza de faturamnto
+	If lRetorno	.And. Empty(Self:cNaturezaFaturamento)
+		lRetorno	:= .F.
+		cMensagem	:= "Natureza não preenchida, verificar o parametro ou cadastro do Serviço!"
+	EndIf
+
+	// validacao do tipo de operacao
+	If lRetorno .And. Empty(Self:cTipoOperacao)
+		lRetorno	:= .F.
+		cMensagem	:= "Tipo de Operação não preenchido, verificar o parametro!"
+	EndIf
+
+	// validacao do serivco de faturamento
+	If lRetorno .And. nTipoFat == 1 .And. Empty(Self:cProdutoFaturamento)
+		lRetorno	:= .F.
+		cMensagem	:= "Serviço do faturamento não preenchido, verifique o parametro!"
+	EndIf
+
+	If !lRetorno .And. !Empty(cMensagem)
+		MsgAlert(cMensagem, "Atenção!")
+	EndIf
+
+	// para faturamento por item
+	If lRetorno .And. nTipoFat == 2
+
+		// Ordena o Array por Cliente + Loja (Array multidimensional) - Crescente
+		aSort(aClientes, , , {|x, y| x[PCLI_CLIENT]+x[PCLI_LOJA] < y[PCLI_CLIENT]+y[PCLI_LOJA] })
+
+		For nCliente := 1 To Len(aClientes)
+
+			If Empty(aClientes[nCliente, PCLI_PEDIDO]) .And. aClientes[nCliente, PCLI_OK]
+
+				// pego os dados do cliente e loja
+				If Empty(cCliente) .And. Empty(cLoja)
+					cCliente	:= aClientes[nCliente, PCLI_CLIENT]
+					cLoja		:= aClientes[nCliente, PCLI_LOJA]
+				EndIf
+
+				AAdd(Self:aMultiItemFat, {aClientes[nCliente, PCLI_OK], aClientes[nCliente, PCLI_STATUS], aClientes[nCliente, PCLI_CLIENT], aClientes[nCliente, PCLI_LOJA], aClientes[nCliente, PCLI_NOME], aClientes[nCliente, PCLI_PEDIDO], aClientes[nCliente, PCLI_ITEM], aClientes[nCliente, PCLI_PRODUTO], aClientes[nCliente, PCLI_VALOR]})
+
+				nSomaVal	+= aClientes[nCliente, PCLI_VALOR]
+
+			EndIf
+
+			if (Len(aClientes) == nCliente .And. aClientes[nCliente, PCLI_OK]) .Or. (aClientes[nCliente, PCLI_OK] .And. aClientes[nCliente + 1, PCLI_CLIENT] + aClientes[nCliente + 1, PCLI_LOJA] <> cCliente + cLoja)
+
+				AADD(aAux, { aClientes[nCliente, PCLI_OK], aClientes[nCliente, PCLI_STATUS], cCliente, cLoja, aClientes[nCliente, PCLI_NOME], aClientes[nCliente, PCLI_PEDIDO], aClientes[nCliente, PCLI_ITEM], aClientes[nCliente, PCLI_PRODUTO], nSomaVal } )
+
+				cCliente	:= ""
+				cLoja		:= ""
+				nSomaVal	:= 0
+
+			endif
+
+		Next nCliente
+
+		If Len(aAux) > 0
+			Self:aFaturamento	:= aAux
+		EndIf
+
+	Else
+		Self:aMultiItemFat	:= aClientes
+		Self:aFaturamento	:= aClientes
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::GravaHistorico
+Metodo para gravar o historico das operacoes do multifaturamento
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param nTipoFat, numeric, tipo do faturamento
+@param cTipo, character, tipo do historico
+@param cNumPedido, character, numero do pedido de vendas
+@param cSerie, character, serie da nota
+@param cNota, character, nota fiscal
+@param aDadosCli, array, dados do cliente
+/*/
+Method GravaHistorico(nTipoFat, cTipo, cNumPedido, cSerie, cNota, aDadosCli) Class VirtusMultiFaturamento
+
+	Local aArea 	As Array
+	Local aAreaU87	As Array
+	Local aAreaUJV 	As Array
+	Local aAreaUJX 	As Array
+	Local lNovoReg	As Logical
+	Local nHist 	As Numeric
+	Local nMulti	As Numeric
+
+	Default nTipoFat	:= 1
+	Default cTipo		:= "PV"
+	Default cNumPedido	:= ""
+	Default cSerie		:= ""
+	Default cNota		:= ""
+	Default aDadosCli	:= {}
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU87	:= U87->(GetArea())
+	aAreaUJV	:= UJV->(GetArea())
+	aAreaUJX 	:= UJX->(GetArea())
+	nHist		:= 0
+	nMulti		:= 0
+	lNovoReg	:= .T.
+
+	If cTipo == "PV" // historico do pedido de vendas
+
+		For nMulti := 1 To Len(Self:aItensPedido)
+
+			// conteudo inicial
+			lNovoReg := .T.
+
+			cQuery := " SELECT U87.R_E_C_N_O_ RECU87 FROM " + RetSQLName("U87") + " U87 "
+			cQuery += " WHERE U87.D_E_L_E_T_ = ' ' "
+			cQuery += " AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+			//cQuery += " AND U87.U87_CODIGO = '" + Self:cCodigoFaturamento + "' "
+			cQuery += " AND U87.U87_STATUS = '1' "
+			cQuery += " AND U87.U87_PEDIDO = ' ' "
+			cQuery += " AND U87.U87_APONTA = '"+ Self:cCodigoApontamento +"' "
+			//cQuery += " AND U87.U87_CLIENT = '" + SC5->C5_CLIENTE + "'"
+			//cQuery += " AND U87.U87_LOJA = '" + SC5->C5_LOJACLI + "'"
+			cQuery += " AND U87.U87_ITEAPT = '" + Self:aItensPedido[nMulti, 1] + "'"
+			cQuery += " AND U87.U87_PRODUT = '" + Self:aItensPedido[nMulti, 2] + "'"
+
+			cQuery := ChangeQuery(cQuery)
+
+			MPSysOpenQuery(cQuery, "TRBU87")
+
+			If TRBU87->(!Eof())
+				lNovoReg := .F.
+				U87->(DBGoTo(TRBU87->RECU87))
+				Self:cCodigoFaturamento := U87->U87_CODIGO
+			EndIf
+
+			If Empty(Self:cCodigoFaturamento)
+				Self:cCodigoFaturamento := GetSXENum("U87","U87_CODIGO")
+			EndIf
+
+			BEGIN TRANSACTION
+
+				If U87->(Reclock("U87", lNovoReg))
+
+					If lNovoReg
+						U87->U87_FILIAL := xFilial("U87")
+						U87->U87_CODIGO	:= Self:cCodigoFaturamento
+						U87->U87_ITEM	:= ProxItem(Self:cCodigoFaturamento)
+						U87->U87_DATA	:= dDataBase
+						U87->U87_HORA	:= Time()
+						U87->U87_APONTA	:= Self:cCodigoApontamento
+						U87->U87_CLIENT	:= SC5->C5_CLIENTE
+						U87->U87_LOJA	:= SC5->C5_LOJACLI
+					EndIf
+
+					U87->U87_PEDIDO	:= SC5->C5_NUM
+					U87->U87_DATPED	:= SC5->C5_EMISSAO
+					U87->U87_NATURE	:= SC5->C5_NATUREZ
+					U87->U87_TPOPER	:= Self:cTipoOperacao
+					U87->U87_ITEAPT := Self:aItensPedido[nMulti, 1]
+					U87->U87_PRODUT	:= Self:aItensPedido[nMulti, 2]
+					U87->U87_PROFAT	:= iif(nTipoFat==1,Self:cProdutoFaturamento, Self:aItensPedido[nMulti, 2])
+					U87->U87_TIPAPT	:= Iif(nTipoFat==1,"V","I")
+					U87->U87_DOCSAI	:= ""
+					U87->U87_SERIE	:= ""
+					U87->U87_DATDOC	:= StoD("")
+					U87->U87_VALPED	:= Self:aItensPedido[nMulti, 6]
+					U87->U87_STATUS	:= "2" // pedido gerado
+					U87->U87_TABELA	:= iif(Self:aItensPedido[nMulti, 1]=="CAB", "UJV", "UJX")
+					U87->(MsUnlock())
+					U87->(ConfirmSX8())
+				Else
+					U87->(RollBackSX8())
+					U87->(DisarmTransaction())
+				EndIf
+
+				If Self:aItensPedido[nMulti, 1] <> "CAB"
+
+					// gravo o historico do item do apontamento
+					UJX->(DbSetOrder(2))
+					If UJX->(MsSeek(xFilial("UJX")+Self:cCodigoApontamento+Self:aItensPedido[nMulti, 1]))
+						If UJX->(Reclock("UJX", .F.))
+							UJX->UJX_MOK	:= "2" // faturado
+							If UJX->(FieldPos("UJX_DESCON")) > 0
+								If Self:aItensPedido[nMulti, 4] > 0
+									UJX->UJX_DESCON	:= Self:aItensPedido[nMulti, 4]
+								Else
+									UJX->UJX_DESCON	:= 0
+								EndIf
+							EndIf
+							UJX->(MsUnlock())
+						Else
+							UJX->(DisarmTransaction())
+						EndIf
+					EndIf
+
+				EndIf
+
+				// gravo o historico no apontamento
+				UJV->(DbSetOrder(1))
+				If UJV->(MsSeek(xFilial("UJV")+Self:cCodigoApontamento))
+					If UJV->(Reclock("UJV", .F.))
+						UJV->UJV_STATUS := ValidaStatusUJV(Self:cCodigoApontamento)// gravo o status
+						If Self:aItensPedido[nMulti, 1] == "CAB"
+							UJV->UJV_MOK	:= "2" // faturado
+							UJV->UJV_STATUS	:= "F"
+							If UJV->(FieldPos("UJV_DESCON")) > 0
+								If Self:aItensPedido[nMulti, 4] > 0
+									UJV->UJV_DESCON	:= Self:aItensPedido[nMulti, 4]
+								Else
+									UJV->UJV_DESCON	:= 0
+								EndIf
+							EndIf
+						EndIf
+						UJV->(MsUnlock())
+					Else
+						UJV->(DisarmTransaction())
+					EndIf
+
+				EndIf
+
+			END TRANSACTION
+
+			Self:StatusMultiFat()
+
+		Next nMulti
+
+	ElseIf cTipo == "NF" // historico da nf
+
+		SC5->(DbSetOrder(1))
+		If SC5->(MsSeek(xFilial("SC5")+cNumPedido))
+
+			cQuery := " SELECT U87.R_E_C_N_O_ RECU87 FROM " + RetSQLName("U87") + " U87 "
+			cQuery += " WHERE U87.D_E_L_E_T_ = ' ' "
+			cQuery += " AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+			cQuery += " AND U87.U87_STATUS = '2' "
+			cQuery += " AND U87.U87_PEDIDO = '"+ cNumPedido +"' "
+			cQuery += " AND U87.U87_APONTA = '"+ Self:cCodigoApontamento +"' "
+			cQuery += " AND U87.U87_CLIENT = '" + SC5->C5_CLIENTE + "'"
+			cQuery += " AND U87.U87_LOJA = '" + SC5->C5_LOJACLI + "'"
+
+			cQuery := ChangeQuery(cQuery)
+
+			MPSysOpenQuery(cQuery, "TRBU87")
+
+			While TRBU87->(!Eof())
+
+				U87->(DBGoTo(TRBU87->RECU87))
+
+				If U87->(Reclock("U87", .F.))
+					U87->U87_DOCSAI	:= cNota
+					U87->U87_SERIE	:= cSerie
+					U87->U87_DATDOC	:= dDataBase
+					U87->U87_STATUS	:= "3" // documento de saida gerado
+					U87->(MsUnlock())
+				Else
+					U87->(DisarmTransaction())
+				EndIf
+
+				TRBU87->(DbSkip())
+			EndDo
+
+		EndIf
+
+	ElseIf cTipo == "PP" // pedido pendente
+
+		cQuery := " SELECT U87.R_E_C_N_O_ RECU87 FROM " + RetSQLName("U87") + " U87 "
+		cQuery += " WHERE U87.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+		//cQuery += " AND U87.U87_CODIGO = '" + Self:cCodigoFaturamento + "' "
+		cQuery += " AND U87.U87_STATUS = '1' "
+		cQuery += " AND U87.U87_PEDIDO = ' ' "
+		cQuery += " AND U87.U87_APONTA = '"+ Self:cCodigoApontamento +"' "
+		cQuery += " AND U87.U87_CLIENT = '" + aDadosCli[PCLI_CLIENT] + "'"
+		cQuery += " AND U87.U87_LOJA = '" + aDadosCli[PCLI_LOJA] + "'"
+		cQuery += " AND U87.U87_ITEAPT = '" + aDadosCli[PCLI_ITEM] + "'"
+		cQuery += " AND U87.U87_PRODUT = '" + aDadosCli[PCLI_PRODUTO] + "'"
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBU87")
+
+		If TRBU87->(!Eof())
+			lNovoReg := .F.
+			U87->(DBGoTo(TRBU87->RECU87))
+			Self:cCodigoFaturamento := U87->U87_CODIGO
+		EndIf
+
+		If Empty(Self:cCodigoFaturamento)
+			Self:cCodigoFaturamento := GetSXENum("U87","U87_CODIGO")
+		EndIf
+
+		If U87->(Reclock("U87", lNovoReg))
+
+			If lNovoReg
+				U87->U87_FILIAL := xFilial("U87")
+				U87->U87_CODIGO	:= Self:cCodigoFaturamento
+				U87->U87_ITEM	:= ProxItem(Self:cCodigoFaturamento)
+				U87->U87_DATA	:= dDataBase
+				U87->U87_HORA	:= Time()
+				U87->U87_APONTA	:= Self:cCodigoApontamento
+				U87->U87_CLIENT	:= aDadosCli[PCLI_CLIENT]
+				U87->U87_LOJA	:= aDadosCli[PCLI_LOJA]
+			EndIf
+
+			U87->U87_PEDIDO	:= ""
+			U87->U87_DATPED	:= StoD("")
+			U87->U87_NATURE	:= Self:cNaturezaFaturamento
+			U87->U87_TPOPER	:= Self:cTipoOperacao
+			U87->U87_ITEAPT := aDadosCli[PCLI_ITEM]
+			U87->U87_PRODUT	:= aDadosCli[PCLI_PRODUTO]
+			U87->U87_PROFAT	:= iif(nTipoFat==1,Self:cProdutoFaturamento, aDadosCli[PCLI_PRODUTO])
+			U87->U87_TIPAPT	:= Iif(nTipoFat==1,"V","I")
+			U87->U87_DOCSAI	:= ""
+			U87->U87_SERIE	:= ""
+			U87->U87_DATDOC	:= StoD("")
+			U87->U87_VALPED	:= aDadosCli[PCLI_VALOR]
+			U87->U87_STATUS	:= "1" // pedido pendente
+			U87->U87_TABELA	:= ""
+			U87->(MsUnlock())
+			U87->(ConfirmSX8())
+		Else
+			U87->(RollBackSX8())
+			U87->(DisarmTransaction())
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU87)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::AtualizaDados
+Metodo para atualizar os dados da classe
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param aClientes, array, Array de Clientes
+@param nValorPV, numeric, Valor a ser faturado
+/*/
+Method AtualizaDados(aClientes, nValorPV) Class VirtusMultiFaturamento
+
+	Local nCliente 		As Numeric
+
+	Default aClientes	:= {}
+	Default nValorPV	:= 0
+
+	Self:aClientesFaturamento	:= {}
+
+	// atualiza os dados de clientes
+	For nCliente := 1 To Len(aClientes)
+
+		If aClientes[nCliente, 1] // marcado para gerar o pedido
+
+			Aadd( Self:aClientesFaturamento, {aClientes[nCliente, 2], aClientes[nCliente, 3], aClientes[nCliente, 4], aClientes[nCliente, 5], aClientes[nCliente, 6], aClientes[nCliente, 7]})
+
+		EndIf
+
+	Next nCliente
+
+	// atualizo o valor a faturar
+	Self:nValorAFaturar := Self:nValorAFaturar - nValorPV
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::ExcluirPedido
+Metodo para excluir o pedido de vendas gerado
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param aClientes, array, array de clientes do faturamento
+@param nTipoFat, numeric, tipo de faturamento
+/*/
+Method ExcluirPedido(aClientes, nTipoFat, aProdutos) Class VirtusMultiFaturamento
+
+	Local aArea			As Array
+	Local aAreaU87		As Array
+	Local cQuery 		As Character
+	Local cPedidoExc 	As Character
+	Local lContinua		As Logical
+	Local nCliente		As Numeric
+	Local nProduto		As Numeric
+	Local nPedido		As Numeric
+
+	Default aClientes 	:= {}
+	Default nTipoFat 	:= 0
+	Default aProdutos 	:= {}
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU87	:= U87->(GetArea())
+	cQuery		:= ""
+	lContinua	:= .T.
+	nCliente	:= 0
+	nProduto	:= 0
+	nPedido		:= 0
+
+	For nCliente := 1 To Len(aClientes)
+
+		If aClientes[nCliente, PCLI_OK] .And. !Empty(aClientes[nCliente, PCLI_PEDIDO])
+
+			lContinua := U_EstornaLibPedido(aClientes[nCliente, PCLI_PEDIDO])
+
+			// exclui os dados do historico do pedido
+			If lContinua
+
+				cQuery := " SELECT "
+				cQuery += "		U87.R_E_C_N_O_ RECU87"
+				cQuery += "	FROM " + RetSQLName("U87") + " U87 "
+				cQuery += "	WHERE U87.D_E_L_E_T_ = ' ' "
+				cQuery += " AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+				cQuery += "	AND U87.U87_APONTA = '" + Self:cCodigoApontamento + "' "
+				cQuery += "	AND U87.U87_PEDIDO = '" + aClientes[nCliente, PCLI_PEDIDO] + "' "
+				cQuery += "	AND U87.U87_CLIENT = '" + aClientes[nCliente, PCLI_CLIENT] + "' "
+				cQuery += "	AND U87.U87_LOJA = '" + aClientes[nCliente, PCLI_LOJA] + "' "
+
+				cQuery := ChangeQuery(cQuery)
+
+				MPSysOpenQuery(cQuery, "TRBEXC")
+
+				While TRBEXC->(!Eof())
+
+					U87->(DbGoTo(TRBEXC->RECU87))
+
+					If U87->U87_TABELA <> "UJV"
+
+						UJX->(DbSetOrder(2))
+						If UJX->(MsSeek(xFilial("UJX")+U87->U87_APONTA+U87->U87_ITEAPT))
+							If UJX->(Reclock("UJX", .F.))
+								UJX->UJX_MOK	:= "1" // nao faturado
+								UJX->(MsUnlock())
+							Else
+								UJX->(DisarmTransaction())
+							EndIf
+						EndIf
+
+					EndIf
+
+					UJV->(DbSetOrder(1))
+					If UJV->(MsSeek(xFilial("UJV")+U87->U87_APONTA))
+
+						If UJV->(Reclock("UJV", .F.))
+
+							UJV->UJV_STATUS := ValidaStatusUJV(Self:cCodigoApontamento)// gravo o status
+
+							If U87->U87_TABELA == "UJV"
+								UJV->UJV_MOK	:= "1" // nao faturado
+							EndIf
+
+							UJV->(MsUnlock())
+						Else
+							UJV->(DisarmTransaction())
+						EndIf
+
+					EndIf
+
+					// tipo de faturamento por item
+					If nTipoFat == 2
+
+						nProduto := aScan(aProdutos, {|x| x[PSER_ITEM] + x[PSER_SERVICO] == U87->U87_ITEAPT + U87->U87_PRODUT })
+
+						aProdutos[nProduto, PSER_STATUS] := "S"
+
+					EndIf
+
+					If U87->(Reclock("U87", .F.))
+						U87->U87_PEDIDO	:= ""
+						U87->U87_DATPED	:= StoD("")
+						U87->U87_STATUS	:= "1" // pedido pendente
+						U87->(MsUnlock())
+					Else
+						U87->(DisarmTransaction())
+					EndIf
+
+					TRBEXC->(DBSkip())
+				EndDo
+
+				// limpo os dados do pedido
+				cPedidoExc := aClientes[nCliente, PCLI_PEDIDO]
+				aClientes[nCliente, PCLI_STATUS] := "P"
+				aClientes[nCliente, PCLI_PEDIDO] := ""
+
+				// percocorro todos os clientes para excluir o pedido
+				For nPedido := 1 To Len(aClientes)
+
+					If !Empty(aClientes[nPedido, PCLI_PEDIDO]) .And. !Empty(cPedidoExc) .And. cPedidoExc == aClientes[nPedido, PCLI_PEDIDO]
+						aClientes[nPedido, PCLI_STATUS] := "P"
+						aClientes[nPedido, PCLI_PEDIDO] := ""
+					EndIf
+
+				Next nPedido
+
+				// atualizo o status do multi faturamento
+				Self:StatusMultiFat()
+
+			ElseIf !Empty(aClientes[nCliente, PCLI_PEDIDO]) .And. !Empty(cPedidoExc) .And. cPedidoExc == aClientes[nCliente, PCLI_PEDIDO]
+
+				aClientes[nCliente, PCLI_STATUS] := "P"
+				aClientes[nCliente, PCLI_PEDIDO] := ""
+
+			EndIf
+
+		ElseIf !Empty(aClientes[nCliente, PCLI_PEDIDO]) .And. !Empty(cPedidoExc) .And. cPedidoExc == aClientes[nCliente, PCLI_PEDIDO]
+
+			aClientes[nCliente, PCLI_STATUS] := "P"
+			aClientes[nCliente, PCLI_PEDIDO] := ""
+
+		EndIf
+
+	Next nCliente
+
+	RestArea(aAreaU87)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusMultiFaturamento::GerarDocSaida
+Funcao para gerar o documento de saida 
+@type method
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param cPedido, character, pedido de vendas
+/*/
+Method GerarDocSaida(cPedido) Class VirtusMultiFaturamento
+
+	Local aArea 		As Array
+	Local aAreaSC5		As Array
+	Local aAreaSC6		AS Array
+
+	Default cPedido	:= ""
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaSC5	:= SC5->(GetArea())
+	aAreaSC6	:= SC6->(GetArea())
+
+	SC5->(DbSetOrder(1))
+	if !Empty(cPedido) .And. SC5->(MsSeek(xFilial("SC5") + cPedido ))
+
+		//Wizard de Preparacao de Doc de Saida
+		FWMsgRun(,{|oSay| Ma410PvNfs("SC5",SC5->(Recno()),3)},'Aguarde...','Gerando o Documento de Saída do apontamento...')
+
+		// veifico se tem nota fiscal gerada
+		If !Empty(SC5->C5_NOTA)
+			Self:GravaHistorico(Nil, "NF", SC5->C5_NUM, SC5->C5_SERIE, SC5->C5_NOTA)
+			MsgInfo("Documento de Saída <"+ AllTrim(SC5->C5_SERIE) + "/" + AllTrim(SC5->C5_NOTA) + "> gerado com Sucesso!", "Faturamento")
+		EndIf
+
+	else
+		MsgAlert("Pedido de Venda não encontrado.")
+	endif
+
+	RestArea(aAreaSC6)
+	RestArea(aAreaSC5)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method RecalculaValor() Class VirtusMultiFaturamento
+
+	Self:nValorFinal := Self:nValorTotal - Self:nDesconto
+
+	// valor a faturar
+	If Self:nValorAFaturar <> Self:nValorFinal
+		Self:nValorAFaturar := Self:nValorFinal
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} TelaMultiFat
+Funcao para construcao do Browse
+de Multi-faturamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oVirtusMultiFaturamento, object, Objeto do Multifaturamento
+@param nTipoFat, numeric, Tipo de Faturamento
+/*/
+Static Function TelaMultiFat(oVirtusMultiFaturamento, nTipoFat)
+
+	Local oBtnAddCliente
+	Local oBtnRemoveCliente
+	Local oBtnEraseCliente
+	Local oBtnFecharTela
+	Local oBtnGerarPV
+	Local oBtnExcluirPV
+	Local oBtnVisualizarPV
+	Local oBtnPrepDocSaida
+	Local oFont1 := TFont():New("MS Sans Serif",,020,,.T.,,,,,.F.,.F.)
+	Local oFont2 := TFont():New("MS Sans Serif",,016,,.T.,,,,,.F.,.F.)
+	Local oFont3 := TFont():New("MS Sans Serif",,020,,.T.,,,,,.F.,.F.)
+	Local oFont4 := TFont():New("MS Sans Serif",,020,,.T.,,,,,.F.,.F.)
+	Local oGet1
+	Local cGet1 := Space(TamSX3("A1_COD")[1])
+	Local oGet2
+	Local cGet2 := Space(TamSX3("A1_LOJA")[1])
+	Local oGet3
+	Local cGet3 := Space(TamSX3("A1_NOME")[1])
+	Local oGet4
+	Local nGet4 := iif(nTipoFat==1,oVirtusMultiFaturamento:nValorAFaturar, 0)
+	Local oGroup1
+	Local oGroup2
+	Local oGroup3
+	Local oGroup5
+	Local oGroup6
+	Local oSay1
+	Local oSay10
+	Local oSay11
+	Local oSay12
+	Local oSay13
+	Local oSay14
+	Local oSay2
+	Local oSay3
+	Local oSay4
+	Local oSay5
+	Local oSay6
+	Local oSay7
+	Local oSay8
+	Local oSay9
+	Local oDlgMulti
+	Local oBrwClienteFat
+	Local aBrwClienteFat 		:= {}
+	Local oBrwItensApt			:= Nil
+	Local aBrwItensApt 			:= {}
+	Local cImgAddCliente		:= "73addmulti.png"
+	Local cImgRemoveCliente		:= "73delmulti.png"
+	Local cImgEraseCliente		:= "73eramulti.png"
+	Local cImgMsgNfs			:= "73msgmulti.png"
+	Local cCSSBtnFile			:= ""
+	Local oButtonVirtus		:= CSSButtonVirtus():New() // inicio a classe de butoes virtus
+	Local cBotaoCSSCinza	:= oButtonVirtus:CSSButtonGray(2000)
+	Local cBotaoCSSAzul		:= oButtonVirtus:CSSButtonBlue(2000)
+	Local cBotaoCSSVerde	:= oButtonVirtus:CSSButtonGreen(2000)
+	Local cBotaoCSSVermelho	:= oButtonVirtus:CSSButtonRed(2000)
+	Local cBotaoCSSLaranja	:= oButtonVirtus:CSSButtonOrange(2000)
+	Local lRetorno			:= .T.
+	Local oBtnMsgNFS		:= Nil
+
+	Default oVirtusMultiFaturamento	:= Nil
+	Default nTipoFat				:= 0 // 1 - valor // 2 - item
+
+	// preencho os dados do clientes faturados
+	If Len(oVirtusMultiFaturamento:aClientesFaturamento) > 0
+		aBrwClienteFat := 	oVirtusMultiFaturamento:aClientesFaturamento
+	EndIf
+
+	DEFINE MSDIALOG oDlgMulti TITLE "Multi-Faturamento - v23L2" FROM 000, 000  TO 700, 940 COLORS 0, 16777215 PIXEL
+
+	@ 005, 006 GROUP oGroup1 TO 044, 468 PROMPT "Dados do Apontamento" OF oDlgMulti COLOR 0, 16777215 PIXEL
+
+	@ 015, 012 SAY oSay1 PROMPT "Apontamento" SIZE 050, 009 OF oDlgMulti FONT oFont2 COLORS 0, 16777215 PIXEL
+	@ 025, 018 SAY oSay2 PROMPT oVirtusMultiFaturamento:cCodigoApontamento SIZE 040, 010 OF oGroup1 FONT oFont1 COLORS 16711680, 16777215 PIXEL
+
+	@ 015, 095 SAY oSay3 PROMPT "Valor (R$)" SIZE 050, 009 OF oGroup1 FONT oFont2 COLORS 0, 16777215 PIXEL
+	@ 025, 092 SAY oSay4 PROMPT Transform(oVirtusMultiFaturamento:nValorTotal, "@E 999,999.99") SIZE 070, 010 OF oGroup1 FONT oFont4 COLORS 8421376, 1677721 PIXEL
+
+	@ 015, 180 SAY oSay5 PROMPT "Desconto (R$)" SIZE 050, 009 OF oGroup1 FONT oFont2 COLORS 0, 16777215 PIXEL
+	@ 025, 183 SAY oSay8 PROMPT Transform(oVirtusMultiFaturamento:nDesconto, "@E 999,999.99") SIZE 070, 010 OF oGroup1 FONT oFont4 COLORS 8421376, 1677721 PIXEL
+
+	@ 015, 257 SAY oSay6 PROMPT "Valor a Receber (R$)" SIZE 080, 009 OF oGroup1 FONT oFont2 COLORS 0, 16777215 PIXEL
+	@ 025, 267 SAY oSay9 PROMPT Transform(oVirtusMultiFaturamento:nValorFinal, "@E 999,999.99") SIZE 070, 010 OF oGroup1 FONT oFont4 COLORS 8421376, 1677721 PIXEL
+
+	@ 015, 366 SAY oSay7 PROMPT "Valor a Faturar (R$)" SIZE 080, 009 OF oGroup1 FONT oFont2 COLORS 0, 16777215 PIXEL
+	@ 025, 376 SAY oSay10 PROMPT Transform(oVirtusMultiFaturamento:nValorAFaturar, "@E 999,999.99") SIZE 070, 010 OF oGroup1 FONT oFont3 COLORS 255, 16777215 PIXEL
+
+	@ 045, 005 GROUP oGroup2 TO 150, 468 PROMPT "Itens do Apontamento" OF oDlgMulti COLOR 0, 16777215 PIXEL
+	BrwItensApontamento(@oBrwItensApt, @aBrwItensApt, @oDlgMulti, oVirtusMultiFaturamento:aItensFaturamento, nTipoFat, @oVirtusMultiFaturamento)
+
+	@ 152, 005 GROUP oGroup5 TO 185, 468 PROMPT "Faturar para - Cliente" OF oDlgMulti COLOR 0, 16777215 PIXEL
+	@ 160, 010 SAY oSay11 PROMPT "Cliente" SIZE 025, 007 OF oDlgMulti COLORS 0, 16777215 PIXEL
+	@ 170, 011 MSGET oGet1 VAR cGet1 F3 "SA1VIR" SIZE 053, 010 OF oDlgMulti COLORS 0, 16777215 PIXEL VALID ValidaCliente(cGet1, cGet2, @cGet3, @oDlgMulti) HASBUTTON
+
+	@ 160, 070 SAY oSay12 PROMPT "Loja" SIZE 025, 007 OF oDlgMulti COLORS 0, 16777215 PIXEL
+	@ 170, 071 MSGET oGet2 VAR cGet2 SIZE 029, 010 OF oDlgMulti COLORS 0, 16777215 PIXEL VALID ValidaCliente(cGet1, cGet2, @cGet3, @oDlgMulti)
+
+	@ 160, 110 SAY oSay13 PROMPT "Nome" SIZE 025, 007 OF oDlgMulti COLORS 0, 16777215 PIXEL
+	@ 170, 111 MSGET oGet3 VAR cGet3 WHEN .F. SIZE 187, 010 OF oDlgMulti COLORS 0, 16777215 PIXEL
+
+	@ 160, 310 SAY oSay14 PROMPT "Valor" SIZE 025, 007 OF oDlgMulti COLORS 0, 16777215 PIXEL
+	@ 170, 311 MSGET oGet4 VAR nGet4 PICTURE "@E 999,999.99" WHEN iif(nTipoFat==1,.T.,.F.) SIZE 067, 010 OF oDlgMulti COLORS 0, 16777215 PIXEL HASBUTTON
+
+	oBtnAddCliente 		:= TButton():New(163,385,"" ,oDlgMulti,{|| AddClienteFat(@cGet1, @cGet2, @cGet3, @nGet4, @oBrwClienteFat, @aBrwClienteFat, @oDlgMulti, @oVirtusMultiFaturamento, nTipoFat, @oBrwItensApt, @aBrwItensApt)},22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBtnRemoveCliente 	:= TButton():New(163,405,"" ,oDlgMulti,{|| RemoveClienteFat(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti, @oVirtusMultiFaturamento, nTipoFat, @oBrwItensApt, @aBrwItensApt) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBtnEraseCliente 	:= TButton():New(163,425,"" ,oDlgMulti,{|| LimpaClienteFat(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti, @oVirtusMultiFaturamento, nTipoFat, @oBrwItensApt, @aBrwItensApt) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+	oBtnMsgNFS 			:= TButton():New(163,445,"" ,oDlgMulti,{|| AddMsgNFS(@oVirtusMultiFaturamento) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	@ 190, 005 GROUP oGroup3 TO 307, 468 PROMPT "Clientes - Faturamento" OF oDlgMulti COLOR 0, 16777215 PIXEL
+	BrwClientesFaturamento(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti)
+
+	@ 310, 005 GROUP oGroup6 TO 345, 468 PROMPT "Botões" OF oDlgMulti COLOR 0, 16777215 PIXEL
+
+	@ 320, 015 BUTTON oBtnGerarPV PROMPT "Gerar Pedido" SIZE 075, 020 OF oDlgMulti FONT oFont2 PIXEL ACTION FWMsgRun(,{|oSay| oVirtusMultiFaturamento:GerarPedido(@aBrwClienteFat, nTipoFat, @aBrwItensApt) },'Aguarde...','Gerando Pedido(s) de Venda...')
+	@ 320, 107 BUTTON oBtnExcluirPV PROMPT "Excluir Pedido" SIZE 075, 020 OF oDlgMulti FONT oFont2 PIXEL ACTION FWMsgRun(,{|oSay| oVirtusMultiFaturamento:ExcluirPedido(@aBrwClienteFat, nTipoFat, @aBrwItensApt)},'Aguarde...','Excluindo Pedido(s) de Venda...')
+	@ 320, 200 BUTTON oBtnVisualizarPV PROMPT "Visualizar Pedido" SIZE 075, 020 OF oDlgMulti FONT oFont2 PIXEL ACTION FWMsgRun(,{|oSay| U_UVirtusViewPV(aBrwClienteFat[oBrwClienteFat:nAT, PCLI_PEDIDO])},'Aguarde...','Visualizando o Pedido de Venda...')
+	@ 320, 292 BUTTON oBtnPrepDocSaida PROMPT "Prepara Doc. Saida" SIZE 075, 020 OF oDlgMulti FONT oFont2 PIXEL ACTION FWMsgRun(,{|oSay| oVirtusMultiFaturamento:GerarDocSaida(aBrwClienteFat[oBrwClienteFat:nAT, PCLI_PEDIDO])},'Aguarde...','Preparando o Doc.Saida dos Pedidos...')
+	@ 320, 385 BUTTON oBtnFecharTela PROMPT "Fechar" SIZE 075, 020 OF oDlgMulti FONT oFont2 PIXEL ACTION (lRetorno := .F., FecharTela(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti, @oVirtusMultiFaturamento, nTipoFat))
+
+	//============================
+	// Tratamento de CSS da tela
+	//============================
+	oBtnGerarPV:SetCss(cBotaoCSSVerde)
+	oBtnExcluirPV:SetCss(cBotaoCSSVermelho)
+	oBtnVisualizarPV:SetCss(cBotaoCSSAzul)
+	oBtnPrepDocSaida:SetCss(cBotaoCSSLaranja)
+	oBtnFecharTela:SetCss(cBotaoCSSCinza)
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgAddCliente + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+
+	oBtnAddCliente:SetCss(cCSSBtnFile)
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgRemoveCliente + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+
+	oBtnRemoveCliente:SetCss(cCSSBtnFile)
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgEraseCliente + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+
+	oBtnEraseCliente:SetCss(cCSSBtnFile)
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgMsgNfs + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+
+	oBtnMsgNFS:SetCss(cCSSBtnFile)
+
+	ACTIVATE MSDIALOG oDlgMulti CENTERED
+
+Return(lRetorno)
+
+/*/{Protheus.doc} BrwItensApontamento
+Funcao para construir o Browse de Itens do Apontamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwItensApt, object, Browse de Itens do Apontamento
+@param aBrwItensApt, array, ITens do Apontamento
+@param oDlgMulti, object, Tela do Multifaturamento
+@param aItensFaturamento, array, Itens ja faturados
+@param nTipoFat, numeric, tipo do faturamento
+/*/
+Static Function BrwItensApontamento(oBrwItensApt, aBrwItensApt, oDlgMulti, aItensFaturamento, nTipoFat, oVirtusMultiFaturamento)
+
+	Local cStatus			:= "P"
+	Local lPreSel			:= iif(nTipoFat==1,.T.,.F.)
+	Local nI    			:= 0
+	Local oOk 				:= LoadBitmap( GetResources(), "LBOK")
+	Local oNo 				:= LoadBitmap( GetResources(), "LBNO")
+	Local nValorDesconto	:= 0
+
+	Default aItensFaturamento 	:= {}
+
+	If Len(aItensFaturamento) > 0 .And. Len(aBrwItensApt) == 0
+		For nI := 1 To Len(aItensFaturamento)
+
+			If aItensFaturamento[nI, POS_MOK] == "2" // faturado
+				cStatus	:= "A"
+				lPreSel := .F.
+			ElseIf aItensFaturamento[nI, POS_HIST] == "S" // selecionado
+				cStatus	:= "S"
+				lPreSel := .F.
+			Else
+				cStatus	:= "P"
+				lPreSel	:= .T.
+			EndIf
+
+			Aadd(aBrwItensApt,{lPreSel, cStatus, aItensFaturamento[nI, POS_ITEM], aItensFaturamento[nI, POS_SERVICO],;
+				Posicione("SB1",1,xFilial("SB1")+aItensFaturamento[nI, POS_SERVICO],"B1_DESC"), aItensFaturamento[nI, POS_VALUNIT],;
+				aItensFaturamento[nI, POS_DESCONTO], aItensFaturamento[nI, POS_QTD] , aItensFaturamento[nI, POS_VALTOTAL]})
+
+		Next nI
+	ElseIf Len(aBrwItensApt) == 0
+		Aadd(aBrwItensApt,{lPreSel,"P","","", 0, 0, 0, 0,"N=Não"})
+	EndIf
+
+	@ 055, 010 LISTBOX oBrwItensApt Fields HEADER "", "", "Item", "Produto", "Descricao", "Vlr.Unitário", "Desconto",;
+		"Qtd.", "Valor" SIZE 452, 089 OF oDlgMulti PIXEL ColSizes 5, 10, 30, 50, 15, 15, 15
+
+	oBrwItensApt:SetArray(aBrwItensApt)
+	oBrwItensApt:bHeaderClick := {|oObj,nCol| IIF(nCol == 1 ,MarkAllReg(@oBrwItensApt, @aBrwItensApt, @oDlgMulti),)/*,(OrderGrid(oBrwManut,nCol), nColOrder := nCol)*/}
+	oBrwItensApt:bLine := {|| {;
+		Iif(aBrwItensApt[oBrwItensApt:nAT,1],oOk,oNo),;
+		RetLegenda(aBrwItensApt[oBrwItensApt:nAt,2]),;
+		aBrwItensApt[oBrwItensApt:nAt,3],;
+		aBrwItensApt[oBrwItensApt:nAt,4],;
+		aBrwItensApt[oBrwItensApt:nAt,5],;
+		Transform(aBrwItensApt[oBrwItensApt:nAt,6],"@E 999,999.99"),;
+		Transform(aBrwItensApt[oBrwItensApt:nAt,7],"@E 999,999.99"),;
+		Transform(aBrwItensApt[oBrwItensApt:nAt,8],"@E 999"),;
+		Transform(aBrwItensApt[oBrwItensApt:nAt,9],"@E 999,999.99");
+		}}
+
+	// DoubleClick event
+	oBrwItensApt:bLDblClick := {|| FatValSelect(oBrwItensApt, @aBrwItensApt, nTipoFat),;
+		oBrwItensApt:DrawSelect(), EditMultFat(@aBrwItensApt, oBrwItensApt:nAt, @oBrwItensApt, @nValorDesconto,;
+		@oVirtusMultiFaturamento, @oDlgMulti, nTipoFat), oVirtusMultiFaturamento:RecalculaValor(), oBrwItensApt:SetFocus(), AtuObjetos(@oBrwItensApt, @oDlgMulti) }
+
+Return(Nil)
+
+Static Function AtuObjetos(oBrwItensApt, oDlgMulti)
+
+	If oBrwItensApt <> Nil
+		oBrwItensApt:Refresh()
+	EndIf
+
+	If oDlgMulti <> Nil
+		oDlgMulti:Refresh()
+	EndIf
+
+Return(Nil)
+
+Static Function EditMultFat(aBrwItensApt, nItem, oBrwItensApt, nValorDesconto, oVirtusMultiFaturamento, oDlgMulti, nTipoFat)
+
+	Local aDim      := {}
+	Local bValidRet := { || .T. }
+	Local nDesconto := aBrwItensApt[nItem][PSER_DESCONT]
+	Local lRetorno  := .T.
+	Local nCol      := PSER_DESCONT
+	Local nRow      := oBrwItensApt:nAt
+	Local nItens	:= 0
+	Local nPosItem	:= 0
+	Local oOwner    := oBrwItensApt:oWnd
+	Local oDlg		:= Nil
+	Local oGet1		:= Nil
+	Local oRect		:= Nil
+	Local oBtn		:= Nil
+
+	If nTipoFat == 1
+		lRetorno := .T.
+	Else
+		If aBrwItensApt[oBrwItensApt:nAt,2] == "A" // pedido em aberto
+			lRetorno := .F.
+		ElseIf aBrwItensApt[oBrwItensApt:nAt,2] <> "P" //nao faturado
+			lRetorno := .F.
+		EndIf
+	EndIf
+
+	If lRetorno .And. oBrwItensApt:nColPos == nCol
+
+		oRect := tRect():New(0,0,0,0)    // obtem as coordenadas da celula (lugar onde
+		oBrwItensApt:GetCellRect(nCol,,oRect)    // a janela de edicao deve ficar)
+		aDim  := {oRect:nTop,oRect:nLeft,oRect:nBottom,oRect:nRight}
+
+		//=============================================================================
+		// Cria uma janela invisivel para permitir a edicao do campo sobre o browse
+		//=============================================================================
+		DEFINE MSDIALOG oDlg OF oOwner  FROM 0, 0 TO 0, 0 STYLE nOR( WS_VISIBLE, WS_POPUP ) PIXEL
+
+		@ 0,0 MSGET oGet1 VAR nDesconto PICTURE "@E 999,999.99" SIZE 0,0 OF oDlg FONT oOwner:oFont PIXEL HASBUTTON
+
+		oGet1:Move(-2,-2, (aDim[ 4 ] - aDim[ 2 ]) + 4, aDim[ 3 ] - aDim[ 1 ] + 4 )
+
+		@ 0,0 BUTTON oBtn PROMPT "X" SIZE 0,0 OF oDlg
+		oBtn:bGotFocus := {|| oDlg:nLastKey := VK_RETURN, If( lRetorno := ( Eval( bValidRet, nDesconto ) ), oDlg:End(0), oGet1:SetFocus() ) }
+
+		ACTIVATE MSDIALOG oDlg ON INIT oDlg:Move(aDim[1],aDim[2],aDim[4]-aDim[2], aDim[3]-aDim[1])
+
+		oBrwItensApt:nAt := nRow
+		SetFocus(oBrwItensApt:hWnd)
+		oBrwItensApt:Refresh()
+
+		If nDesconto > aBrwItensApt[nItem][PSER_VALUNIT]
+			lRetorno := .F.
+			MsgAlert("Desconto nao pode ser maior que o valor do item!")
+		EndIf
+
+		If lRetorno
+			aBrwItensApt[nItem][PSER_DESCONT] 	:= nDesconto
+			aBrwItensApt[nItem][PSER_VALTOTAL] 	:= (aBrwItensApt[nItem][PSER_VALUNIT] - nDesconto) * aBrwItensApt[nItem][PSER_QTD]
+
+			nValorDesconto := 0
+			For nItens := 1 To Len(aBrwItensApt)
+				If aBrwItensApt[nItens][PSER_DESCONT] > 0
+					nValorDesconto += aBrwItensApt[nItens][PSER_DESCONT]
+				EndIf
+			Next nItens
+
+			oVirtusMultiFaturamento:nDesconto := nValorDesconto
+
+			nPosItem := aScan(oVirtusMultiFaturamento:aItensFaturamento, {|x| x[POS_SERVICO] == aBrwItensApt[nItem][PSER_SERVICO]  })
+
+			If nPosItem > 0
+				oVirtusMultiFaturamento:aItensFaturamento[nPosItem, POS_DESCONTO] := nDesconto
+				oVirtusMultiFaturamento:aItensFaturamento[nPosItem, POS_VALTOTAL] := (oVirtusMultiFaturamento:aItensFaturamento[nPosItem, POS_VALUNIT] - nDesconto) * oVirtusMultiFaturamento:aItensFaturamento[nPosItem, POS_QTD]
+			EndIf
+
+			If oBrwItensApt <> Nil
+				oBrwItensApt:Refresh()
+			EndIf
+
+			If oDlgMulti <> Nil
+				oDlgMulti:Refresh()
+			EndIf
+
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FatValSelect
+Funcao para validar a selecao do cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwItensApt, object, Browse de Itens do Apontamento
+@param aBrwItensApt, array, Itens do Apontamento
+@param nTipoFat, numeric, Tipo de Faturamento
+/*/
+Static Function FatValSelect(oBrwItensApt, aBrwItensApt, nTipoFat)
+
+
+	If oBrwItensApt:nColPos == 1
+
+		If nTipoFat == 1
+			aBrwItensApt[oBrwItensApt:nAt,1] := .T.
+		Else
+			If aBrwItensApt[oBrwItensApt:nAt,2] == "A" // pedido em aberto
+				aBrwItensApt[oBrwItensApt:nAt,1] := .F.
+			ElseIf aBrwItensApt[oBrwItensApt:nAt,2] <> "P" //nao faturado
+				aBrwItensApt[oBrwItensApt:nAt,1] := .F.
+			Else
+				aBrwItensApt[oBrwItensApt:nAt,1] := !aBrwItensApt[oBrwItensApt:nAt,1]
+			EndIf
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwClientesFaturamento
+Funpara construir o Browse de Cliente MultiFaturamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwClienteFat, object, Browse de Cliente do Faturamento
+@param aBrwClienteFat, array, Itens do Cliente Faturamento
+@param oDlgMulti, object, Tela de MultiFaturamento
+/*/
+Static Function BrwClientesFaturamento(oBrwClienteFat, aBrwClienteFat, oDlgMulti)
+
+	Local oOk 				:= LoadBitmap( GetResources(), "LBOK")
+	Local oNo 				:= LoadBitmap( GetResources(), "LBNO")
+
+	// Insert items here
+	If Len(aBrwClienteFat) == 0
+		Aadd(aBrwClienteFat,{.F., "P", Space(TamSX3("A1_COD")[1]), Space(TamSX3("A1_LOJA")[1]), Space(TamSX3("A1_NOME")[1]), "", "", "", 0})
+	EndIf
+
+	@ 200, 010 LISTBOX oBrwClienteFat Fields HEADER "","","Codigo","Loja","Nome","Pedido","Item","Produto","Valor" SIZE 452, 104 OF oDlgMulti PIXEL ColSizes 5, 5, 25, 15, 75, 75
+	oBrwClienteFat:SetArray(aBrwClienteFat)
+	oBrwClienteFat:bHeaderClick 	:= {|oObj,nCol| IIF(nCol == 1 ,MarkAllReg(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti),)/*,(OrderGrid(oBrwManut,nCol), nColOrder := nCol)*/}
+	oBrwClienteFat:bLine := {|| {;
+		Iif(aBrwClienteFat[oBrwClienteFat:nAT,1],oOk,oNo),;
+		RetLegenda(aBrwClienteFat[oBrwClienteFat:nAt,2]),;
+		aBrwClienteFat[oBrwClienteFat:nAt,3],;
+		aBrwClienteFat[oBrwClienteFat:nAt,4],;
+		aBrwClienteFat[oBrwClienteFat:nAt,5],;
+		aBrwClienteFat[oBrwClienteFat:nAt,6],;
+		aBrwClienteFat[oBrwClienteFat:nAt,7],;
+		aBrwClienteFat[oBrwClienteFat:nAt,8],;
+		Transform(aBrwClienteFat[oBrwClienteFat:nAt,9], "@E 999,999.99"),;
+		}}
+
+	// DoubleClick event
+	oBrwClienteFat:bLDblClick := {|| aBrwClienteFat[oBrwClienteFat:nAt,1] := !aBrwClienteFat[oBrwClienteFat:nAt,1],;
+		oBrwClienteFat:DrawSelect()}
+
+Return(Nil)
+
+/*/{Protheus.doc} FecharTela
+Funcao para fechar a tela
+caso o usuario queira, gravo um rascunho
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwClienteFat, object, Browse do Cliente Faturamento
+@param aBrwClienteFat, array, Array do Cliente Faturamento
+@param oDlgMulti, object, Bojeto do MultiFaturamento
+@param oVirtusMultiFaturamento, object, Objeto do MultiFaturamento
+@param nTipoFat, numeric, Tipo do Faturamento
+/*/
+Static Function FecharTela(oBrwClienteFat, aBrwClienteFat, oDlgMulti, oVirtusMultiFaturamento, nTipoFat)
+
+	Local aDelLinha	As Array
+	Local aAux		As Array
+	Local cItem 	As Character
+	Local cProduto 	As Character
+	Local nPosProd	As Numeric
+	Local nCliente	As Numeric
+	Local nLinha	As Numeric
+
+	// atribui valor as variaveis
+	aDelLinha	:= {}
+	aAux		:= {}
+	cItem		:= ""
+	cProduto	:= ""
+	nPosProd	:= 0
+	nCliente	:= 0
+	nLinha		:= 0
+
+	// verifico se tem dados de cliente do faturamento
+	If Len(aBrwClienteFat) > 0
+
+		// verifico se tem dados preenchido
+		nLinha	:= aScan(aBrwClienteFat, {|x| !Empty(x[PCLI_CLIENT]) .And. Empty(x[PCLI_PEDIDO]) })
+
+		If nLinha > 0 .And. MsgYesNo("Foram preenchidas informações de clientes para faturamento, mas não foi gerado o pedido de vendas. Deseja gravar essas informações?","Atenção!")
+
+			For nCliente := 1 To Len(aBrwClienteFat)
+
+				// verifico se o cliente ta marcado
+				If Empty(aBrwClienteFat[nCliente, PCLI_PEDIDO])
+					oVirtusMultiFaturamento:GravaHistorico(nTipoFat, "PP", Nil, Nil, Nil, aBrwClienteFat[nCliente])
+				EndIf
+
+			Next nI
+
+			oDlgMulti:End()
+
+		Else
+			oDlgMulti:End()
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidaCliente
+Funcao para validar se o cliente existe
+e preenche o nome do cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param cCodigo, character, codigo do cliente
+@param cLoja, character, loja do cliente
+@param cNome, character, nome do cliente
+@param oDlgMulti, object, objeto da tela do cliente
+@return logical, retorna se o cliente e valido
+/*/
+Static Function ValidaCliente(cCodigo, cLoja, cNome, oDlgMulti)
+
+	Local aArea 	As Array
+	Local aAreaSA1 	As Array
+	Local lRetorno 	As Logical
+
+	Default cCodigo	:= ""
+	Default cLoja	:= ""
+	Default cNome	:= ""
+
+	// inicio as variaveis
+	aArea		:= GetArea()
+	aAreaSA1	:= SA1->(GetArea())
+	lRetorno	:= .T.
+
+	If !Empty(cCodigo) .And. !Empty(cLoja)
+
+		SA1->(DbSetOrder(1))
+		If SA1->(MsSeek(xFilial("SA1")+cCodigo+cLoja))
+			cNome := SA1->A1_NOME
+		Else
+			MsgAlert("Cliente invalido!")
+		EndIf
+
+		If oDlgMulti <> Nil
+			oDlgMulti:Refresh()
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AddClienteFat
+Funcao para adicionar o cliente faturamento
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/12/2023
+@param cCodCliente, character, codigo do cliente do faturamento
+@param cLojaCli, character, loja do cliente do faturamento
+@param cNomeCliente, character, nome do cliente para o faturamento
+@param nValor, numeric, valor do faturamento
+@param oBrwClienteFat, object, Browse de Clientes do Multifaturamento
+@param aBrwClienteFat, array, Cliente do MultiFaturamentoADMIN
+@param oDlgMulti, object, Tela do MultiFaturamento
+@param oVirtusMultiFaturamento, object, Classe do MultiFaturamento
+@param nTipoFat, numeric, Tipo do Faturamento
+@param oBrwItensApt, object, Browse de Itens do Multifaturamento
+@param aBrwItensApt, array, Itens do MultiFaturamento
+/*/
+Static Function AddClienteFat(cCodCliente, cLojaCli, cNomeCliente, nValor, oBrwClienteFat, aBrwClienteFat, oDlgMulti, oVirtusMultiFaturamento, nTipoFat, oBrwItensApt, aBrwItensApt)
+
+	Local lContinua	As Logical
+	Local nSomaVal	As Numeric
+	Local nLinha 	As Numeric
+	Local nExiste 	As Numeric
+
+	// atribui valor as variaveis
+	lContinua	:= .T.
+	nLinha 		:= 0
+	nExiste		:= 0
+	nSomaVal	:= 0
+
+	If !Empty(cCodCliente) .And. !Empty(cLojaCli)
+
+		if nTipoFat == 1 // faturamento por valor
+
+			If oVirtusMultiFaturamento:nValorAFaturar > 0 .And. oVirtusMultiFaturamento:nValorAFaturar >= nValor
+
+				// verifico se o cliente existe
+				nExiste := aScan(aBrwClienteFat, {|x| x[PCLI_CLIENT] + x[PCLI_LOJA] == cCodCliente + cLojaCli })
+
+				If nExiste == 0
+
+					If Len(aBrwClienteFat) == 1 .And. Empty(aBrwClienteFat[1, PCLI_CLIENT])
+						aBrwClienteFat := {}
+					EndIf
+
+					Aadd( aBrwClienteFat, {.T., "P", cCodCliente, cLojaCli, cNomeCliente, "", "", "", nValor})
+
+					// atualiza os dados do multifaturamento
+					oVirtusMultiFaturamento:AtualizaDados(aBrwClienteFat, nValor)
+
+					cCodCliente		:= Space(TamSX3("A1_COD")[1])
+					cLojaCli		:= Space(TamSX3("A1_LOJA")[1])
+					cNomeCliente	:= Space(TamSX3("A1_NOME")[1])
+					nValor 			:= oVirtusMultiFaturamento:nValorAFaturar
+
+					// carrega novamente o browse de clientes
+					BrwClientesFaturamento(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti)
+
+					If oBrwClienteFat <> Nil
+						oBrwClienteFat:Refresh()
+					Endif
+
+					If oDlgMulti <> Nil
+						oDlgMulti:Refresh()
+					EndIf
+
+				Else
+					MsgAlert("Cliente já existe na grid de clientes para faturamento!")
+				Endif
+
+			Else
+				MsgAlert("Valor a Faturar precisa ser maior que Zero, e Valor do cliente precisa ser menor ou igual ao Valor a Faturar.")
+			EndIf
+
+		Else
+
+			If oVirtusMultiFaturamento:nValorAFaturar > 0
+
+				For nLinha := 1 To Len(aBrwItensApt)
+
+					If aBrwItensApt[nLinha, PSER_OK]
+
+						If lContinua
+
+							nExiste := aScan(aBrwClienteFat, {|x| x[PCLI_ITEM] + x[PCLI_PRODUTO] == aBrwItensApt[nLinha, PSER_ITEM] + aBrwItensApt[nLinha, PSER_SERVICO] })
+
+							If nExiste > 0
+								lContinua := .F.
+								MsgAlert("Produto já existe na grid de clientes para faturamento!")
+							Endif
+
+						EndIf
+
+						If lContinua
+
+							nExiste := aScan(aBrwClienteFat, {|x| x[PCLI_CLIENT] + x[PCLI_LOJA] + x[PCLI_ITEM] + x[PCLI_PRODUTO] == cCodCliente + cLojaCli + aBrwItensApt[nLinha, PSER_ITEM] + aBrwItensApt[nLinha, PSER_SERVICO] })
+
+							If nExiste > 0
+								lContinua := .F.
+								MsgAlert("Cliente e produto já existem na grid de clientes para faturamento!")
+							Endif
+						EndIf
+
+						If lContinua
+
+							If Len(aBrwClienteFat) == 1 .And. Empty(aBrwClienteFat[1, PCLI_CLIENT])
+								aBrwClienteFat := {}
+							EndIf
+
+							Aadd( aBrwClienteFat, {.T., "P", cCodCliente, cLojaCli, cNomeCliente, "", aBrwItensApt[nLinha, PSER_ITEM], aBrwItensApt[nLinha, PSER_SERVICO], aBrwItensApt[nLinha, PSER_VALTOTAL]})
+							aBrwItensApt[nLinha, PSER_STATUS] 	:= "S"
+							aBrwItensApt[nLinha, PSER_OK] 		:= .F.
+							nSomaVal += aBrwItensApt[nLinha, PSER_VALTOTAL]
+
+						EndIf
+
+					EndIf
+
+				Next nLinha
+
+				// atualiza os dados do multifaturamento
+				oVirtusMultiFaturamento:AtualizaDados(aBrwClienteFat, nSomaVal)
+
+				cCodCliente		:= Space(TamSX3("A1_COD")[1])
+				cLojaCli		:= Space(TamSX3("A1_LOJA")[1])
+				cNomeCliente	:= Space(TamSX3("A1_NOME")[1])
+
+				// carrega novamente o browse de clientes para faturamento
+				BrwClientesFaturamento(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti)
+
+				// carrega novamente o browse de itens para faturamento
+				BrwItensApontamento(@oBrwItensApt, @aBrwItensApt, @oDlgMulti, oVirtusMultiFaturamento:aItensFaturamento, nTipoFat)
+
+				If oBrwItensApt <> Nil
+					oBrwItensApt:Refresh()
+				Endif
+
+				If oBrwClienteFat <> Nil
+					oBrwClienteFat:Refresh()
+				Endif
+
+				If oDlgMulti <> Nil
+					oDlgMulti:Refresh()
+				EndIf
+
+			Else
+				MsgAlert("Valor a Faturar precisa ser maior que Zero, e Valor do cliente precisa ser menor ou igual ao Valor a Faturar.")
+
+			endIf
+
+		EndIf
+
+	Else
+		MsgAlert("Preencha os dados de cliente antes de adcionar o cliente para faturamento!")
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RemoveClienteFat
+Funcoa para remover o cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwClienteFat, object, Browse de Clientes do Multifaturamento
+@param aBrwClienteFat, array, Cliente do MultiFaturamento
+@param oDlgMulti, object, Tela do MultiFaturamento
+@param oVirtusMultiFaturamento, object, Classe do MultiFaturamento
+@param nTipoFat, numeric, Tipo do Faturamento
+@param oBrwItensApt, object, Browse de Itens do Multifaturamento
+@param aBrwItensApt, array, Itens do MultiFaturamento
+/*/
+Static Function RemoveClienteFat(oBrwClienteFat, aBrwClienteFat, oDlgMulti, oVirtusMultiFaturamento, nTipoFat, oBrwItensApt, aBrwItensApt)
+
+	Local aArea 	As Array
+	Local aAreaU87 	As Array
+	Local aDelLinha	As Array
+	Local aAux		As Array
+	Local cItem 	As Character
+	Local cProduto 	As Character
+	Local cQuery	As Character
+	Local nPosProd	As Numeric
+	Local nCliente	As Numeric
+	Local nLinha	As Numeric
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU87	:= U87->(GetArea())
+	aDelLinha	:= {}
+	aAux		:= {}
+	cItem		:= ""
+	cProduto	:= ""
+	cQuery		:= ""
+	nPosProd	:= 0
+	nCliente	:= 0
+	nLinha		:= 0
+
+	For nCliente := 1 To Len(aBrwClienteFat)
+
+		// verifico se o cliente ta marcado
+		If aBrwClienteFat[nCliente, PCLI_OK] .And. Empty(aBrwClienteFat[nCliente, PCLI_PEDIDO])
+
+			// dados dos itens
+			cItem		:= aBrwClienteFat[nCliente, PCLI_ITEM]
+			cProduto	:= aBrwClienteFat[nCliente, PCLI_PRODUTO]
+
+			// caso tenha algum item marcado
+			nPosProd	:= aScan(aBrwItensApt, {|x| x[PSER_ITEM] + x[PSER_SERVICO] == cItem + cProduto })
+
+			If nPosProd > 0
+
+				// mudo o status para pendente
+				aBrwItensApt[nPosProd, PSER_STATUS] 	:= "P"
+
+			EndIf
+
+			// valor a faturar
+			If oVirtusMultiFaturamento:nValorAFaturar <> oVirtusMultiFaturamento:nValorFinal
+				oVirtusMultiFaturamento:nValorAFaturar += aBrwClienteFat[nCliente, PCLI_VALOR]
+			EndIf
+
+			// linhas a serem deletadas
+			aAdd(aDelLinha, nCliente)
+
+		ElseIf aBrwClienteFat[nCliente, PCLI_OK] .And. !Empty(aBrwClienteFat[nCliente, PCLI_PEDIDO])
+
+			MsgAlert("Não é possível remover cliente com pedido de vendas gerado!")
+
+		EndIf
+
+	Next nI
+
+	If Len(aDelLinha) == Len(aBrwClienteFat)
+		aBrwClienteFat := {}
+		Aadd(aBrwClienteFat,{.F., "P", Space(TamSX3("A1_COD")[1]), Space(TamSX3("A1_LOJA")[1]), Space(TamSX3("A1_NOME")[1]), "", "", "", 0})
+
+		If !Empty(oVirtusMultiFaturamento:cCodigoFaturamento)
+			U87->(DbSetOrder(1))
+			If U87->(MsSeek(xFilial("U87")+oVirtusMultiFaturamento:cCodigoFaturamento))
+				While U87->(!Eof()) .And. U87->U87_FILIAL == xFilial("U87") .And. U87->U87_CODIGO == oVirtusMultiFaturamento:cCodigoFaturamento
+
+					If U87->(Reclock("U87", .F.))
+						U87->(DBDelete())
+						U87->(MsUnlock())
+					Else
+						U87->(DisarmTransaction())
+					EndIf
+
+					U87->(DBSkip())
+				EndDo
+			EndIf
+		EndIf
+
+	ElseIF Len(aDelLinha) > 0
+
+		For nLinha := 1 To Len(aBrwClienteFat)
+
+			nLinDel := aScan(aDelLinha, {|x| x == nLinha })
+
+			If nLinDel == 0
+				AAdd(aAux, aBrwClienteFat[nLinha])
+
+			Else
+
+				If !Empty(oVirtusMultiFaturamento:cCodigoFaturamento)
+
+					cQuery := " SELECT U87.R_E_C_N_O_ RECU87 FROM " + RetSQLName("U87") + " U87 "
+					cQuery += " WHERE U87.D_E_L_E_T_ = ' ' "
+					cQuery += " AND U87.U87_CODIGO = '" + oVirtusMultiFaturamento:cCodigoFaturamento + "' "
+					cQuery += " AND U87.U87_STATUS = '1' "
+					cQuery += " AND U87.U87_PEDIDO = ' ' "
+					cQuery += " AND U87.U87_CLIENT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_CLIENT] + "'"
+					cQuery += " AND U87.U87_LOJA = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_LOJA] + "'"
+					cQuery += " AND U87.U87_ITEAPT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_ITEM] + "'"
+					cQuery += " AND U87.U87_PRODUT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_PRODUTO] + "'"
+
+					cQuery := ChangeQuery(cQuery)
+
+					MPSysOpenQuery(cQuery, "U87DEL")
+
+					While U87DEL->(!Eof())
+
+						If U87DEL->RECU87 > 0
+
+							U87->(DbGoTo(U87DEL->RECU87))
+
+							If U87->(Reclock("U87", .F.))
+								U87->(DBDelete())
+								U87->(MsUnlock())
+							Else
+								U87->(DisarmTransaction())
+							EndIf
+
+						EndIf
+
+						U87DEL->(DBSkip())
+					EndDo
+				EndIf
+
+			EndIF
+
+		Next nLinha
+
+		If Len(aAux) > 0
+			aBrwClienteFat	:= aAux
+		EndIf
+
+	EndIf
+
+	// carrega novamente o browse de clientes para faturamento
+	BrwClientesFaturamento(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti)
+
+	// carrega novamente o browse de itens para faturamento
+	BrwItensApontamento(@oBrwItensApt, @aBrwItensApt, @oDlgMulti, oVirtusMultiFaturamento:aItensFaturamento, nTipoFat)
+
+	If oBrwItensApt <> Nil
+		oBrwItensApt:Refresh()
+	Endif
+
+	If oBrwClienteFat <> Nil
+		oBrwClienteFat:Refresh()
+	Endif
+
+	If oDlgMulti <> Nil
+		oDlgMulti:Refresh()
+	EndIf
+
+	oVirtusMultiFaturamento:cCodigoFaturamento := ""
+
+	RestArea(aAreaU87)
+	RestArea(aArea)
+
+
+Return(Nil)
+
+/*/{Protheus.doc} LimpaClienteFat
+Dados para limpar a tela de Multifaturamento
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/12/2023
+@param oBrwClienteFat, object, Browse de Clientes do Multifaturamento
+@param aBrwClienteFat, array, Cliente do MultiFaturamento
+@param oDlgMulti, object, Tela do MultiFaturamento
+@param oVirtusMultiFaturamento, object, Classe do MultiFaturamento
+@param nTipoFat, numeric, Tipo do Faturamento
+@param oBrwItensApt, object, Browse de Itens do Multifaturamento
+@param aBrwItensApt, array, Itens do MultiFaturamento
+/*/
+Static Function LimpaClienteFat(oBrwClienteFat, aBrwClienteFat, oDlgMulti, oVirtusMultiFaturamento, nTipoFat, oBrwItensApt, aBrwItensApt)
+
+	Local aArea 	As Array
+	Local aAreaU87 	As Array
+	Local aDelLinha	As Array
+	Local aAux		As Array
+	Local cItem 	As Character
+	Local cProduto 	As Character
+	Local cQuery	As Character
+	Local nPosProd	As Numeric
+	Local nCliente	As Numeric
+	Local nLinha	As Numeric
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU87	:= U87->(GetArea())
+	aDelLinha	:= {}
+	aAux		:= {}
+	cItem		:= ""
+	cProduto	:= ""
+	cQuery		:= ""
+	nPosProd	:= 0
+	nCliente	:= 0
+	nLinha		:= 0
+
+	For nCliente := 1 To Len(aBrwClienteFat)
+
+		// verifico se o cliente ta marcado
+		If Empty(aBrwClienteFat[nCliente, PCLI_PEDIDO])
+
+			// dados dos itens
+			cItem		:= aBrwClienteFat[nCliente, PCLI_ITEM]
+			cProduto	:= aBrwClienteFat[nCliente, PCLI_PRODUTO]
+
+			// caso tenha algum item marcado
+			nPosProd	:= aScan(aBrwItensApt, {|x| x[PSER_ITEM] + x[PSER_SERVICO] == cItem + cProduto })
+
+			If nPosProd > 0
+
+				// mudo o status para pendente
+				aBrwItensApt[nPosProd, PSER_STATUS] 	:= "P"
+
+			EndIf
+
+			// valor a faturar
+			If oVirtusMultiFaturamento:nValorAFaturar <> oVirtusMultiFaturamento:nValorFinal
+				oVirtusMultiFaturamento:nValorAFaturar += aBrwClienteFat[nCliente, PCLI_VALOR]
+			EndIf
+
+			// linhas a serem deletadas
+			aAdd(aDelLinha, nCliente)
+
+		EndIf
+
+	Next nI
+
+	If Len(aDelLinha) == Len(aBrwClienteFat)
+
+		aBrwClienteFat := {}
+		Aadd(aBrwClienteFat,{.F., "P", Space(TamSX3("A1_COD")[1]), Space(TamSX3("A1_LOJA")[1]), Space(TamSX3("A1_NOME")[1]), "", "", "", 0})
+
+		If !Empty(oVirtusMultiFaturamento:cCodigoFaturamento)
+			U87->(DbSetOrder(1))
+			If U87->(MsSeek(xFilial("U87")+oVirtusMultiFaturamento:cCodigoFaturamento))
+				While U87->(!Eof()) .And. U87->U87_FILIAL == xFilial("U87") .And. U87->U87_CODIGO == oVirtusMultiFaturamento:cCodigoFaturamento
+
+					If U87->(Reclock("U87", .F.))
+						U87->(DBDelete())
+						U87->(MsUnlock())
+					Else
+						U87->(DisarmTransaction())
+					EndIf
+
+					U87->(DBSkip())
+				EndDo
+			EndIf
+		EndIf
+
+	ElseIf Len(aDelLinha) > 0
+
+		For nLinha := 1 To Len(aBrwClienteFat)
+
+			nLinDel := aScan(aDelLinha, {|x| x == nLinha })
+
+			If nLinDel == 0
+				AAdd(aAux, aBrwClienteFat[nLinha])
+
+			Else // deleto da U87 se tiver
+
+				If !Empty(oVirtusMultiFaturamento:cCodigoFaturamento)
+
+					cQuery := " SELECT U87.R_E_C_N_O_ RECU87 FROM " + RetSQLName("U87") + " U87 "
+					cQuery += " WHERE U87.D_E_L_E_T_ = ' ' "
+					cQuery += " AND U87.U87_CODIGO = '" + oVirtusMultiFaturamento:cCodigoFaturamento + "' "
+					cQuery += " AND U87.U87_STATUS = '1' "
+					cQuery += " AND U87.U87_PEDIDO = ' ' "
+					cQuery += " AND U87.U87_CLIENT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_CLIENT] + "'"
+					cQuery += " AND U87.U87_LOJA = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_LOJA] + "'"
+					cQuery += " AND U87.U87_ITEAPT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_ITEM] + "'"
+					cQuery += " AND U87.U87_PRODUT = '" + aBrwClienteFat[aDelLinha[nLinDel], PCLI_PRODUTO] + "'"
+
+					cQuery := ChangeQuery(cQuery)
+
+					MPSysOpenQuery(cQuery, "U87DEL")
+
+					While U87DEL->(!Eof())
+
+						If U87DEL->RECU87 > 0
+
+							U87->(DbGoTo(U87DEL->RECU87))
+
+							If U87->(Reclock("U87", .F.))
+								U87->(DBDelete())
+								U87->(MsUnlock())
+							Else
+								U87->(DisarmTransaction())
+							EndIf
+
+						EndIf
+
+						U87DEL->(DBSkip())
+					EndDo
+				EndIf
+
+			EndIF
+
+		Next nLinha
+
+		If Len(aAux) > 0
+			aBrwClienteFat	:= aAux
+		EndIf
+
+	EndIf
+
+	// carrega novamente o browse de clientes para faturamento
+	BrwClientesFaturamento(@oBrwClienteFat, @aBrwClienteFat, @oDlgMulti)
+
+	// carrega novamente o browse de itens para faturamento
+	BrwItensApontamento(@oBrwItensApt, @aBrwItensApt, @oDlgMulti, oVirtusMultiFaturamento:aItensFaturamento, nTipoFat)
+
+	If oBrwItensApt <> Nil
+		oBrwItensApt:Refresh()
+	Endif
+
+	If oBrwClienteFat <> Nil
+		oBrwClienteFat:Refresh()
+	Endif
+
+	If oDlgMulti <> Nil
+		oDlgMulti:Refresh()
+	EndIf
+
+	oVirtusMultiFaturamento:cCodigoFaturamento := ""
+
+	RestArea(aAreaU87)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AddMsgNFS
+Funcao para adicionar a Mensagem da Nota Fiscal de Serviços
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oVirtusMultiFaturamento, object, Objeto do Multifaturamento
+/*/
+Static Function AddMsgNFS(oVirtusMultiFaturamento)
+
+	Local cMemoMsg	:= ""
+	Local lContinua	:= .T.
+	Local oGroup1 	:= Nil
+	Local oMemo		:= Nil
+	Local oDlg		:= Nil
+
+	Private aButtons := {}
+
+	DEFINE MSDIALOG oDlg TITLE "Mensagem para Nota" FROM 000, 000  TO 288, 570 COLORS 0, 16777215 PIXEL Style DS_MODALFRAME
+
+	oDlg:lEscClose     := .F.  //Nao permite sair ao se pressionar a tecla ESC.
+
+	@ 038, 003 GROUP oGroup1 TO 141, 283 PROMPT "Preencha a Mensagem para a Nota Fiscal de Serviços" OF oDlg COLOR 0, 16777215 PIXEL
+
+	oMemo := TMultiget():Create(oDlg,{|u|if(Pcount()>0, cMemoMsg := u, cMemoMsg)},047,007,270,091,,.T.,,,,.T.)
+	oMemo:EnableHScroll(.T.)
+
+	ACTIVATE MSDIALOG oDlg CENTERED  ON INIT EnchoiceBar(oDlg, {|| oDlg:End()  },{|| lContinua := .F., oDlg:End() },,aButtons)
+
+	If lContinua
+		oVirtusMultiFaturamento:cMsgNFS	:= cMemoMsg
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RetLegCtrStatus
+Funcao para retornar a legenda do status
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/08/2021
+@param cStatus, character, status do contrato
+@return object, retorna o objeto com a cor
+/*/
+Static Function RetLegenda(cStatus)
+
+	Local oRetorno				:= Nil
+
+	Default cStatus	:= ""
+
+	if cStatus == "P" // nao faturado
+		oRetorno := LoadBitmap( GetResources(), "BR_BRANCO")
+	elseIf cStatus == "A" // pedido em aberto
+		oRetorno := LoadBitmap( GetResources(), "BR_VERDE")
+	elseIf cStatus == "F" // pedido faturado com nota
+		oRetorno := LoadBitmap( GetResources(), "BR_VERMELHO")
+	elseIf cStatus == "S" // selecionado
+		oRetorno := LoadBitmap( GetResources(), "BR_PRETO")
+	endIf
+
+Return(oRetorno)
+
+/*/{Protheus.doc} MarkAllReg
+Funcao para marcar todos os itens
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param oBrwClienteFat, object, Browse de Faturamento do Cliente
+@param aBrwClienteFat, array, Itens de Faturamento do  Cliente
+@param oDlgMulti, object, Tela do Multi Faturamento
+/*/
+Static Function MarkAllReg(oBrowse, aBrowse, oDlgMulti)
+
+	Local nI		As Numeric
+
+	// atribui valor as variaveis
+	nI	:= 0
+
+	If !Empty(aBrowse[oBrowse:nAT][PCLI_CLIENT]) //Tipo/Registro válido
+		If aBrowse[oBrowse:nAT][PCLI_OK]
+			For nI := 1 To Len(aBrowse)
+				aBrowse[nI][PCLI_OK] := .F.
+			Next
+		Else
+			For nI := 1 To Len(aBrowse)
+				aBrowse[nI][PCLI_OK] := .T.
+			Next
+		Endif
+	Endif
+
+	oBrowse:Refresh()
+	oDlgMulti:Refresh()
+
+Return(Nil)
+
+/*/{Protheus.doc} ProxItem
+Funcao para retornar o proximo item da U87
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/12/2023
+@param cCodigoFaturamento, character, codigo do faturamento
+@return character, proximo item
+/*/
+Static Function ProxItem(cCodigoFaturamento)
+
+	Local aArea     := GetArea()
+	Local cProxItm  := "001"
+	Local cQry      := ""
+
+	Default cCodigoFaturamento := ""
+
+	cQry := "SELECT MAX(U87_ITEM) MAXITEM "
+	cQry += "FROM " + RetSqlName("U87")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "AND U87_FILIAL = '"+ xFilial("U87") +"' "
+	cQry += "AND U87_CODIGO = '"+ AllTrim(cCodigoFaturamento) +"' "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("TRBU87") > 0
+		TRBU87->( dbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "TRBU87")
+
+	//-- Existe registros na tabela --//
+	If TRBU87->(!Eof())
+		cProxItm := Soma1(TRBU87->MAXITEM)
+	EndIf
+
+	If Select("TRBU87") > 0
+		TRBU87->( dbCloseArea() )
+	EndIf
+
+	RestArea(aArea)
+
+Return(cProxItm)
+
+/*/{Protheus.doc} ValidaStatusUJV
+Funcao para validar qual o Status da UJV gravar
+@type function
+@version 1.0
+@author guilherme.sampaio
+@since 12/30/2023
+@param cCodigo, character, param_description
+@param cItem, character, param_description
+@return variant, return_description
+/*/
+Static Function ValidaStatusUJV(cCodigoApontamento)
+
+	Local cQuery 	As Character
+	Local cRetorno 	As Character
+
+	Default cCodigoApontamento	:= ""
+
+	cRetorno := "E" // status em execucao
+
+	cQuery := " SELECT UJV.UJV_CODIGO AS CODIGO, "
+	cQuery += "       'CAB' AS ITEM, "
+	cQuery += "       UJV.UJV_SERVIC AS SERVICO, "
+	cQuery += "       UJV.UJV_DESCON AS DESCONTO, "
+	cQuery += "       1 AS QTDE, "
+	cQuery += "       UJV.UJV_MOK AS MOK, "
+	cQuery += "       (CASE "
+	cQuery += "            WHEN ISNULL(U87_PRODUT, '') <> '' THEN 'S' "
+	cQuery += "            ELSE 'N' "
+	cQuery += "        END) AS HISTORICO "
+	cQuery += " FROM " + RetSqlName("UJV") + " UJV "
+	cQuery += " LEFT JOIN " + RetSqlName("U87") + " U87 ON U87.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+	cQuery += " 	AND U87.U87_APONTA = UJV.UJV_CODIGO "
+	cQuery += " 	AND U87.U87_PRODUT = UJV.UJV_SERVIC "
+	cQuery += " WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += "  	AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "' "
+	cQuery += "  	AND UJV.UJV_CODIGO = '" + cCodigoApontamento + "' "
+	cQuery += " UNION ALL "
+	cQuery += " SELECT UJX.UJX_CODIGO AS CODIGO, "
+	cQuery += "       UJX.UJX_ITEM AS ITEM, "
+	cQuery += "       UJX.UJX_SERVIC AS SERVICO, "
+	cQuery += "       0 AS DESCONTO, "
+	cQuery += "       UJX.UJX_QTDE AS QTDE, "
+	cQuery += "       UJX.UJX_MOK AS MOK, "
+	cQuery += "       (CASE "
+	cQuery += "            WHEN ISNULL(U87_PRODUT, '') <> '' THEN 'S' "
+	cQuery += "            ELSE 'N' "
+	cQuery += "        END) AS HISTORICO "
+	cQuery += " FROM " + RetSqlName("UJX") + " UJX "
+	cQuery += " LEFT JOIN " + RetSqlName("U87") + " U87 ON U87.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U87.U87_FILIAL = '" + xFilial("U87") + "' "
+	cQuery += "		AND U87.U87_APONTA = UJX.UJX_CODIGO "
+	cQuery += "		AND U87.U87_PRODUT = UJX.UJX_SERVIC "
+	cQuery += " WHERE UJX.D_E_L_E_T_ = ' ' "
+	cQuery += "  	AND UJX.UJX_FILIAL = '" + xFilial("UJX") + "'  "
+	cQuery += "  	AND UJX.UJX_CODIGO = '" + cCodigoApontamento + "' "
+	cQuery += " ORDER BY CODIGO, "
+	cQuery += "         ITEM "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBU87")
+
+	While TRBU87->(!Eof())
+
+		// se tiver faturado e com historico
+		If TRBU87->MOK == "2" .And. TRBU87->HISTORICO == "S"
+			cRetorno := "F"
+		EndIf
+
+		TRBU87->(DbSkip())
+	EndDo
+
+	If Select("TRBU87") > 0
+		TRBU87->( dbCloseArea() )
+	EndIf
+
+Return(cRetorno)

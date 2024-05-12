@@ -1,0 +1,294 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+/*/{Protheus.doc} RCPGE069
+Funcao para reprocessar os indices
+do contrato ou de taxa de manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 20/06/2021
+/*/
+User Function RCPGE069()
+
+	Local aArea			As Array
+	Local aParam		As Array
+	Local cGrupoSX1 	As Character
+	Local lAtuIndice	As Logical
+
+	// aitribuo valor a variaveis
+	aArea			:= GetArea()
+	aParam			:= {}
+	cGrupoSX1		:= "RCPGE069"
+	lAtuIndice		:= SuperGetMv("MV_XATUIND",,.F.)
+
+	If lAtuIndice
+
+		// crio o grupo de perguntas
+		AjustaSX1(cGrupoSX1)
+
+		// chamo a tela de perguntas
+		if Pergunte(cGrupoSX1, .T.)
+
+			AAdd(aParam, MV_PAR01)
+			AAdd(aParam, MV_PAR02)
+			AAdd(aParam, MV_PAR03)
+			AAdd(aParam, MV_PAR04)
+			AAdd(aParam, MV_PAR05)
+			AAdd(aParam, MV_PAR06)
+			AAdd(aParam, MV_PAR07)
+			AAdd(aParam, MV_PAR08)
+
+			// vou validar os parametros
+			if ValidaParametros(@aParam)
+
+				oProcess := MsNewProcess():New( { | lEnd | ProcessaContratos( @oProcess, @lEnd, aParam) }, "Atualiza Indice", "Aguarde, reprocessando os contratos...", .F. )
+				oProcess:Activate()
+
+			endIf
+
+		else
+			MsgAlert("Cancelado pelo usuario!")
+		endIf
+	
+	Else
+		MsgAlert("Rotina não habilitada!")
+	EndIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Função que cria as perguntas na SX1.	
+@type function
+@version 1.0
+@author g.sampaio
+@since 20/06/2021
+@param cGrupoSX1, character, grupo de perguntas
+/*/
+Static Function AjustaSX1(cGrupoSX1)
+
+	Local aRegs	As Array
+
+	// atribuo valor as variaveis
+	aRegs	:= {}
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cGrupoSX1)
+
+		// parametros SX1
+		aAdd(aRegs,{cGrupoSX1,'01','De Contrato'        	,'','','mv_ch1','C', TamSx3("U00_CODIGO")[1]    	, 0, 0,'G','','mv_par01','','','','','','U00'})
+		aAdd(aRegs,{cGrupoSX1,'02','Ate Contrao'           	,'','','mv_ch2','C', TamSx3("U00_CODIGO")[1]    	, 0, 0,'G','','mv_par02','','','','','','U00'})
+		aAdd(aRegs,{cGrupoSX1,'03','Produto'  				,'','','mv_ch3','C', 99   							, 0, 0,'G','','mv_par03','','','','','','U05MRK'})
+		aAdd(aRegs,{cGrupoSX1,'04','Indice Anterior'    	,'','','mv_ch4','C', TamSx3("U00_INDICE")[1]    	, 0, 0,'G','','mv_par04','','','','','','U22'})
+		aAdd(aRegs,{cGrupoSX1,'05','Indice Novo'    		,'','','mv_ch5','C', TamSx3("U00_INDMAN")[1]    	, 0, 0,'G','','mv_par05','','','','','','U22'})
+		aAdd(aRegs,{cGrupoSX1,'06','Tipo Indice?'         	,'','','mv_ch6','N', 1   							, 0, 0,'N','','mv_par06','Contrato','Manutenção','','','',''})
+		aAdd(aRegs,{cGrupoSX1,'07','Status'         		,'','','mv_ch7','N', 1   							, 0, 0,'N','','mv_par07','Ambos','Ativo','Suspenso','','',''})
+		aAdd(aRegs,{cGrupoSX1,'08','Mês de Cadastro'   		,'','','mv_ch8','C', 2   							, 0, 0,'G','','mv_par08','','','','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidaParametros
+Funcao para validar os parametros
+@type function
+@version 1,0
+@author g.sampaio
+@since 20/06/2021
+@param aParam, array, parametros da rotina
+@return logical, uso 
+/*/
+Static Function ValidaParametros(aParam)
+
+	Local cDeContrato	As Character
+	Local cAteContrato	As Character
+	Local cProduto		As Character
+	Local cIndiceAnt	As Character
+	Local cIndiceNovo 	As Character
+	Local cMesCadastro	As Character
+	Local lRetorno		As Logical
+	Local nTipoInd		As Numeric
+	Local nStatus		As Numeric
+
+	Default aParam	:= {}
+
+	// inicio as variaveis
+	cDeContrato		:= aParam[1]
+	cAteContrato	:= aParam[2]
+	cProduto		:= aParam[3]
+	cIndiceAnt		:= aParam[4]
+	cIndiceNovo 	:= aParam[5]
+	nTipoInd		:= aParam[6]
+	nStatus			:= aParam[7]
+	cMesCadastro	:= aParam[8]
+	lRetorno		:= .T.
+
+	if Empty(cAteContrato)
+		aParam[2] := Replicate("Z",TamSx3("U00_CODIGO")[1])
+	endIf
+
+	// valido se o indice antigo esta preenchido
+	if Empty(cIndiceAnt)
+		lRetorno := .F.
+		MsgAlert("Para o uso da rotina é preciso preencher o campo de 'Indice Anterior'!")
+	endIf
+
+	// verifico se o indice existe
+	if lRetorno .And. !ExistCpo("U22", cIndiceAnt)
+		lRetorno := .F.
+	endIf
+
+	// valido se o indice antigo esta preenchido
+	if lRetorno .And. Empty(cIndiceNovo)
+		lRetorno := .F.
+		MsgAlert("Para o uso da rotina é preciso preencher o campo de 'Indice Novo'!")
+	endIf
+
+	// verifico se o indice existe
+	if lRetorno .And. !ExistCpo("U22", cIndiceNovo)
+		lRetorno := .F.
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ProcessaContratos
+Funcao para processar os contratos
+@type function
+@version 1.0
+@author g.sampaio
+@since 20/06/2021
+@param oProcess, object, objeto do processamento
+@param lEnd, logical, variavel logica para determinar se fecha o processamento
+@param aParam, array, parametros da rotina
+/*/
+Static Function ProcessaContratos( oProcess, lEnd, aParam)
+
+	Local aArea			As Array
+	Local aAreaU00		As Array
+	Local cDeContrato	As Character
+	Local cAteContrato	As Character
+	Local cProduto		As Character
+	Local cIndiceAnt	As Character
+	Local cIndiceNovo 	As Character
+	Local cQuery 		As Character
+	Local cMesCadastro	As Character
+	Local nTipoInd		As Numeric
+	Local nStatus		As Numeric
+	Local nProcess		As Numeric
+
+	Default aParam	:= {}
+
+	// inicio as variaveis
+	aArea			:= GetArea()
+	aAreaU00		:= U00->(GetArea())
+	cDeContrato		:= aParam[1]
+	cAteContrato	:= aParam[2]
+	cProduto		:= aParam[3]
+	cIndiceAnt		:= aParam[4]
+	cIndiceNovo 	:= aParam[5]
+	nTipoInd		:= aParam[6]
+	nStatus			:= aParam[7]
+	cMesCadastro	:= aParam[8]
+	nProcess		:= 0
+
+	if Select("TMPIND") > 0
+		TMPIND->(DBCloseArea())
+	endIf
+
+	cQuery := " SELECT U00.R_E_C_N_O_ RECU00 FROM " + RetSQLName("U00") + " U00 "
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+
+	if !Empty(cAteContrato)
+		cQuery += " AND U00.U00_CODIGO BETWEEN '" + cDeContrato + "' AND '" + cAteContrato + "' "
+	endIF
+
+	if !Empty(cProduto)
+		cQuery += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(cProduto),";") + " "
+	endIf
+
+	If nTipoInd == 1 // indice do contrato
+
+		if !Empty(cIndiceAnt)
+			cQuery += " AND U00.U00_INDICE = '" + cIndiceAnt + "'"
+		endIf
+
+	elseIf nTipoInd == 2 // indice da taxa de manutencao
+
+		if !Empty(cIndiceAnt)
+			cQuery += " AND U00.U00_INDMAN = '" + cIndiceAnt + "'"
+		endIf
+
+	endIf
+
+	// status do contrato
+	if nStatus == 1 // ambos (ativo ou suspensos)
+		cQuery += " AND U00.U00_STATUS IN ('A','S') "
+	elseIf nStatus == 2 // ativo
+		cQuery += " AND U00.U00_STATUS = 'A' "
+	elseIf nStatus == 3 // suspensos
+		cQuery += " AND U00.U00_STATUS = 'S' "
+	endif
+
+	If !Empty(cMesCadastro)
+		cQuery += " AND SUBSTRING(U00.U00_DATA,5,2) = '" + StrZero(Val(cMesCadastro),2) + "' "
+	EndIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPIND' )
+
+	// atualizo o objeto de processamento
+	oProcess:SetRegua1(TMPIND->(Reccount()))
+
+	TMPIND->(DBGoTop())
+
+	while TMPIND->(!Eof())
+
+		U00->(DBGoTo(TMPIND->RECU00))
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua1('Atualizando o Indice do Contrato: ' + U00->U00_CODIGO + '...')
+
+		BEGIN TRANSACTION
+
+			if U00->(Reclock("U00", .F.))
+
+				// tipo do indice
+				If nTipoInd == 1 // indice do contrato
+					U00->U00_INDICE := cIndiceNovo
+				elseIf nTipoInd == 2 // indice da taxa de manutencao
+					U00->U00_INDMAN := cIndiceNovo
+				endIf
+
+				U00->(MsUnlock())
+			else
+				U00->(DisarmTransaction())
+			endIf
+
+			nProcess++
+
+		END TRANSACTION
+
+		TMPIND->(DBSkip())
+	endDo
+
+	if Select("TMPIND") > 0
+		TMPIND->(DBCloseArea())
+	endIf
+
+	if nProcess > 0
+		MsgInfo("Fim do processamento, " + cValToChar(nProcess) + " registros processados!", "Atualiza Indices")
+	else
+		MsgAlert("Não houveram registros processados", "Atualiza Indices")
+	endIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(Nil)
