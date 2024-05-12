@@ -1,0 +1,167 @@
+#include 'totvs.ch'
+#include 'parmtype.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} PCPGA047
+Ponto de entrada da rotina de cadastro de regra 
+de taxa de manutencao
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 26/08/2020
+@return logical, retorno logico do ponto de entrada
+/*/
+User function PCPGA047()
+
+	Local aParam 			as Array
+	Local cIdPonto 			as Character
+	Local cIdModel 			as Character
+	Local cAuxComoGera		as Character
+	Local cComoGera			as Character
+	Local lContinua			as Logical
+	Local lRetorno			as Logical
+	Local nContador			as Numeric
+	Local oObj 				as Object
+	Local oModelU83 		as Object	
+
+	// atribuo o valor das variaveis
+	aParam 			:= PARAMIXB
+	cIdPonto 		:= ""
+	cIdModel 		:= ""
+	cAuxComoGera	:= ""
+	cComoGera		:= ""
+	lContinua		:= .T.
+	lRetorno		:= .T.
+	nContador		:= 0
+	oObj 			:= Nil
+	oModelU83 		:= Nil
+
+	// caso os parametros estejam preenchidos
+	if aParam <> NIL
+
+		oObj 		:= aParam[1]					// modelo de dados principal
+		cIdPonto 	:= aParam[2]					// id do ponto de entrada do MVC
+		cIdModel 	:= aParam[3]					// id do modelo de dados
+		oModelU83 	:= oObj:GetModel("U83MASTER")	// modelo de dados de formas de pgamento		
+
+		If cIdPonto == 'MODELPOS' .And. oObj:GetOperation() == 5 //Confirmação da Exclusão
+
+			// verifico se a regra esta vinculada a algum plano
+			If PossuiPlano(oModelU83:GetValue("U83_CODIGO"))
+
+				// mensagem para o usuario
+				Help( ,, 'Help - MODELPOS',, 'Nao e possivel excluir a Regra de Negociação, pois ha Plano(s) relacionado(s).', 1, 0 )
+				lRetorno := .F.
+
+			Endif
+
+			// verifico se esta tudo certo ate aqui
+			If lRetorno
+
+				// verifico se a regra esta vinculada a algum contrato
+				If PossuiContrato(oModelU83:GetValue("U83_CODIGO"))
+
+					// mensagem para o usuario
+					Help( ,, 'Help - MODELPOS',, 'Nao e possivel excluir a Regra de Negociação, pois ha Contrato(s) relacionado(s).', 1, 0 )
+					lRetorno := .F.
+
+				Endif
+
+			Endif
+
+		Endif
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} PossuiPlano
+funcao para validar se existe plano vinculado
+a regra de taxa de manutencao
+
+@type function
+@version 
+@author g.sampaio
+@since 01/09/2020
+@param cRegra, character, codigo da regra de taxa de manutencao
+@return return_type, retorna se existe(.T.) ou não exite(.F.) regra vinculada
+/*/
+Static Function PossuiPlano(cRegra)
+
+	Local cQuery	as Character
+	Local lRetorno 	as Logical
+
+	Default cRegra	:= ""
+
+	// atribuo valor a variavel
+	cQuery		:= ""
+	lRetorno 	:= .F.
+
+	If Select("TRBU05") > 0
+		TRBU05->(DbCloseArea())
+	Endif
+
+	cQuery := "SELECT U05.U05_REGRA"
+	cQuery += " FROM " + RetSqlName("U05") + " U05 "
+	cQuery += " WHERE U05.D_E_L_E_T_ 	= ' '"
+	cQuery += " AND U05.U05_FILIAL 	= '" + xFilial("U05") + "'"
+	cQuery += " AND U05.U05_REGNEG	= '" + cRegra + "'"
+
+	cQuery := ChangeQuery(cQuery)
+	TcQuery cQuery NEW Alias "TRBU05"
+
+	If TRBU05->(!EOF())
+		lRetorno := .T.
+	Endif
+
+	If Select("TRBU05") > 0
+		TRBU05->(DbCloseArea())
+	Endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} PossuiContrato
+funcao para validar se existe contrato vinculado
+a regra de taxa de manutencao
+
+@type function
+@version 
+@author g.sampaio
+@since 01/09/2020
+@param cRegra, character, codigo da regra de taxa de manutencao
+@return return_type, retorna se existe(.T.) ou não exite(.F.) regra vinculada
+/*/
+Static Function PossuiContrato(cRegra)
+
+	Local cQuery	:= ""
+	Local lRetorno 	:= .F.
+
+	Default cRegra	:= ""
+
+	// atribuo valor a variavel
+	cQuery		:= ""
+	lRetorno 	:= .F.
+
+	If Select("TRBU00") > 0
+		TRBU00->(DbCloseArea())
+	Endif
+
+	cQuery := "SELECT U00.U00_REGRA"
+	cQuery += " FROM " + RetSqlName("U00") + " U00 "
+	cQuery += " WHERE U00.D_E_L_E_T_ 	= ' ' "
+	cQuery += " AND U00.U00_FILIAL 	= '" + xFilial("U00") + "'"
+	cQuery += " AND U00.U00_REGNEG	= '" + cRegra + "'"
+
+	cQuery := ChangeQuery(cQuery)
+	TcQuery cQuery NEW Alias "TRBU00"
+
+	If TRBU00->(!EOF())
+		lRetorno := .T.
+	Endif
+
+	If Select("TRBU00") > 0
+		TRBU00->(DbCloseArea())
+	Endif
+
+Return(lRetorno)

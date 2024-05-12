@@ -1,0 +1,85 @@
+#include 'totvs.ch'
+#include 'parmtype.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} PCPGA004
+Ponto de Entrada do Cadastro de Ossuario
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/04/2021
+@return logical, retorno do ponto de entrada
+/*/
+User function PCPGA004()
+
+	Local aParam 			    as Array
+	Local cIdPonto 			    as Character
+	Local cIdModel 			    as Character
+    Local cQuadra               as Character
+    Local cModulo               as Character
+    Local cJazigo               as Character
+	Local lRetorno			    as Logical
+	Local oObj 				    as Object
+	Local oModelU13			    as Object
+	Local oModelU14 		    as Object
+
+	// atribuo o valor das variaveis
+	aParam      := PARAMIXB
+	cIdPonto 	:= ""
+	cIdModel 	:= ""
+    cQuadra     := ""
+    cModulo     := ""
+    cJazigo     := ""
+	lRetorno	:= .T.
+	oObj 		:= Nil
+	oModelU13 	:= Nil
+	oModelU14	:= Nil
+
+	// caso os parametros estejam preenchidos
+	if aParam <> NIL
+
+		oObj 		        := aParam[1]					// modelo de dados principal
+		cIdPonto 	        := aParam[2]					// id do ponto de entrada do MVC
+		cIdModel 	        := aParam[3]					// id do modelo de dados
+		oModelU13   	    := oObj:GetModel("U13MASTER")	// modelo de dados do cadastro
+		oModelU14   	    := oObj:GetModel("U14DETAIL")	// modelo de dados de formas de pgamento
+
+		If cIdPonto == 'MODELPOS' // Na validação total do modelo.
+
+			If oObj:GetOperation() == 4 // para alteracao
+
+				cQuadra := oModelU13:GetValue("U13_QUADRA")
+				cModulo	:= oModelU13:GetValue("U13_MODULO")
+				cJazigo := oModelU13:GetValue("U13_JAZIGO")
+
+				U10->(DBSetOrder(1))
+				if U10->(MsSeek(xFilial("U10")+cQuadra+cModulo+cJazigo))
+					lRetorno := .F.
+					Help(,,'Help',,"Ossuario possui Jazigo " + U10->U10_DESC + " vinculado, a alteração não pode ser realizada!",1,0)
+				elseIF !Empty(cQuadra)
+					lRetorno := .F.
+					Help(,,'Help',,"Ossuario possui Jazigo vinculado, a alteração não pode ser realizada!",1,0)
+				endIf
+
+			elseIf oObj:GetOperation() == 5 // para exclusao
+
+				cQuadra := oModelU13:GetValue("U13_QUADRA")
+				cModulo	:= oModelU13:GetValue("U13_MODULO")
+				cJazigo := oModelU13:GetValue("U13_JAZIGO")
+
+				U10->(DBSetOrder(1))
+				if U10->(MsSeek(xFilial("U10")+cQuadra+cModulo+cJazigo))
+					lRetorno := .F.
+					Help(,,'Help',,"Ossuario possui Jazigo " + U10->U10_DESC + " vinculado, a alteração não pode ser realizada!",1,0)
+				elseIF !Empty(cQuadra)
+					lRetorno := .F.
+					Help(,,'Help',,"Ossuario possui Jazigo vinculado, a alteração não pode ser realizada!",1,0)
+				endIf
+
+			endIf
+
+		Endif
+
+	endIf
+
+Return(lRetorno)

@@ -1,0 +1,196 @@
+#include 'totvs.ch'
+#include 'parmtype.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} PCPGA002
+Ponto de entrada do Cadatro de Jazigos
+@type function
+@version 1.0 
+@author g.sampaio
+@since 13/04/2021
+@return logical, retorno do ponto de entrada
+/*/
+User function PCPGA002()
+
+	Local aParam 			    as Array
+	Local cIdPonto 			    as Character
+	Local cIdModel 			    as Character
+	Local cAuxComoGera		    as Character
+	Local cComoGera			    as Character
+	Local lContinua			    as Logical
+	Local lRetorno			    as Logical
+	Local lVincJazOss           as Logical
+	Local lVinculou             as Logical
+	Local nLinha			    as Numeric
+	Local oObj 				    as Object
+	Local oModelU08			    as Object
+	Local oModelU09 		    as Object
+	Local oModelU10 		    as Object
+	Local oOssuarioVinculado    as Object
+
+	// atribuo o valor das variaveis
+	aParam 			    := PARAMIXB
+	cIdPonto 		    := ""
+	cIdModel 		    := ""
+	cAuxComoGera	    := ""
+	cComoGera		    := ""
+	lContinua		    := .T.
+	lRetorno		    := .T.
+	lVinculou           := .F.
+	lVincJazOss	        := SuperGetMV("MV_XJAZOSS",,.F.)
+	nLinha			    := 0
+	oObj 			    := Nil
+	oModelU08 		    := Nil
+	oModelU09		    := Nil
+	oModelU10		    := Nil
+	oOssuarioVinculado  := Nil
+
+	// caso os parametros estejam preenchidos
+	if aParam <> NIL
+
+		oObj 		        := aParam[1]					// modelo de dados principal
+		cIdPonto 	        := aParam[2]					// id do ponto de entrada do MVC
+		cIdModel 	        := aParam[3]					// id do modelo de dados
+		oModelU08   	    := oObj:GetModel("U08MASTER")	// modelo de dados do cadastro
+		oModelU09   	    := oObj:GetModel("U09DETAIL")	// modelo de dados de formas de pgamento
+		oModelU10	        := oObj:GetModel("U10DETAIL")	// modelo de dados da grid de regras
+
+		if cIdPonto == 'MODELCOMMITNTTS' // Após a gravação total do modelo e fora da transação.
+
+			If oObj:GetOperation() == 3
+
+				if lVincJazOss
+
+					MsAguarde( {|| ProcOssuarioJazigo( 1, U08->U08_CODIGO)}, "Aguarde", "Processando registros...", .F. )
+
+				endIf
+
+			ElseIf oObj:GetOperation() == 4 // alteracao
+
+				if lVincJazOss
+
+					if U08->U08_VINOSS == "1" // vincula ossuario
+
+						MsAguarde( {|| ProcOssuarioJazigo( 1, U08->U08_CODIGO)}, "Aguarde", "Processando registros...", .F. )
+
+					elseIf U08->U08_VINOSS == "2" // desvincula ossuario
+
+						MsAguarde( {|| ProcOssuarioJazigo( 2, U08->U08_CODIGO)}, "Aguarde", "Processando registros...", .F. )
+
+					endIf
+
+				endIf
+
+			elseIf oObj:GetOperation() == 5 // para exclusao
+
+				if lVincJazOss
+
+					MsAguarde( {|| ProcOssuarioJazigo( 2, U08->U08_CODIGO)}, "Aguarde", "Processando registros...", .F. )
+
+				endIf
+
+			endIf
+
+		ElseIf cIdPonto == 'MODELPOS' // Na validação total do modelo.
+
+			If oObj:GetOperation() == 5 // para exclusao
+
+				if lVincJazOss
+
+					// Crio objeto para a classe de ossuario vinculado
+					oOssuarioVinculado  := OssuarioVinculado():New(.F.)
+					if !oOssuarioVinculado:OssuarioUsado(U08->U08_CODIGO)
+						lContinua := .F.
+						Help(,,'Help',,"Quadra possui Ossuario vinculado sendo utilizado, e a exclusão não pode ser realizada!",1,0)
+					endIf
+
+				endIf
+
+				if lContinua
+					// valido se o endereco esta sendo utilizado
+					if U_CPGA002D(U08->U08_CODIGO)
+						lContinua := .F.
+						Help(,,'Help',,"A quadra está sendo utilizado e não pode ser deletada!" ,1,0)
+					endIf
+				endIf
+
+				if !lContinua
+					lRetorno := .F.
+				endif
+
+			elseIf oObj:GetOperation() == 4 // para alteracao
+
+				if lVincJazOss
+
+					if oModelU08:GetValue("U08_VINOSS") <> U08->U08_VINOSS
+
+						// Crio objeto para a classe de ossuario vinculado
+						oOssuarioVinculado  := OssuarioVinculado():New(.F.)
+						if !oOssuarioVinculado:OssuarioUsado(U08->U08_CODIGO)
+							lContinua := .F.
+							Help(,,'Help',,"Quadra possui Ossuario vinculado, a alteracao não pode ser realizada!",1,0)
+						endIf
+
+					endIf
+
+				endIf
+
+				if lContinua .And. oModelU08:GetValue("U08_CODIGO") <> U08->U08_CODIGO
+
+					// valido se o endereco esta sendo utilizado
+					if U_CPGA002D(U08->U08_CODIGO)
+						lContinua := .F.
+						Help(,,'Help',,"A quadra está sendo utilizada e não pode ser alterada!" ,1,0)
+					endIf
+
+				endIf
+
+				if !lContinua
+					lRetorno := .F.
+				endif
+
+			endIf
+
+		endIf
+
+	Endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ProcOssuarioJazigo
+Rotina de processamento de jazigo x ossuario
+@type function
+@version 1.0  
+@author g.sampaio
+@since 17/04/2021
+@param nParamOpc, numeric, acao a ser executada no processamento
+@param cParamQuadra, character, quadra a ser considerada no parametro
+/*/
+Static Function ProcOssuarioJazigo(nParamOpc, cParamQuadra)
+
+	Local oOssuarioVinculado as Object
+
+	Default nParamOpc		:= 0
+	Default cParamQuadra 	:= ""
+
+	oOssuarioVinculado := Nil
+
+	if nParamOpc == 1
+
+		// Crio objeto para a classe de ossuario vinculado
+		oOssuarioVinculado  := OssuarioVinculado():New(.T., cParamQuadra)
+
+		// faco o vinculo do ossuario para a quadra informada
+		oOssuarioVinculado:VinculaOssuario()
+
+	elseIf nParamOpc == 2
+
+		// Crio objeto para a classe de ossuario vinculado
+		oOssuarioVinculado  := OssuarioVinculado():New(/*lJazigos*/.T., /*cParamQuadra*/cParamQuadra, /*cParamModulo*/, /*cParamJazigo*/, .T.)
+
+		// retiro o vinculo do ossuario
+		oOssuarioVinculado:DesvinculaOssuario()
+
+	endIf
+
+Return(Nil)
