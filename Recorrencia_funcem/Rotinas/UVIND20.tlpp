@@ -1,0 +1,169 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} UVIND20
+Envia arquivamento do cliente para Vindi
+
+(Antigo ArqClient do fonte RFUNA015)
+Inativa faturas
+@type function
+@version 1.0
+@author nata.queiroz
+@since 07/04/2020
+@param cCodMod, character, cCodMod
+@param cCodCtr, character, cCodCtr
+@param cCodCli, character, cCodCli
+@param cLoja, character, cLoja
+@param cOrigem, character, cOrigem
+@param cOrigemDesc, character, cOrigemDesc
+@param lMostraMsg, Logico, lMostraMsg
+@return logical, lRet
+/*/
+User Function UVIND20(cCodMod, cCodCtr, cCodCli, cLoja, cOrigem, cOrigemDesc,lMostraMsg,cErro)
+
+	Local aArea 		as Array
+	Local aAreaU61 		as Array
+	Local aAreaU65 		as Array
+	Local cMsg 			as Character
+	Local lRet 			as Logical
+	Local oVindi 		as Object
+	Local cStatus		as Character
+	Local cErroVindi	as Character
+
+	Default cCodMod		:= "F"
+	Default cCodCtr		:= ""
+	Default cCodCli		:= ""
+	Default cLoja		:= ""
+	Default cOrigem		:= "UVIND20"
+	Default cOrigemDesc := "Arquivamento de Cliente"
+	Default lMostraMsg	:= .T.
+	Default cErro		:= ""
+
+	aArea 			:= GetArea()
+	aAreaU61 		:= U61->( GetArea() )
+	aAreaU65 		:= U65->( GetArea() )
+	cErroVindi 		:= ""
+	cMsg 			:= ""
+	lRet 			:= .T.
+	oVindi 			:= Nil
+	cStatus			:= ""
+
+	U61->(DbSetOrder(1)) // U61_FILIAL + U61_CONTRA + U61_CLIENT + U61_LOJA + U61_STATUS
+	If U61->( MsSeek(xFilial("U61") + cCodCtr + cCodCli + cLoja + "A") )
+
+		// inicio a classe de integracao com a vindi
+		oVindi := IntegraVindi():New()
+
+		cMsg := "Enviando Arquivamento do Cliente para Plataforma Vindi..."
+		FWMsgRun(,{|oSay| lRet := oVindi:CliOnline("E", cCodMod, @cErroVindi, cOrigem, cOrigemDesc)}, "Aguarde...", cMsg)
+
+		//Se cliente na vindi foi arquivado, inativa faturas
+		If lRet
+
+			// Finaliza operacoes na tabela de envio Vindi (U62)
+			U_UFinU62(U61->U61_MSFIL, cCodMod, U61->U61_CONTRA)
+
+			//Posiciono nas faturas do contrato para inativar
+			U65->( DbSetOrder(4) ) //U65_FILIAL + U65_CONTRA + U65_CLIENT + U65_LOJA
+			U65->( dbGoTop() )
+			If U65->( MsSeek(xFilial("U65") + cCodCtr + cCodCli + cLoja) )
+				While U65->(!EOF());
+						.And. 	U65->U65_FILIAL + U65->U65_CONTRA + U65->U65_CLIENT + AllTrim(U65->U65_LOJA);
+						== xFilial("U65") + cCodCtr + cCodCli + cLoja
+
+					//Consulto status da fatura na VINDI
+					cStatus := oVindi:ConsultaFatura(cCodMod,@cErroVindi,U65->U65_CODVIN,/*cCodRet*/,/*cDescRetorno*/,/*cDadosRetorno*/)
+
+					If AllTrim(cStatus) == "canceled" .AND. U65->U65_STATUS == "A"
+						If Reclock("U65",.F.)
+							U65->U65_STATUS := "I"
+							U65->(MsUnLock())
+						EndIf
+					ElseIf AllTrim(cStatus) <> "canceled" .AND. U65->U65_STATUS == "I"
+						If Reclock("U65",.F.)
+							U65->U65_STATUS := "A"
+							U65->(MsUnLock())
+						EndIf
+					EndIf
+
+					U65->(DbSkip())
+				EndDo
+			EndIf
+		Else
+
+			cMsg := "Não foi possível realizar o arquivamento do cliente na Vindi!"
+
+			if lMostraMsg
+				Help(NIL, NIL, "Atenção!", NIL, cMsg, 1, 0, NIL, NIL, NIL, NIL, NIL, {cErroVindi})
+			else
+				cErro += cMsg + Chr(13) + Chr(10)
+				cErro += cErroVindi + Chr(13) + Chr(10)
+			endif
+
+		EndIf
+	EndIf
+
+	RestArea(aAreaU65)
+	RestArea(aAreaU61)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} FinU62
+Finaliza todas operações de envio para contrato (Job Envio Vindi)
+@type function
+@version 1.0
+@author nata.queiroz
+@since 08/04/2020
+@param cFilCtr
+@param cCodMod
+@param cChaveU62
+/*/
+User Function UFinU62(cFilCtr, cCodMod, cChaveU62)
+	Local cQry		:= ""
+	Local nQtdReg	:= 0
+	Local aArea 	:= GetArea()
+	Local aAreaU62	:= U62->( GetArea() )
+
+	cQry := "SELECT R_E_C_N_O_ RECNO "
+	cQry += "FROM " + RetSqlName("U62")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "AND U62_MSFIL = '"+ cFilCtr +"' "
+	cQry += "AND U62_MODULO = '"+ cCodMod +"' "
+	cQry += "AND U62_STATUS <> 'C' "
+	cQry += "AND TRIM(U62_CHAVE) LIKE '%"+ AllTrim(cChaveU62) +"%' "
+	cQry := ChangeQuery(cQry)
+
+	If Select("U62FIN") > 0
+		U62FIN->( dbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "U62FIN")
+
+	If U62FIN->( !Eof() )
+		
+		While U62FIN->( !EOF() )
+
+			U62->( dbGoTo(U62FIN->RECNO) )
+			
+			RecLock("U62", .F.)
+			U62->U62_STATUS := "C"
+			U62->U62_DTPROC := dDatabase
+			U62->U62_HRPROC := SubStr(Time(), 1, 5)
+			U62->U62_CODRET := "200"
+			U62->U62_DESRET := "Cliente arquivado na plataforma Vindi"
+			U62->( MsUnLock() )
+
+			U62FIN->( dbSkip() )
+		EndDo
+
+	EndIf
+
+	If Select("U62FIN") > 0
+		U62FIN->( dbCloseArea() )
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaU62)
+
+Return(Nil)

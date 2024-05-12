@@ -1,0 +1,1022 @@
+#include "totvs.ch"
+#include "topconn.ch"
+#include "fwprintsetup.ch"
+#include "fileio.ch"
+#include "rptdef.ch"
+
+
+// defines
+#define DMPAPER_A4 9    // A4 210 x 297 mm
+#define CRLF CHR(13)+CHR(10)
+
+/*/{Protheus.doc} UVINDR01
+Relatorio de Contratos - Protheus vs Vindi
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/02/2021
+/*/
+
+User Function UVINDR01()
+
+	Local cParam            As Character
+	Local cCSSGroup			As Character
+	Local oBtnSair          As Object
+	Local oBtnPDF      		As Object
+	Local oBtnHTML     		As Object
+	Local oBtnPlanilha      As Object
+	Local oBtnParametros    As Object
+	Local oGroupRel         As Object
+	Local oSayRel           As Object
+	Local oDlgRel           As Object
+	Local oFontTitulo       As Object
+
+	// atribuo valor as variaveis
+	cParam 				:= "UVINDR01"
+
+	// CSS do objeto group para colorir a borda
+	cCSSGroup 			:= " QGroupBox { "
+	cCSSGroup 			+= " border: 2px solid #0076CE; "
+	cCSSGroup 			+= " padding-top: 0px; "
+	cCSSGroup 			+= " }
+
+	// monto o CSS dos botoes
+	cBotaoCSSCinza  	:= CSSBotoesCinza()
+	cBotaoCSSAzul   	:= CSSBotoesAzul()
+	cBotaoCSSVerde  	:= CSSBotoesVerde()
+	cBotaoCSSLaranja  	:= CSSBotoesLaranja()
+	cBotaoCSSVermelho  	:= CSSBotoesVermelho()
+
+	oFontTitulo := TFont():New("Arial",,020,,.T.,,,,,.F.,.F.)
+
+	// crio os parametros
+	AjustaSX1(cParam)
+
+	// abro os parametros
+	Pergunte(cParam,.F.)
+
+	DEFINE MSDIALOG oDlgRel TITLE "Impressão de Relatório - Contratos Vindi" FROM 000, 000  TO 200, 455 COLORS 0, 16777215 PIXEL
+
+	@ 003, 003 GROUP oGroupRel TO 095, 227 PROMPT "Impressão de Relatório - Contratos Vindi" OF oDlgRel COLOR 0, 16777215 PIXEL
+	oGroupRel:oFont := oFontTitulo
+	oGroupRel:SetCss(cCSSGroup)
+
+	@ 023, 014 SAY oSayRel PROMPT "Este relatório tem como intuito a impressão das parcelas dos contratos que estão vinculados a Vindi de acordo parametros preenchidos." SIZE 205, 025 OF oDlgRel COLORS 0, 16777215 PIXEL
+
+	// botoes da rotina
+	@ 065, 010 BUTTON oBtnParametros    PROMPT "Parametros"     SIZE 040, 015 OF oDlgRel PIXEL ACTION(Pergunte(cParam,.T.))
+	oBtnParametros:SetCss(cBotaoCSSCinza)
+
+	@ 065, 055 BUTTON oBtnHTML      	PROMPT "HTML"  		 	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(1))
+	oBtnHTML:SetCss(cBotaoCSSAzul)
+
+	@ 065, 100 BUTTON oBtnPDF     	 	PROMPT "PDF"        	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(2))
+	oBtnPDF:SetCss(cBotaoCSSLaranja)
+
+	@ 065, 145 BUTTON oBtnPlanilha      PROMPT "Planilha"     	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(3))
+	oBtnPlanilha:SetCss(cBotaoCSSVerde)
+
+	@ 065, 190 BUTTON oBtnSair          PROMPT "Sair"           SIZE 030, 015 OF oDlgRel PIXEL ACTION(oDlgRel:End())
+	oBtnSair:SetCss(cBotaoCSSVermelho)
+
+
+	ACTIVATE MSDIALOG oDlgRel CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidParam
+Funcao para validar os parametros preenchidos
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param nTipoImpressao, numeric, tipo de impressao 1=Planilha e 2=Impressao
+/*/
+Static Function ValidParam(nTipoImpressao)
+
+	Local aDados			As Array
+	Local aInformacao		As Array
+	Local aTitulo			As Array
+	Local aParam 			As Array
+	Local cContratoDe 		As Character
+	Local cContratoAte	 	As Character
+	Local cPlano			As Character
+	Local cRelatorio		As Character
+	Local dDeDataVenc		As Date
+	Local dAteDataVenc		As Date
+	Local nStatus			As Numeric
+	Local lContinua			As Logical
+	Local lEnd				As Logical
+	Local oProcess			As Object
+
+	Default nTipoImpressao := 0
+
+	// atribuo valor as variaveis
+	aDados 			:= {}
+	aParam			:= {}
+	aInformacao		:= {}
+	aTitulo 		:= {"ID Vindi","Contrato","Prefixo","Titulo","Parcela","Tipo","Emissão","Vencimento","Dt.Recebimento",;
+		"ID Cliente Vindi","Codigo Cliente","Codigo Loja", "Titular", "Método Pag.", "Caixa", "Natureza",;
+		"Desc.Natureza", "Valor Original", "Valor Recebido", "Status"}
+	cRelatorio		:= "Contratos Vindi"
+	lContinua		:= .T.
+	lEnd			:= .F.
+	oProcess		:= Nil
+
+	// trata para os parametros
+	cDeContrato		:= MV_PAR01
+	cAteContrato	:= MV_PAR02
+	cPlano          := MV_PAR03
+	dDeDataVenc     := MV_PAR04
+	dAteDataVenc    := MV_PAR05
+	nStatus 		:= MV_PAR06
+
+	// caso o parametro de data ate estiver vazio, considero a data base
+	if Empty(dDeDataVenc) .And. Empty(dAteDataVenc)
+		dDataAte	:= dDatabase
+	endIf
+
+	// caso o contrato ate estiver vazio, considero todos "ZZZZZZ"
+	if Empty(cContratoDe) .And. Empty(cContratoAte)
+		cContratoAte	:= Replicate("Z",TamSX3("U00_CODIGO")[1])
+	endIf
+
+	// valido o preenchimento dos dados de data
+	if !Empty(dDeDataVenc) .And. Empty(dAteDataVenc)
+		lContinua := .F.
+		MsgAlert("O parametro 'Data Ate' deve ser preenchido, pois o Parametro 'Data de' está preenchido.")
+	endIf
+
+	// valido o preenchimento dos dados de contrato
+	if !Empty(cContratoDe) .And. Empty(cContratoAte)
+		lContinua := .F.
+		MsgAlert("O parametro 'Contrato Ate' deve ser preenchido, pois o Parametro 'Contrato de' está preenchido.")
+	endIf
+
+	// array de parametros
+	Aadd( aParam, cDeContrato)		// [1] Contrato De
+	Aadd( aParam, cAteContrato)		// [2] Contrato Ate
+	Aadd( aParam, cPlano)			// [3] Plano ou Produto
+	Aadd( aParam, dDeDataVenc)		// [4] Dta de Vencimento De
+	Aadd( aParam, dAteDataVenc)		// [5] Dta de Vencimento Ate
+	Aadd( aParam, nStatus )			// [6] Status
+
+	// caso estiver tudo certo com os parametros do relatorio
+	if lContinua
+
+		oProcess := MsNewProcess():New( { | lEnd | ProccesaRelatorio( @oProcess, @lEnd, nTipoImpressao, cRelatorio, aTitulo, aParam) }, cRelatorio, "Aguarde, processando os dados do relatorio...", .F. )
+		oProcess:Activate()
+
+	else
+
+		MsgAlert("Não existem dados para a impressão do relatório!")
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraDados
+Funcao para gerar os dados 
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@return array, retorna array com os dados para o relatorio
+/*/
+Static Function GeraDados(aParam)
+
+	Local aAuxiliar		As Array
+	Local aRetorno		As Array
+	Local aDadosCliente	As Array
+	Local aDadosBaixa	As Array
+	Local cClienteAux	As Character
+	Local cPlano        As Character
+	Local cQuery        As Character
+	Local cFormaArquis	As Character
+	Local cStatusVindi	As Character
+	Local cDeContrato	As Character
+	Local cAteContrato	As Character
+	Local cDescNatureza As Character
+	Local dDeDataVenc   As Date
+	Local dAteDataVenc  As Date
+	Local lFuneraria	As Logical
+	Local lCemiterio	As Logical
+	Local nStatus		As Numeric
+	Local nTotParc		As Numeric
+	Local nTotRec		As Numeric
+
+	Default aParam			:= {}
+
+	// verifico se o array de parametros tem informacoes
+	if Len(aParam) > 0
+		cDeContrato		:= aParam[1]
+		cAteContrato	:= aParam[2]
+		cPlano			:= aParam[3]
+		dDeDataVenc		:= aParam[4]
+		dAteDataVenc	:= aParam[5]
+		nStatus			:= aParam[6]
+	endif
+
+	// atribuo valor para as variaveis
+	aAuxiliar		:= {}
+	aRetorno		:= {}
+	aDadosCliente	:= {"", ""}
+	aDadosBaixa		:= {"", "", Stod(""), 0}
+	cQuery 			:= "" //Query de busca
+	cFormaArquis	:= ""
+	cClienteAux		:= ""
+	lFuneraria		:= SuperGetMv("MV_XFUNE",.F.,.F.)
+	lCemiterio		:= SuperGetMv("MV_XCEMI",.F.,.F.)
+	nTotParc		:= 0
+	nTotRec			:= 0
+
+	If Select("TRBVIN") > 0
+		TRBVIN->(DbCloseArea())
+	Endif
+
+	cQuery := " SELECT "
+	cQuery += " U65.U65_MSFIL 	FILIAL, "
+	cQuery += " U65.U65_CODVIN 	ID_VINDI, "
+	cQuery += " U65.U65_STATUS  STATUS_VINDI, "
+	cQuery += " U65.U65_DATA 	DATA_VINDI, "
+	cQuery += " U65.U65_HORA 	HORA_VINDI,	"
+	cQuery += " U65.U65_CLIENT 	CLIENTE, "
+	cQuery += " U65.U65_LOJA 	LOJACLI, "
+	cQuery += " U65.U65_CONTRA 	CONTRATO, "
+	cQuery += " U65.U65_PREFIX  PREFIXO, "
+	cQuery += " U65.U65_NUM 	TITULO, "
+	cQuery += " U65.U65_PARCEL 	PARCELA, "
+	cQuery += " U65.U65_TIPO 	TIPO, "
+	cQuery += " SE1.E1_VALOR	VALOR, "
+	cQuery += " SE1.E1_VENCTO 	VENCIMENTO, "
+	cQuery += " SE1.E1_VENCREA 	VENC_REAL, "
+	cQuery += " SE1.E1_BAIXA 	DATA_REC,"
+	cQuery += " SE1.E1_NATUREZ 	NATUREZA,"
+	cQuery += " SED.ED_DESCRIC  DESCNATUREZA"
+	cQuery += " FROM " + RetSqlName("U65") + " U65 (NOLOCK) "
+
+	if lFuneraria
+		cQuery += " INNER JOIN " + RetSqlName("UF2") + " UF2 (NOLOCK) ON UF2.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UF2.UF2_MSFIL 	= U65.U65_MSFIL "
+		cQuery += " AND UF2.UF2_CODIGO 	= U65.U65_CONTRA "
+		cQuery += " AND UF2.UF2_CLIENT 	= U65.U65_CLIENT "
+		cQuery += " AND UF2.UF2_LOJA 	= U65.U65_LOJA "
+	elseIf lCemiterio
+		cQuery += " INNER JOIN " + RetSqlName("U00") + " U00 (NOLOCK) ON U00.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U00.U00_MSFIL 	= U65.U65_MSFIL "
+		cQuery += " AND U00.U00_CODIGO 	= U65.U65_CONTRA "
+		cQuery += " AND U00.U00_CLIENT 	= U65.U65_CLIENT "
+		cQuery += " AND U00.U00_LOJA 	= U65.U65_LOJA "
+	endIf
+
+	cQuery += " INNER JOIN " + RetSqlName("SE1") + " SE1 (NOLOCK) ON SE1.D_E_L_E_T_ = ' '
+	cQuery += " AND SE1.E1_FILIAL 	= U65.U65_MSFIL
+	cQuery += " AND SE1.E1_PREFIXO 	= U65.U65_PREFIX
+	cQuery += " AND SE1.E1_NUM 		= U65.U65_NUM
+	cQuery += " AND SE1.E1_PARCELA 	= U65.U65_PARCEL
+	cQuery += " AND SE1.E1_TIPO 	= U65.U65_TIPO
+
+	if lFuneraria
+		cQuery += " AND SE1.E1_XCTRFUN = U65.U65_CONTRA "
+	elseIf lCemiterio
+		cQuery += " AND SE1.E1_XCONTRA = U65.U65_CONTRA "
+	endIf
+
+	cQuery += " INNER JOIN " + RetSqlName("SED") + " SED ON SED.D_E_L_E_T_ = ' '"
+	cQuery += " AND SED.ED_FILIAL = '" + xFilial("SED") + "'"
+	cQuery += " AND SED.ED_CODIGO = SE1.E1_NATUREZ "
+
+	cQuery += " WHERE U65.D_E_L_E_T_ = ' '
+	cQuery += " AND U65.U65_MSFIL = '" + cFilAnt + "' "
+
+	// status do contrato na vindi
+	if nStatus == 2 // ativo
+		cQuery += " AND U65.U65_STATUS = 'A' "
+	elseIf nStatus == 3 // inativo
+		cQuery += " WHERE U65.U65_STATUS = 'I' "
+	endIf
+
+	// plano
+	if !Empty(AllTrim(cAteContrato))
+		if lFuneraria
+			cQuery += " AND UF2.UF2_CODIGO BETWEEN '" + cDeContrato + "' AND '" + cAteContrato + "' "
+		elseIf lCemiterio
+			cQuery += " AND U00.U00_CODIGO BETWEEN '" + cDeContrato + "' AND '" + cAteContrato + "' "
+		endIf
+	endIf
+
+	// plano
+	if !Empty(AllTrim(cPlano))
+		if lFuneraria
+			cQuery += " AND UF2.UF2_PLANO IN " + FormatIn( AllTrim(cPlano),";" ) + " "
+		elseIf lCemiterio
+			cQuery += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(cPlano),";" ) + " "
+		endIf
+	endIf
+
+	// data de/ate
+	if !Empty(dAteDataVenc)
+		cQuery += " AND SE1.E1_VENCTO BETWEEN '" + DtoS(dDeDataVenc) + "' AND '" + DtoS(dAteDataVenc) + "' "
+	endIf
+
+	cQuery += " ORDER BY U65.U65_CONTRA, U65.U65_PARCEL, U65.U65_DATA "
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBVIN"
+
+	While TRBVIN->(!Eof())
+
+		aAuxiliar := {}
+		cDescNatureza 	:= ""
+		cStatusVindi	:= ""
+
+		// pego os dados de cliente
+		if cClienteAux <> PADL(TRBVIN->CLIENTE,TamSX3("A1_COD")[1])+PADL(TRBVIN->LOJACLI,TamSX3("A1_LOJA")[1])
+			aDadosCliente	:= ClienteVindi( PADL(TRBVIN->CLIENTE,TamSX3("A1_COD")[1]), PADL(TRBVIN->LOJACLI,TamSX3("A1_LOJA")[1]) )
+
+			if Len(aDadosCliente) > 0
+				cClienteAux := aDadosCliente[3]
+			endIf
+		endIf
+
+		// pego os dados da baixa
+		if !Empty(TRBVIN->DATA_REC)
+			aDadosBaixa		:= RecebimentoVindi(TRBVIN->PREFIXO, TRBVIN->TITULO, TRBVIN->PARCELA, TRBVIN->TIPO, TRBVIN->CLIENTE, TRBVIN->LOJACLI,;
+				Stod(TRBVIN->DATA_REC))
+
+			// pego o status do recebimento do Protheus na Vindi
+			cStatusVindi := StatusRecebimentoVindi(TRBVIN->ID_VINDI, TRBVIN->DATA_REC)
+
+		endIf
+
+		if (Empty(cStatusVindi) .And. Empty(TRBVIN->DATA_REC)) .Or. Len(aDadosBaixa) == 0
+			cStatusVindi := "Agendado"
+		else
+			cStatusVindi := "Recebido"
+		endIf
+
+		aAdd(aAuxiliar, TRBVIN->ID_VINDI)
+		aAdd(aAuxiliar, TRBVIN->CONTRATO)
+		aAdd(aAuxiliar, TRBVIN->PREFIXO)
+		aAdd(aAuxiliar, TRBVIN->TITULO)
+		aAdd(aAuxiliar, TRBVIN->PARCELA)
+		aAdd(aAuxiliar, TRBVIN->TIPO)
+		aAdd(aAuxiliar, StoD(TRBVIN->DATA_VINDI))
+		aAdd(aAuxiliar, StoD(TRBVIN->VENCIMENTO))
+
+		if Len(aDadosBaixa) > 0 .And. !Empty(aDadosBaixa[3])
+			aAdd(aAuxiliar, StoD(aDadosBaixa[3]))
+		else
+			aAdd(aAuxiliar, StoD(""))
+		endIf
+
+		if Len(aDadosCliente) > 0 .And. !Empty(aDadosCliente[1]) // codigo da vindi
+			aAdd(aAuxiliar,aDadosCliente[1])
+		else
+			aAdd(aAuxiliar,"")
+		endIf
+
+		aAdd(aAuxiliar,TRBVIN->CLIENTE)
+		aAdd(aAuxiliar,TRBVIN->LOJACLI)
+
+		if Len(aDadosCliente) > 0 .And. !Empty(aDadosCliente[2]) // descricao do titular
+			aAdd(aAuxiliar,aDadosCliente[2])
+		else
+			aAdd(aAuxiliar,"")
+		endIf
+
+		if Len(aDadosBaixa) > 0 .And. !Empty(aDadosBaixa[1]) // forma de pagamento
+			aAdd(aAuxiliar,aDadosBaixa[1])
+		else
+			aAdd(aAuxiliar,"")
+		endIf
+
+		if Len(aDadosBaixa) > 0 .And. !Empty(aDadosBaixa[2]) // caixa
+			aAdd(aAuxiliar,aDadosBaixa[2])
+		else
+			aAdd(aAuxiliar,"")
+		endIf
+
+		aAdd(aAuxiliar, TRBVIN->NATUREZA) // codigo natureza
+		aAdd(aAuxiliar, TRBVIN->DESCNATUREZA) // descricao do natureza
+		aAdd(aAuxiliar, TRBVIN->VALOR)
+
+		if Len(aDadosBaixa) > 0 .And. aDadosBaixa[4] > 0 // valor recebido
+			aAdd(aAuxiliar,aDadosBaixa[4])
+			nTotRec+=aDadosBaixa[4]
+		else
+			aAdd(aAuxiliar,0)
+		endIf
+
+		aAdd(aAuxiliar,cStatusVindi)
+
+		aAdd(aRetorno, aAuxiliar)
+
+		TRBVIN->(dbSkip())
+	EndDo
+
+	If Select("TRBVIN") > 0
+		TRBVIN->(DbCloseArea())
+	Endif
+
+Return(aRetorno)
+
+/*/{Protheus.doc} AjustaSX1
+Funcao para criar o grupo de perguntas
+na SX1
+@type function
+@version 1.0 
+@author g.sampaio
+@since 07/02/2021
+@param cPerg, character, grupo de perguntas
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs			:= {}
+	Local lFuneraria	:= SuperGetMv("MV_XFUNE",.F.,.F.)
+	Local lCemiterio	:= SuperGetMv("MV_XCEMI",.F.,.F.)
+
+	Default cPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','De Contrato'          		,'','','mv_ch1','C', TamSx3("U65_CONTRA")[1]    , 0, 0,'G','','mv_par01','','','','','',''})
+		aAdd(aRegs,{cPerg,'02','Ate Contrato'          		,'','','mv_ch2','C', TamSx3("U65_CONTRA")[1]    , 0, 0,'G','','mv_par02','','','','','',''})
+
+		if lFuneraria
+			aAdd(aRegs,{cPerg,'03','Plano'     			,'','','mv_ch3','C', 99   	                    , 0, 0,'G','','mv_par03','','','','','','UF0MRK'})
+		elseif lCemiterio
+			aAdd(aRegs,{cPerg,'03','Produto'     			,'','','mv_ch3','C', 99   	                    , 0, 0,'G','','mv_par03','','','','','','U05MRK'})
+		endIf
+
+		aAdd(aRegs,{cPerg,'04','De Data Vencimento'       	,'','','mv_ch4','D', TamSx3("E1_VENCTO")[1]    	, 0, 0,'G','','mv_par04','','','','','',''})
+		aAdd(aRegs,{cPerg,'05','Ate Data Vencimento'       	,'','','mv_ch5','D', TamSx3("E1_VENCTO")[1]    	, 0, 0,'G','','mv_par05','','','','','',''})
+		aAdd(aRegs,{cPerg,'06','Status Vindi?' 				,'','','mv_ch6','N', 1                          , 0, 2,'N','','mv_par06','Ambos','Ativo','Inativo','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} StatusRecebimentoVindi
+status do processamento do recebimento 
+da vindi
+@type function
+@version 1.0
+@author g.sampaio
+@since 18/04/2021
+@param cIdVindi, character, codigo da fatura na vindi
+@param dDataRecebimento, date, data da baixa no protheus
+@return character, retorna o status na vindi
+/*/
+Static Function StatusRecebimentoVindi(cIdVindi, dDataRecebimento)
+
+	Local cQuery 	As Character
+	Local cRetorno	As Character
+
+	Default cIdVindi			:= ""
+	Default dDataRecebimento	:= Stod("")
+
+	cQuery := ""
+
+	if Select("TRBU63") > 0
+		TRBU63->(DbCloseArea())
+	endIf
+
+	if ValType(dDataRecebimento) == "D"
+		dDataRecebimento := Dtos(dDataRecebimento)
+	endIf
+
+	cQuery := " SELECT U63.U63_MSPROC STATUSVINDI FROM " + RetSqlName("U63") + " U63 "
+	cQuery += " WHERE U63.U63_IDVIND = '" + cIdVindi + "'"
+	cQuery += " AND U63.U63_DTPROC = '" + dDataRecebimento + "' "
+	cQuery += " AND U63.U63_ENT = '1'"
+	cQuery += " AND U63.U63_STATUS = 'C'"
+
+	TcQuery cQuery New Alias "TRBU63"
+
+	if TRBU63->(!Eof())
+		cRetorno := "Recebido na Vindi"
+	endIf
+
+	if Select("TRBU63") > 0
+		TRBU63->(DbCloseArea())
+	endIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} ClienteVindi
+funcao para retornar os dados do cliente
+@type function
+@version 1.0  
+@author g.sampaio
+@since 20/04/2021
+@param cCliente, character, codigo do cliente
+@param cLojaCli, character, codigo da loja
+@return array, retorna os do cliente [1] Codigo da Vindi [2] Nome do Cliente
+/*/
+Static Function ClienteVindi(cCliente, cLojaCli)
+
+	Local aRetorno		As Array
+	Local cQuery 		As Character
+
+	// atribuo valor as variaveis
+	aRetorno		:= {}
+	cQuery 			:= ""
+
+	if Select("TRBCLI") > 0
+		TRBCLI->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " U61.U61_CODIGO 	CLIENTE_VINDI, "
+	cQuery += " SA1.A1_NOME		NOME_CLIENTE, "
+	cQuery += " U61.U61_STATUS 	STATUS"
+	cQuery += " FROM " + RetSqlName("SA1") + " SA1 (NOLOCK) "
+	cQuery += " LEFT JOIN " + RetSqlName("U61") + " U61 (NOLOCK) ON U61.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U61.U61_CLIENT 	= SA1.A1_COD "
+	cQuery += " AND U61.U61_LOJA 	= SA1.A1_LOJA "
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "'"
+	cQuery += " AND SA1.A1_COD = '" + cCliente + "' "
+	cQuery += " AND SA1.A1_LOJA = '" + cLojaCli + "' "
+
+	TcQuery cQuery New Alias "TRBCLI"
+
+	if TRBCLI->(!Eof())
+		aAdd(aRetorno, TRBCLI->CLIENTE_VINDI)
+		aAdd(aRetorno, TRBCLI->NOME_CLIENTE)
+		aAdd(aRetorno, cCliente+cLojaCli)
+	endIf
+
+	if Select("TRBCLI") > 0
+		TRBCLI->(DbCloseArea())
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} RecebimentoVindi
+Funcao para pegar os dados de recebimentos
+@type function
+@version 1.0  
+@author g.sampaio
+@since 21/04/2021
+@param cPrefixo, character, codigo do prefixo
+@param cNumTitulo, character, codigo do numero do titulo
+@param cParcela, character, codigo da parcela
+@param cTipo, character, codigo do tipo
+@param cCliente, character, codigo do cliente
+@param cLojaCli, character, codigo da loja do cliente
+@param dDataRecebimento, date, data do recebimento
+@param nCaixaVindi, numeric, mostra a caixa da vindi
+@return array, retorna os dados da baixa
+/*/
+Static Function RecebimentoVindi(cPrefixo, cNumTitulo, cParcela, cTipo, cCliente, cLojaCli, dDataRecebimento)
+
+	Local aRetorno				As Array
+	Local cQuery 				As Character
+	Local cCaixaVindi 			As Character
+
+	Default cPrefixo			:= ""
+	Default cNumTitulo			:= ""
+	Default cParcela			:= ""
+	Default cTipo				:= ""
+	Default cCliente			:= ""
+	Default cLojaCli			:= ""
+	Default dDataRecebimento	:= Stod("")
+
+	// atribuo valor as variaveis
+	aRetorno		:= {}
+	cQuery 			:= ""
+	cCaixaVindi		:= SuperGetMv("MV_XCXVIND", .F.,"")
+
+	if Select("TRBREC") > 0
+		TRBREC->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT "
+	cQuery += " SE5.E5_BANCO 	CAIXA, "
+	cQuery += " SE5.E5_FORMAPG 	FORMA_PAG, "
+	cQuery += " SE5.E5_DATA		DATA_REC, "
+	cQuery += " SE5.E5_VALOR 	VALOR_REC "
+	cQuery += " FROM " + RetSqlName("SE5") + " SE5 "
+	cQuery += " WHERE SE5.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE5.E5_FILIAL = '" + xFilial("SE5") + "' "
+	cQuery += " AND SE5.E5_PREFIXO = '" + cPrefixo + "' "
+	cQuery += " AND SE5.E5_NUMERO = '" + cNumTitulo + "' "
+	cQuery += " AND SE5.E5_PARCELA = '" + cParcela + "' "
+	cQuery += " AND SE5.E5_TIPO = '" + cTipo + "' "
+	cQuery += " AND SE5.E5_CLIENTE = '" + cCliente + "' "
+	cQuery += " AND SE5.E5_LOJA = '" + cLojaCli + "' "
+	cQuery += " AND SE5.E5_DATA = '" + Dtos(dDataRecebimento) + "' "
+
+	if !Empty(cCaixaVindi)
+		cQuery += " AND SE5.E5_BANCO = '" + cCaixaVindi + "' "
+	endIf
+
+	TcQuery cQuery New Alias "TRBREC"
+
+	if TRBREC->(!Eof())
+		aAdd(aRetorno, TRBREC->CAIXA) 		// [1] caixa
+		aAdd(aRetorno, TRBREC->FORMA_PAG) 	// [2] forma de pagamento
+		aAdd(aRetorno, TRBREC->DATA_REC) 	// [3] data de recebimento
+		aAdd(aRetorno, TRBREC->VALOR_REC) 	// [4] valor do recebimento
+	endIf
+
+	if Select("TRBREC") > 0
+		TRBREC->(DbCloseArea())
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} GeraPlanilha
+Funcao para gerar a Planilha em Excell a partir dos dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraPlanilha( oProcess, lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+	Local oVirtusRelPlanilha		As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+	Default aParam		:= {}
+
+	// atribuo valor as variaveis
+	oVirtusRelPlanilha	:= Nil
+
+	// inicio a classe de geracao de planilha
+	oVirtusRelPlanilha := VirtusRelPlanilha():New()
+
+	// faco a impressao da planilha
+	oVirtusRelPlanilha:Imprimir( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraPDF
+Funcao para gerar o relatorio com o metodo 
+FWMSPrinter
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraPDF( oProcess, lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+	Local aColunas				As Array
+	Local aTitAux				As Array
+	Local aDadosAux				As Array
+	Local nMVTamanhoFonte		As Numeric
+	Local oGeraPDF				As Object
+	Local oPDFPrint				As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+	Default aParam		:= {}
+
+	// atribuo valor as variaveis
+	oGeraPDF		:= Nil
+	oPDFPrint 		:= Nil
+	nMVTamanhoFonte	:= SuperGetMV("MV_XFONTV1",,1)
+	aColunas      	:= {}
+	aDadosAux		:= {}
+	aTitAux 		:= {"ID Vindi","Contrato","Prefixo","Titulo","Parcela","Tipo","Emissão","Vencimento","Dt.Recebimento",;
+		"ID Cliente Vindi", "Titular", "Valor Recebido", "Status"}
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Iniciando objeto de impressão...')
+
+	// inicio a classe de geracao de planilha
+	oGeraPDF := VirtusRelPDF():New(@oPDFPrint, cRelatorio, Nil, nMVTamanhoFonte)
+
+	//------------------------
+	// impresso do cabecalho
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Impressão do cabeçalho...')
+
+	oGeraPDF:ImpCabecalho(@oPDFPrint, cRelatorio, aParam[4], aParam[5])
+
+	// salto a linha
+	oGeraPDF:nLinha += 100
+
+	//--------------------------------
+	// faco a impressao do relatorio
+	//-------------------------------
+
+	// monto o array com as posicoes das colunas
+	aColunas := { oGeraPDF:nMargemL, 100, 200, 300, 400, 500, 600, 800, 1000, 1200, 1400, 2000, oGeraPDF:nMargemR-375 }
+
+	// monto a nova estrutura de dados para impressao em PDF
+	AEval( aDados, {|x| aAdd(aDadosAux, { x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[13], x[19], x[20]} )} )
+
+	// faco a impressao do conteudo do relatorio
+	oGeraPDF:ImpRelatorio( @oProcess, @lEnd, @oPDFPrint, cRelatorio, aTitAux, aColunas, aDadosAux)
+
+	//------------------------
+	// impresso do rodape
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Impressão do rodape...')
+
+	// faco a impressao do rodape
+	oGeraPDF:ImpRodape(@oPDFPrint)
+
+	//------------------------
+	// gera o relatorio
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Gerando o PDF do relatorio...')
+
+	// faco a impressao do relatorio
+	oGeraPDF:Imprimir(@oPDFPrint)
+
+Return(Nil)
+
+/*/{Protheus.doc} ProccesaRelatorio
+Rotina de processamento para a impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 25/05/2021
+@param oProcess, object, objeto da barra de processamento
+@param lEnd, logical, variavel logica para indicar se finaliza ou não a impressão
+@param cRelatorio, character, nome do relatorio
+@param nTipoImpressao, numeric, tipo de impressao 1=Planilha;2=PDF
+@param aTitulo, array, titulos do relatorio
+@param aParam, array, parametros para consulta
+/*/
+Static Function ProccesaRelatorio( oProcess, lEnd, nTipoImpressao, cRelatorio, aTitulo, aParam )
+
+	Local aDados		As Array
+	Local aInformacao	As Array
+
+	Default cRelatorio		:= ""
+	Default nTipoImpressao	:= 0
+	Default aTitulo			:= {}
+	Default aParam			:= {}
+
+	// funcao para gerar os dados
+	aInformacao := GeraDados(aParam)
+
+	// verifico se tem dados para serem impressos
+	if Len(aInformacao) > 0
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua1('Consultando dados para o impressão...')
+
+		// faco tratamento dos dados
+		aDados := U_UTrataDados(aTitulo, aInformacao)
+
+		// verifico se tenho dados para a impressao
+		if Len(aDados) > 0
+
+			if nTipoImpressao == 1 // HTML
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em HTML...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraHTML( @oProcess, @lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+			elseIf nTipoImpressao == 2 // PDF
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em PDF...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraPDF( @oProcess, @lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+			elseIf nTipoImpressao == 3 // Planilha
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em Planilha...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraPlanilha( @oProcess, @lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+			endIf
+
+		endIf
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} CSSBotoesCinza
+Funcao para gerar a estilizacao do botao cinza
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna a estilizacao css
+/*/
+Static Function CSSBotoesCinza( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #d2d2d2; "
+	cRetorno    += " border: 1px solid #696969;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cRetorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #000000;}"
+	cRetorno    += " QPushButton:hover { background-color: #696969;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #d2d2d2;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesAzul
+Funcao para gerar a estilizacao do botao azul
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna a estilizacao css
+/*/
+Static Function CSSBotoesAzul( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #35ACCA; "
+	cRetorno    += " border: 1px solid #1f6779;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #35ACCA;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesVerde
+Funcao para gerar a estilizacao do botao verde
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna a estilizacao css
+/*/
+Static Function CSSBotoesVerde( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #1FD203; "
+	cRetorno    += " border: 1px solid #107800;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #107800;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #1FD203;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesVerde
+Funcao para gerar a estilizacao do botao laranja
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna a estilizacao css
+/*/
+Static Function CSSBotoesLaranja( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #FF8C00; "
+	cRetorno    += " border: 1px solid #CD6600;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #CD6600;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #FF8C00;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSBotoesVerde
+Funcao para gerar a estilizacao do botao vermelho
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return character, retorna a estilizacao css
+/*/
+Static Function CSSBotoesVermelho( nTamanhoTela )
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #FF0000; "
+	cRetorno    += " border: 1px solid #8B1A1A;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #8B1A1A;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #FF0000;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} GeraHTML
+Funcao para gerar a Planilha em Excell a partir dos dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraHTML( oProcess, lEnd, cRelatorio, aTitulo, aDados, aParam)
+
+	Local oVirtusRelHTML		As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+	Default aParam		:= {}
+
+	// atribuo valor as variaveis
+	oVirtusRelHTML	:= Nil
+
+	// inicio a classe de geracao de planilha
+	oVirtusRelHTML := VirtusRelHTML():New()
+
+	// faco a impressao da planilha
+	oVirtusRelHTML:Imprimir( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+Return(Nil)
