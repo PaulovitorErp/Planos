@@ -1,0 +1,211 @@
+#include "totvs.ch"
+#INCLUDE "TOPCONN.CH"
+#include "tbiconn.ch"
+
+User Function RUTILE72()
+Return(Nil)
+
+	Class CancelamentoContratoIntegracao
+
+		Method New() Constructor
+		Method CancelamentosPendentes()
+		Method GravarCancelamento()
+		Method ProcessaCancelamento()
+		Method CancelamentoCemiterio()
+		Method CancelamentoFuneraria()
+
+	EndClass
+
+Method New() Class CancelamentoContratoIntegracao
+
+Return(Nil)
+
+Method CancelamentosPendentes() Class CancelamentoContratoIntegracao
+
+	Local aArea		As Array
+	Local cQuery	As Character
+	Local lRetorno	As Logical
+	Local nQtdReg	As Numeric
+
+	Default lProcessamentoManual	:= .F.
+
+	aArea 		:= GetArea()
+	cQuery 		:= ""
+	lRetorno 	:= .F.
+	nQtdReg 	:= 0
+
+	cQuery := " SELECT TOP 50 "
+	cQuery += "    CAN_PENDENTE.R_E_C_N_O_ AS RECNO_U0B "
+	cQuery += " FROM " + RetSqlName("U0B") + " CAN_PENDENTE"
+	cQuery += " WHERE CAN_PENDENTE.D_E_L_E_T_ = ' ' "
+	cQuery += "    AND CAN_PENDENTE.U0B_FILIAL 	= '"+ xFilial("U0B") +"' "
+	cQuery += "    AND CAN_PENDENTE.U0B_MSFIL	= '"+ cFilAnt +"' "
+
+	If lProcessamentoManual
+		cQuery += "    AND CAN_PENDENTE.U0B_STATUS 	<> 'C' "
+	Else
+		cQuery += "    AND CAN_PENDENTE.U0B_STATUS 	= 'P' "
+	EndIf
+
+	cQuery += " ORDER BY U0B_CODIGO "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPU0B' )
+
+	Self:aContratos := {}
+	If TMPU0B->(!Eof())
+
+		lRetorno := .T.	// retorno logico da funcao
+
+		While TMPU0B->(!Eof())
+
+			Aadd( Self:aContratos, TMPU0B->RECNO_U0B)
+
+			TMPU0B->( dbSkip() )
+		EndDo
+		
+	EndIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+	Method GravarCancelamento(cBodyJson As Character,;
+		cIdIntegracao As Character,;
+		oResponse As Json);
+		Class CancelamentoContratoIntegracao
+
+		Local aArea 			As Array
+		Local aAreaU0B 			As Array
+		Local cCodigoSinc		As Character
+		Local cMensagemRetorno	As Character
+		Local lContinua			As Logical
+		Local lAtualiza			As Logical
+
+		Default cBodyJson		:= ""
+		Default cIdIntegracao	:= ""
+		Default oResponse		:= JsonObject():New()
+
+		// atribui valor as variaveis
+		aArea				:= GetArea()
+		aAreaU0B			:= U0B->(GetArea())
+		cCodigoSinc			:= ""
+		cMensagemRetorno	:= ""
+		lContinua			:= .T.
+		lAtualiza			:= .F.
+
+		// faco uma pre validacao dos dados do json
+		lContinua	:= Self:ValidaDadosContrato(cBodyJson)
+
+		If lContinua
+
+			//-- Verifica se o contrato ja existe --//
+			U0B->(DbSetOrder(2))
+			lAtualiza := U0B->(MsSeek(xFilial("U0B") + cIdIntegracao))
+
+			BEGIN TRANSACTION
+
+				If !lAtualiza
+
+					// crio o codigo sequencial
+					cCodigoSinc	:= GetSxeNum("U0B","U0B_CODIGO")
+
+					U0B->(DbSetOrder(1))
+					While U0B->(MsSeek(xFilial("U0B") + cCodigoSinc))
+						U0B->(ConfirmSX8())
+						cCodigoSinc := GetSxeNum("U0B","U0B_CODIGO")
+					EndDo
+
+				else
+
+					// por seguranca, valido se o contrato ja foi concluido no sistema
+					If U0B->U0B_STATUS == "C"
+						lContinua := .F.
+					EndIf
+
+				EndIf
+
+				If lContinua
+
+					If U0B->(Reclock("U0B", Iif(lAtualiza, .F., .T.)))
+
+						If !lAtualiza
+							U0B->U0B_FILIAL	:= xFilial("U0B")
+							U0B->U0B_CODIGO	:= cCodigoSinc
+						EndIf
+
+						U0B->U0B_DATSIN	:= dDatabase
+						U0B->U0B_HORSIN	:= Time()
+						U0B->U0B_STATUS	:= "P" // P=Pendente; C=Concluido; E=Erro
+						U0B->U0B_MSG	:= Upper("Contrato sincronizado com o ERP, aguardando processamento!")
+						U0B->U0B_JSON	:= cBodyJson
+						U0B->U0B_ID 	:= cIdIntegracao
+						U0B->U0B_CONTRA	:= ""
+
+						If !lAtualiza
+							U0B->(ConfirmSX8())
+						EndIf
+
+						U0B->(MsUnlock())
+
+					Else
+						lContinua := .F.
+						U0B->(DisarmTransaction())
+					EndIf
+
+				EndIf
+
+			END TRANSACTION
+
+		EndIf
+
+		if lContinua
+
+			If lAtualiza
+				oResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+				oResponse["mensagem"]   		:= "Contrato sincronizado e atualizado no ERP, aguardando processamento!"
+				oResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Contrato enviado para ERP",;
+					"mensagem": "Contrato sincronizado e atualizado no ERP, aguardando processamento...",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+			else
+				oResponse["status"] 			:= 201 // created - O recurso informado foi criado com sucesso.
+				oResponse["mensagem"]  			:= "Contrato sincronizado com o ERP, aguardando processamento!"
+				oResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Contrato enviado para ERP",;
+					"mensagem": "Contrato sincronizado com o ERP, aguardando processamento...",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+			EndIf
+
+			oResponse["contrato"]   := "enviado"
+
+		else
+			oResponse["status"] 			:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+			oResponse["contrato"]  			:= "erro"
+			oResponse["mensagem"] 			:= "Erro ao sincronizar contrato: " + Self:cMensagemRetorno
+			oResponse["processamento_erp"] 	:= { "status": "erro",;
+				"titulo": "Contrato foi recebido, mas nao processado no ERP!",;
+				"mensagem": "Nao foi possivel processar o contrato, inconsistencias: " + Self:cMensagemRetorno ,;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+		endIf
+
+		// limpo a mensagemde de retorno
+		Self:cMensagemRetorno 	:= ""
+
+		RestArea(aAreaU0B)
+		RestArea(aArea)
+
+		Return(Nil)
+
+Method CancelamentoCemiterio() Class CancelamentoContratoIntegracao
+
+Return(Nil)
+
+Method CancelamentoFuneraria() Class CancelamentoContratoIntegracao
+
+Return(Nil)
+
+

@@ -1,0 +1,1536 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE70
+Programa da Classe de Integracao de Contratos
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/09/2023
+/*/
+User Function RUTILE70()
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos
+Classe de Integracao de Contratos
+@type class
+@version 1;0
+@author g.sampaio
+@since 13/09/2023
+/*/
+	Class CemiterioContratos
+
+		Public Data aContratos				As Array
+		Public Data cContratoSinc 			As Character
+		Public Data cMensagemRetorno 		As Character
+		Public Data dDataAtual				As Date
+		Public Data oVirtusContrato			As Object
+
+		Public Method New() Constructor
+		Public Method Consulta()
+
+		// integracao de contratos
+		Public Method GravarContrato()
+		Public Method ValidaDadosContrato()
+		Public Method ProcessarContratos()
+		Public Method BuscarContratosPendentes()
+		Public Method AtualizarDataBase()
+		Public Method CadastrarCliente()
+		Public Method CadastrarContrato()
+		Public Method AtivarContrato()
+		Public Method FinalizarProcessamento()
+		Public Method EnviarStatusProcessamento()
+
+	EndClass
+
+Method New() Class CemiterioContratos
+
+	Self:aContratos			:= {}
+	Self:cMensagemRetorno 	:= ""
+	Self:cContratoSinc		:= ""
+	Self:dDataAtual			:= dDatabase
+	Self:oVirtusContrato	:= Nil
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::Consulta
+Consulta dos dados de venda do produto de cemiteio
+@type method
+@version 1.0
+@author g.sampaio-
+@since 27/08/2023
+@param cProduto, character, codigo do produto
+@param cFormaPag, character, forma de pagamento
+@param nQtdPar, numeric, quantida de parcelas
+@param nValorEntrada, numeric, valor da entrada
+@param oResponse, object, objeto de retorno da api
+/*/
+	Method Consulta(cProduto As Character,;
+		cFormaPag As Character,;
+		nQtdPar As Numeric,;
+		nValorEntrada As Numeric,;
+		nValorDesconto As Numeric,;
+		oResponse As Json) Class CemiterioContratos
+
+	Local aArea 				As Array
+	Local aAreaU05 				As Array
+	Local cRegraNegociacao		As Character
+	Local cItemRegra			As Character
+	Local cParamPreco			As Character
+	Local cMsgDesconto			As Character
+	Local lTemEntrada			As Logical
+	Local lEntParcelas			As Logical
+	Local nEntrada				As Numeric
+	Local nCarenciaFinanceira	As Numeric
+	Local nCarenciaDias			As Numeric
+	Local nLimiteDesconto		As Numeric
+	Local nLimiteDescSuperior	As Numeric
+	Local nValJuros				As Numeric
+	Local nTaxaJuros 			As Numeric
+	Local nParIni				As Numeric
+	Local nParFim 				AS Numeric
+	Local nLimiteSuperior		As Numeric
+	Local nLimiteVendedor		As Numeric
+	Local nValorEntradaMinima	As Numeric
+	Local nPrecoVendaJazigo		As Numeric
+	Local oRegraNegociacao		As Object
+	Local oModRegraNegociacao	As Object
+	Local oVirtusFin			As Object
+
+	Default cProduto		:= ""
+	Default cFormaPag		:= ""
+	Default nQtdPar			:= 0
+	Default nValorEntrada	:= 0
+	Default nValorDesconto	:= 0
+	Default oResponse		:= JsonObject():New()
+
+	// atribui valor as variavies
+	aArea 				:= GetArea()
+	aAreaU05 			:= U05->(GetArea())
+	cRegraNegociacao	:= ""
+	cItemRegra			:= ""
+	cMsgDesconto		:= ""
+	cParamPreco         := SuperGetMV("MV_XPRCCTR",,"1")
+	lEntParcelas		:= SuperGetMv("MV_XPARENT", .F., .T.) // parametro para determinar se a entrada e considerada na quantidade de parcelas
+	lTemEntrada			:= .F.
+	lContinua			:= .T.
+	nEntrada			:= 0
+	nCarenciaFinanceira	:= 0
+	nValorEntradaMinima	:= 0
+	nCarenciaDias		:= 0
+	nLimiteDesconto		:= 0
+	nLimiteDescSuperior	:= 0
+	nValJuros			:= 0
+	nTaxaJuros 			:= 0
+	nParIni				:= 0
+	nParFim 			:= 0
+	nPrecoVendaJazigo	:= 0
+	oRegraNegociacao	:= Nil
+	oModRegraNegociacao	:= Nil
+	oVirtusFin			:= Nil
+
+	Conout("")
+	Conout("")
+	Conout("[CemiterioContratos - RUTILE70 - Consulta]")
+
+	U05->(DBSetOrder(1))
+	If U05->(MsSeek(xFilial("U05")+cProduto))
+
+		Conout("")
+		Conout("Encontrou o produto - " + U05->U05_DESCRI)
+
+		cRegraNegociacao := U05->U05_REGNEG
+
+		// valor de tabela
+		nValorTabela := U_CPGA006A(cProduto)
+
+		If !Empty(cRegraNegociacao)
+
+			// chamo a regra de negociacao
+			oRegraNegociacao := RegraNegociacao():New( cRegraNegociacao, cFormaPag )   							// inicio a classe de regra de negociacao
+			oRegraNegociacao:ValidaRegra(nQtdPar)
+
+			// inicio a classe financeira do virtus
+			oVirtusFin := VirtusFin():New()
+
+			// verifico se tem regra compativel
+			If oRegraNegociacao:lTemRegra
+
+				If oRegraNegociacao:nValorCalculo > 0
+					nPrecoVendaJazigo := oRegraNegociacao:nValorCalculo
+				Else
+					nPrecoVendaJazigo := nValorTabela
+				EndIf
+
+				If nValorDesconto > 0
+
+					nLimiteVendedor     := oRegraNegociacao:LimiteDesconto(1, nPrecoVendaJazigo)
+					nLimiteSuperior     := oRegraNegociacao:LimiteDesconto(2, nPrecoVendaJazigo)
+
+					If nValorDesconto > nLimiteVendedor
+						cMsgDesconto := "Desconto informado ultrapassa o limite permitido para o vendedor! [Valor de Desconto:";
+							+ AllTrim(Transform(nValorDesconto,"@ 999,999.99")) + "], O contrato será Bloqueado! [Valor do Limite: " + AllTrim(Transform(nLimiteVendedor,"@ 999,999.99")) + " ]"
+					EndIf
+
+					If nValorDesconto > nLimiteSuperior
+						oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+						oResponse["mensagem"]	:= "Desconto informado ultrapassa o limite máximo permitido para o vendedor! [Valor de Desconto:";
+							+ AllTrim(Transform(nValorDesconto,"@ 999,999.99")) + "] [Valor do Limite: " + AllTrim(Transform(nLimiteSuperior,"@ 999,999.99")) + " ]"
+						lContinua := .F.
+					EndIf
+
+				EndIf
+
+				// verifico o tipo da entrada minima
+				if oRegraNegociacao:cTipoEntrada == "1" // percentual
+					If oRegraNegociacao:nValorCalculo > 0
+						nValorEntradaMinima := oRegraNegociacao:nValorCalculo * (oRegraNegociacao:nValorEntradaMinima/100)
+					Else
+						nValorEntradaMinima := nValorTabela * (oRegraNegociacao:nValorEntradaMinima/100)
+					EndIf
+
+				elseIf oRegraNegociacao:cTipoEntrada == "2" // valor em reais
+					nValorEntradaMinima    := oRegraNegociacao:nValorEntradaMinima
+
+				elseIf oRegraNegociacao:cTipoEntrada == "3"//parcela
+
+					// verifico se tem valor de entrada informdo
+					If (oRegraNegociacao:nValorEntradaMinima > 0 .Or. nValorEntrada > 0).And. !lTemEntrada
+
+						// considera o parametro de entrada
+						if !lEntParcelas
+							nQtdPar		:= nQtdPar + 1
+						EndIf
+
+						lTemEntrada	:= .T.
+					endIf
+
+					// pego o valor da parcela no financiamento
+					If oRegraNegociacao:nValorCalculo > 0
+						nValorEntradaMinima    := oVirtusFin:RetValParcelasFinanciamento( oRegraNegociacao:nValorCalculo, 0, nQtdPar, (oRegraNegociacao:nTaxaJuros/100), lTemEntrada )
+					Else
+						nValorEntradaMinima    := oVirtusFin:RetValParcelasFinanciamento( nValorTabela, 0, nQtdPar, (oRegraNegociacao:nTaxaJuros/100), lTemEntrada )
+					EndIf
+
+				endIf
+
+				// valido o valor da entrada
+				If nValorEntradaMinima > nValorEntrada
+					lContinua := .F.
+					oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+					oResponse["mensagem"]	:= "O Valor da Entrada não pode ser menor que R$ " + Transform(nValorEntradaMinima,"@E 999,999.99");
+						+ ", que é a entrada minima pré estabelecida na regra de negociação, favor consultar a Aba 'Regra de Negociação' [Valor da Entrada: " + Transform(nValorEntrada,"@ 999,999.99") + " ]"
+
+				EndIf
+
+				If lContinua
+
+					oResponse["status"]     := 200
+					oResponse["mensagem"]	:= "Regra de Negociacao encontrada, preco do produto retornado com sucesso! " + cMsgDesconto
+					oResponse["dados"]  	:= {}
+
+					oModRegraNegociacao := Nil
+					oModRegraNegociacao := ModVirtusPrecoVendaProdutoCemiterio():New()
+
+					oModRegraNegociacao:item_regra := oRegraNegociacao:cItemRegra
+					oModRegraNegociacao:cod_regra := cRegraNegociacao
+					oModRegraNegociacao:nome_regra := AllTrim(Posicione("U83",1,xFilial("U83")+cRegraNegociacao,"U83_DESCRI"))
+					oModRegraNegociacao:tipo_entrada := oRegraNegociacao:cTipoEntrada
+					oModRegraNegociacao:tipo_carencia_financeiro := oRegraNegociacao:cTipoCarenciaFinanceiro
+					oModRegraNegociacao:tipo_desconto_vendedor := oRegraNegociacao:cTipoDescontoVendedor
+					oModRegraNegociacao:entrada_minima := nValorEntradaMinima
+					oModRegraNegociacao:valor_entrada := nValorEntrada
+
+					// verifico se tem valor de entrada informdo
+					If nValorEntrada > 0 .And. !lTemEntrada
+
+						// considera o parametro de entrada
+						if !lEntParcelas
+							nQtdPar		:= nQtdPar + 1
+						EndIf
+
+						lTemEntrada	:= .T.
+					endIf
+
+					Conout("")
+					Conout("[CemiterioContratos - RUTILE70 - Consulta]")
+					Conout("Tem Entrada? " + iif(lTemEntrada, "Tem", "Nao tem") )
+					Conout("Qtd.Parcelas: " + AllTrim(Transform(nQtdPar, "@E 999")) )
+					Conout("")
+					oVirtusFin:nQtdParcelas := nQtdPar
+
+					oModRegraNegociacao:valor_desconto				:= nValorDesconto
+					oModRegraNegociacao:preco_venda_jazigo 			:= nValorTabela
+					oModRegraNegociacao:valor_parcela 				:= oVirtusFin:RetValParcelasFinanciamento( nPrecoVendaJazigo - nValorDesconto, nValorEntrada, nQtdPar, (oRegraNegociacao:nTaxaJuros/100), lTemEntrada ) // pego o valor da parcela no financiamento
+					oModRegraNegociacao:carencia_financeira 		:= oRegraNegociacao:nCarenciaFinanceiro
+					oModRegraNegociacao:carencia_dias 				:= oRegraNegociacao:nCarenciaDiasServico
+					oModRegraNegociacao:parcela_inicial 			:= oRegraNegociacao:nParcIni
+					oModRegraNegociacao:parcela_final 				:= oRegraNegociacao:nParcFim
+					oModRegraNegociacao:taxa_juros 					:= oRegraNegociacao:nTaxaJuros
+					oModRegraNegociacao:limite_desconto 			:= oRegraNegociacao:LimiteDesconto(1, nPrecoVendaJazigo)
+					oModRegraNegociacao:limite_desconto_superior 	:= oRegraNegociacao:LimiteDesconto(2, nPrecoVendaJazigo)
+
+					AADD(oResponse["dados"], oModRegraNegociacao:toJsonObject())
+
+					FreeObj(oModRegraNegociacao)
+
+				EndIf
+
+			else
+
+				oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+				oResponse["mensagem"]	:= "Nao existe regra de negociacao para os parametros especificados."
+
+			EndIf
+
+		Else
+
+			oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+			oResponse["mensagem"]	:= "Nao existe regra de negociacao para o produto especificado."
+
+		EndIf
+
+	Else
+
+		oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		oResponse["mensagem"]	:= "Nao foi encontrado nenhum produto, de acordo com o parametro especificado [cProduto]"
+
+	EndIf
+
+	RestArea(aAreaU05)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::GravarContrato
+Funcao para sincronizar os contrratos da API
+@type method
+@version 1.0
+@author g.sampaio
+@since 27/08/2023
+@param cBodyJson, character, codigo do produto
+@param cIdIntegracao, character, forma de pagamento
+@param oResponse, object, objeto de retorno da api
+/*/
+	Method GravarContrato(cBodyJson As Character,;
+		cIdIntegracao As Character,;
+		oResponse As Json);
+		Class CemiterioContratos
+
+		Local aArea 			As Array
+		Local aAreaU0A 			As Array
+		Local cCodigoSinc		As Character
+		Local cMensagemRetorno	As Character
+		Local lContinua			As Logical
+		Local lAtualiza			As Logical
+
+		Default cBodyJson		:= ""
+		Default cIdIntegracao	:= ""
+		Default oResponse		:= JsonObject():New()
+
+		// atribui valor as variaveis
+		aArea				:= GetArea()
+		aAreaU0A			:= U0A->(GetArea())
+		cCodigoSinc			:= ""
+		cMensagemRetorno	:= ""
+		lContinua			:= .T.
+		lAtualiza			:= .F.
+
+		// faco uma pre validacao dos dados do json
+		lContinua	:= Self:ValidaDadosContrato(cBodyJson)
+
+		If lContinua
+
+			//-- Verifica se o contrato ja existe --//
+			U0A->(DbSetOrder(2))
+			lAtualiza := U0A->(MsSeek(xFilial("U0A") + cIdIntegracao))
+
+			BEGIN TRANSACTION
+
+				If !lAtualiza
+
+					// crio o codigo sequencial
+					cCodigoSinc	:= GetSxeNum("U0A","U0A_CODIGO")
+
+					U0A->(DbSetOrder(1))
+					While U0A->(MsSeek(xFilial("U0A") + cCodigoSinc))
+						U0A->(ConfirmSX8())
+						cCodigoSinc := GetSxeNum("U0A","U0A_CODIGO")
+					EndDo
+
+					// verifico se o codigo esta em uso
+					FreeUsedCode()
+					While !MayIUseCode( "U0A"+xFilial("U0A")+cCodigoSinc )
+						// gero uma nova fatura
+						cCodigoSinc := Soma1( Alltrim(cCodigoSinc) )
+					EndDo
+
+				else
+
+					// por seguranca, valido se o contrato ja foi concluido no sistema
+					If U0A->U0A_STATUS == "C"
+						lContinua := .F.
+					EndIf
+
+				EndIf
+
+				If lContinua
+
+					If U0A->(Reclock("U0A", Iif(lAtualiza, .F., .T.)))
+
+						If !lAtualiza
+							U0A->U0A_FILIAL	:= xFilial("U0A")
+							U0A->U0A_CODIGO	:= cCodigoSinc
+						EndIf
+
+						U0A->U0A_DATSIN	:= dDatabase
+						U0A->U0A_HORSIN	:= Time()
+						U0A->U0A_STATUS	:= "P" // P=Pendente; C=Concluido; E=Erro
+						U0A->U0A_MSG	:= Upper("Contrato sincronizado com o ERP, aguardando processamento!")
+						U0A->U0A_JSON	:= cBodyJson
+						U0A->U0A_ID 	:= cIdIntegracao
+						U0A->U0A_CONTRA	:= ""
+
+						If !lAtualiza
+							U0A->(ConfirmSX8())
+						EndIf
+
+						U0A->(MsUnlock())
+
+					Else
+						lContinua := .F.
+						U0A->(DisarmTransaction())
+					EndIf
+
+				EndIf
+
+			END TRANSACTION
+
+		EndIf
+
+		if lContinua
+
+			If lAtualiza
+				oResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+				oResponse["mensagem"]   		:= "Contrato sincronizado e atualizado no ERP, aguardando processamento!"
+				oResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Contrato enviado para ERP",;
+					"mensagem": "Contrato sincronizado e atualizado no ERP, aguardando processamento...",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+			else
+				oResponse["status"] 			:= 201 // created - O recurso informado foi criado com sucesso.
+				oResponse["mensagem"]  			:= "Contrato sincronizado com o ERP, aguardando processamento!"
+				oResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Contrato enviado para ERP",;
+					"mensagem": "Contrato sincronizado com o ERP, aguardando processamento...",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+			EndIf
+
+			oResponse["contrato"]   := "enviado"
+
+		else
+			oResponse["status"] 			:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+			oResponse["contrato"]  			:= "erro"
+			oResponse["mensagem"] 			:= "Erro ao sincronizar contrato: " + Self:cMensagemRetorno
+			oResponse["processamento_erp"] 	:= { "status": "erro",;
+				"titulo": "Contrato foi recebido, mas nao processado no ERP!",;
+				"mensagem": "Nao foi possivel processar o contrato, inconsistencias: " + Self:cMensagemRetorno ,;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+		endIf
+
+		// limpo a mensagemde de retorno
+		Self:cMensagemRetorno 	:= ""
+
+		RestArea(aAreaU0A)
+		RestArea(aArea)
+
+		Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::ValidaDadosContrato
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param cBodyJson, character, param_description
+@return variant, return_description
+/*/
+Method ValidaDadosContrato(cBodyJson As Character) Class CemiterioContratos
+
+	Local aArea				As Array
+	Local aAreaSA3 			As Array
+	Local cMsgErro			As Character
+	Local lRetorno			As Logical
+
+	Default cBodyJson	:= ""
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaSA3	:= SA3->(GetArea())
+	cMsgErro	:= ""
+	lRetorno	:= .T.
+
+	// atribui valor as variaveis
+	Self:oVirtusContrato	:= ModVirtusContratoCemiterio():New()
+
+	If !Empty(cBodyJson)
+		lRetorno := Self:oVirtusContrato:FromJson(cBodyJson)
+	Else
+		lRetorno := .F.
+	EndIf
+
+	If lRetorno
+
+		If Empty(Self:oVirtusContrato:cgc_cliente)
+			Self:cMensagemRetorno	:= "[cgc_cliente]"
+		EndIf
+
+		If Empty(Self:oVirtusContrato:nome_cliente)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [nome_cliente] "
+			Else
+				Self:cMensagemRetorno += "[nome_cliente] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:produto)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [produto] "
+			Else
+				Self:cMensagemRetorno += "[produto] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:vendedor)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [vendedor] "
+			Else
+				Self:cMensagemRetorno += "[vendedor] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:forma_aquisicao)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [forma_aquisicao] "
+			Else
+				Self:cMensagemRetorno += "[forma_aquisicao] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:forma_pagamento)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [forma_pagamento] "
+			Else
+				Self:cMensagemRetorno += "[forma_pagamento] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:data_cadastro)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [data_cadastro] "
+			Else
+				Self:cMensagemRetorno += "[data_cadastro] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:data_nascimento)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [data_nascimento] "
+			Else
+				Self:cMensagemRetorno += "[data_nascimento] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:primeiro_vencimento)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [primeiro_vencimento] "
+			Else
+				Self:cMensagemRetorno += "[primeiro_vencimento] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:quantidade_parcelas)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [quantidade_parcelas] "
+			Else
+				Self:cMensagemRetorno += "[quantidade_parcelas] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:ddd)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [ddd] "
+			Else
+				Self:cMensagemRetorno += "[ddd] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:telefone)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [telefone] "
+			Else
+				Self:cMensagemRetorno += "[telefone] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:bairro)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [bairro] "
+			Else
+				Self:cMensagemRetorno += "[bairro] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:endereco)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [endereco] "
+			Else
+				Self:cMensagemRetorno += "[endereco] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:municipio)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [municipio] "
+			Else
+				Self:cMensagemRetorno += "[municipio] "
+			EndIf
+		EndIf
+
+		If Empty(Self:oVirtusContrato:estado)
+			If !Empty(Self:cMensagemRetorno)
+				Self:cMensagemRetorno += ", [estado] "
+			Else
+				Self:cMensagemRetorno += "[estado] "
+			EndIf
+		Else
+			SX5->(DbSetOrder(1))
+			If !SX5->(MsSeek(xFilial("SX5")+"12"+AllTrim(Self:oVirtusContrato:estado)))
+				If !Empty(Self:cMensagemRetorno)
+					Self:cMensagemRetorno += ", [estado] UF do Estado invalido!" + Self:oVirtusContrato:estado
+				Else
+					Self:cMensagemRetorno += "[estado] UF do Estado invalido!" + Self:oVirtusContrato:estado
+				EndIf
+			EndIf
+		EndIf
+
+		If !Empty(Self:cMensagemRetorno)
+			lRetorno := .F.
+			Self:cMensagemRetorno	+= " nao preenchido(s)!"
+		EndIf
+
+		If lRetorno
+
+			SA3->(DbSetOrder(3))
+			If SA3->(MsSeek(xFilial("SA3")+Self:oVirtusContrato:vendedor))
+
+				If SA3->(FieldPos("A3_MSBLQL") > 0)
+					If SA3->A3_MSBLQL == "1" // sim
+						lRetorno := .F.
+						Self:cMensagemRetorno += "Vendedor bloqueado para vendas! ["+Self:oVirtusContrato:vendedor+"]"
+					EndIf
+				EndIf
+
+			EndIf
+
+			if !Empty(Self:oVirtusContrato:vendedor) .And. !CGC(Self:oVirtusContrato:vendedor,,.F.)
+				lRetorno := .F.
+				Self:cMensagemRetorno += "CPF/CNPJ do Vendedor invalido ["+Self:oVirtusContrato:vendedor+"]"
+			EndIf
+
+			if !Empty(Self:oVirtusContrato:cgc_cliente) .And. !CGC(Self:oVirtusContrato:cgc_cliente,,.F.)
+				lRetorno := .F.
+				Self:cMensagemRetorno += "CPF/CNPJ do Cliente invalido ["+Self:oVirtusContrato:cgc_cliente+"]"
+			EndIf
+
+			If Self:oVirtusContrato:valor_entrada > 0 .And. Empty(Self:oVirtusContrato:data_entrada)
+				lRetorno := .F.
+				Self:cMensagemRetorno += "Valor de entrada informado, favor informar a data de entrada."
+			EndIf
+
+		EndIf
+
+		If lRetorno
+
+			// busca o vendedor
+			BuscaVendedor(Self:oVirtusContrato:vendedor, Nil, @cMsgErro)
+
+			// valida a regra de negociação
+			ValidaRegraNegociacao(Self:oVirtusContrato:produto, Self:oVirtusContrato:forma_pagamento,;
+				Self:oVirtusContrato:quantidade_parcelas, Self:oVirtusContrato:valor_entrada,;
+				Self:oVirtusContrato:valor_desconto,  Self, @cMsgErro)
+
+			If !Empty(cMsgErro)
+				lRetorno := .F.
+				Self:cMensagemRetorno += "Dados de Cadatros"
+				Self:cMensagemRetorno += cMsgErro
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSA3)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::ProcessarContratos
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param lProcessamentoManual, logical, param_description
+@return variant, return_description
+/*/
+Method ProcessarContratos(lProcessamentoManual As Logical) Class CemiterioContratos
+
+	Local aArea						As Array
+	Local aAreaU0A					As Array
+	Local lContinua					As Logical
+	Local lAtivaContratoIntegracao	As Logical
+	Local oStatusProcessamento 		As Json
+	Local nX 						As Numeric
+
+	Default lProcessamentoManual	:= .F.
+
+	// atribui valor das variaveis
+	aArea						:= GetArea()
+	aAreaU0A					:= U0A->(GetArea())
+	lContinua					:= .F.
+	lAtivaContratoIntegracao	:= SuperGetMV("MV_XATCTAP",.F.,.T.)
+	oStatusProcessamento		:= JsonObject():New()
+	nX 							:= 0
+
+	// busca os contratos pendentes
+	If Self:BuscarContratosPendentes(lProcessamentoManual)
+
+		// orgem os registros da tabela
+		U0A->(DbSetOrder(1))
+
+		// faco o processamento dos contratos
+		For nX := 1 To Len(Self:aContratos)
+
+			// verifico se o recno esta preenchido
+			If Self:aContratos[nX] > 0
+
+				// posiciono no contrato pendente
+				U0A->(DBGoTo(Self:aContratos[nX]))
+
+				FreeObj(Self:oVirtusContrato)
+				Self:oVirtusContrato 	:= Nil
+				Self:cContratoSinc		:= ""
+				Self:cMensagemRetorno	:= ""
+
+				// atualiza a data base para a data atual
+				Self:AtualizarDataBase()
+
+				// faco a validacao inicial dos dados
+				lContinua := Self:ValidaDadosContrato(U0A->U0A_JSON)
+
+				If lContinua
+
+					// atualiza a data base do sistema conforme a data de cadastro
+					Self:AtualizarDataBase(Self:oVirtusContrato:data_cadastro)
+
+					BEGIN TRANSACTION
+
+						// faco o cadastro do cliente
+						lContinua := Self:CadastrarCliente(@oStatusProcessamento)
+
+						// faco o o cadastro do contrato
+						If lContinua
+							lContinua := Self:CadastrarContrato(@oStatusProcessamento)
+						EndIf
+
+						// faco a ativacao do contrato
+						If lContinua .And. lAtivaContratoIntegracao
+							lContinua:= Self:AtivarContrato(@oStatusProcessamento)
+
+							If lContinua
+
+							EndIf
+
+						EndIf
+
+						If !lContinua
+							DisarmTransaction()
+							BREAK
+						EndIf
+
+					END TRANSACTION
+
+					// atualiza a data base para a data atual
+					Self:AtualizarDataBase()
+
+				EndIf
+
+				If !lContinua .And. AllTrim(oStatusProcessamento["status"]) <> "erro"
+					oStatusProcessamento["status"] := "erro"
+					oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+						"titulo": "Erro no processamento do contrato",;
+						"mensagem": EncodeUTF8(Self:cMensagemRetorno),;
+						"data_hora": FWTimeStamp(5, Date(), Time()) }
+				EndIf
+
+				//-- Enviar status final de processamento --//
+				Self:FinalizarProcessamento( Self:aContratos[nX], @oStatusProcessamento, lContinua )
+
+			EndIf
+
+		Next nX
+
+	EndIf
+
+	RestArea(aAreaU0A)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::AtualizarDataBase
+Metodo para atualizqr a data base do sistema
+@type method
+@version 1.0  
+@author g.sampaio
+@since 09/09/2023
+@param dDataCadastro, date, data de cadastro do contrato na integracao
+/*/
+Method AtualizarDataBase(dDataCadastro 	As Date) Class CemiterioContratos
+
+	Local lDataCorrent	 	As Logical
+
+	Default dDataCadastro := StoD("")
+
+	lDataCorrent	:= SuperGetMv("MV_XDINTVI",.F.,.F.) //Utiliza a data corrente do sistema, ao invés da data de criação da venda (data_da_criacao_app) - Default .F., ou seja utiliza a data de criação da venda (data_da_criacao_app)
+
+	If !Empty(dDataCadastro) .and. !lDataCorrent
+		//-- Se data da venda menor que data atual,
+		//-- atualiza para data da venda
+		If dDataCadastro < dDataBase
+			dDataBase := dDataCadastro
+		EndIf
+	Else
+		dDataBase := Self:dDataAtual
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::BuscarContratosPendentes
+Metodo para buscar contratos pendentes
+@type method
+@version 1.0
+@author g.sampaio
+@since 09/09/2023
+@return logical, retorno logico sobre contratos pendentes
+/*/
+Method BuscarContratosPendentes(lProcessamentoManual As Logical) Class CemiterioContratos
+
+	Local aArea		As Array
+	Local cQuery	As Character
+	Local lRetorno	As Logical
+	Local nQtdReg	As Numeric
+
+	Default lProcessamentoManual	:= .F.
+
+	aArea 		:= GetArea()
+	cQuery 		:= ""
+	lRetorno 	:= .F.
+	nQtdReg 	:= 0
+
+	cQuery := " SELECT TOP 50 "
+	cQuery += "    CTR_PENDENTE.R_E_C_N_O_ AS RECNO_U0A "
+	cQuery += " FROM " + RetSqlName("U0A") + " CTR_PENDENTE"
+	cQuery += " WHERE CTR_PENDENTE.D_E_L_E_T_ = ' ' "
+	cQuery += "    AND CTR_PENDENTE.U0A_FILIAL 	= '"+ xFilial("U0A") +"' "
+
+	If U0A->(FieldPos("U0A_MSFIL")) > 0
+		cQuery += "    AND CTR_PENDENTE.U0A_MSFIL	= '"+ cFilAnt +"' "
+	EndIf
+
+	If lProcessamentoManual
+		cQuery += "    AND CTR_PENDENTE.U0A_STATUS 	<> 'C' "
+	Else
+		cQuery += "    AND CTR_PENDENTE.U0A_STATUS 	= 'P' "
+	EndIf
+
+	cQuery += " ORDER BY U0A_CODIGO "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPU0A' )
+
+	Self:aContratos := {}
+	If TMPU0A->(!Eof())
+
+		lRetorno := .T.	// retorno logico da funcao
+
+		While TMPU0A->(!Eof())
+
+			Aadd( Self:aContratos, TMPU0A->RECNO_U0A)
+
+			TMPU0A->( dbSkip() )
+		EndDo
+	EndIf
+
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::CadastrarCliente
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param oStatusProcessamento, json, param_description
+@return variant, return_description
+/*/
+Method CadastrarCliente(oStatusProcessamento AS Json) Class CemiterioContratos
+
+	Local cLogError			As Character
+	Local cNomeReduzido		As Character
+	Local lRetorno			As Logical
+
+	Default oStatusProcessamento	:= JsonObject():New()
+
+	// trato a informacao do nome reduzido
+	cNomeReduzido 	:= If(!Empty(Self:oVirtusContrato:nome_reduzido),Self:oVirtusContrato:nome_reduzido,Self:oVirtusContrato:nome_cliente)
+	cLogError		:= ""
+	lRetorno		:= .T.
+
+	If !ExecAutoCadastroCliente(Self:oVirtusContrato:nome_cliente, Self:oVirtusContrato:tipo_pessoa,cNomeReduzido,;
+			Self:oVirtusContrato:endereco, Self:oVirtusContrato:complemento, Self:oVirtusContrato:ponto_referencia, Self:oVirtusContrato:bairro,;
+			Self:oVirtusContrato:estado, Self:oVirtusContrato:cod_municipio, Self:oVirtusContrato:municipio, Self:oVirtusContrato:cep, Self:oVirtusContrato:ddd,;
+			Self:oVirtusContrato:telefone, Self:oVirtusContrato:cgc_cliente , Self:oVirtusContrato:rg_cliente, Self:oVirtusContrato:email,;
+			Self:oVirtusContrato:celular , Self:oVirtusContrato:ddd_celular, Self:oVirtusContrato:data_nascimento, Self:oVirtusContrato:sexo,;
+			Self:oVirtusContrato:estado_civil , Self:oVirtusContrato:profissao, @cLogError)
+
+		lRetorno := .F.
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Cadastrar Cliente",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::CadastrarContrato
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param oStatusProcessamento, json, param_description
+@return variant, return_description
+/*/
+Method CadastrarContrato(oStatusProcessamento AS Json) Class CemiterioContratos
+
+	Local aArea					As Array
+	Local aAreaU00				As Array
+	Local aAreaU02				As Array
+	Local aAreaSA1				As Array
+	Local aAux					As Array
+	Local aAuxAutorizados		As Array
+	Local aCabecalho			As Array
+	Local aAutorizados			As Array
+	Local cCodigoVendedor		As Character
+	Local cIndReajuste			As Character
+	Local cIndManutencao		As Character
+	Local cParIndReajuste		As Character
+	Local cParIndManutencao		As Character
+	Local cMsgErro				As Character
+	Local cCodigoCliente		As Character
+	Local cLojaCliente			As Character
+	Local lRetorno				As Logical
+	Local lContinua				As Logical
+	Local lCadClienteAutorizado As Logical
+	Local nI 					As Numeric
+
+	Default oStatusProcessamento	:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea					:= GetArea()
+	aAreaU00				:= U00->(GetArea())
+	aAreaU02				:= U02->(GetArea())
+	aAreaSA1				:= SA1->(GetArea())
+	aAux					:= {}
+	aCabecalho				:= {}
+	aAutorizados			:= {}
+	cCodigoCliente			:= ""
+	cLojaCliente			:= ""
+	cMsgErro				:= ""
+	cParIndReajuste			:= SuperGetMV("MV_XINDRAP",,"001")
+	cParIndManutencao		:= SuperGetMV("MV_XINDMAP",,"001")
+	lCadClienteAutorizado	:= SuperGetMV("MV_XCLIAUA", .F., .T.) // habilita cadastro do autorizado como cliente pela API
+	lContinua				:= .T.
+	lRetorno				:= .T.
+	nI 						:= 0
+
+	If !Empty(Self:oVirtusContrato:indice_reajuste)
+		cIndReajuste := Self:oVirtusContrato:indice_reajuste
+	Else
+		cIndReajuste := cParIndReajuste
+	EndIf
+
+	If !Empty(Self:oVirtusContrato:indice_manutencao)
+		cIndManutencao := Self:oVirtusContrato:indice_manutencao
+	Else
+		cIndManutencao := cParIndManutencao
+	EndIf
+
+	// busca o vendedor
+	lContinua	:= BuscaVendedor(Self:oVirtusContrato:vendedor, @cCodigoVendedor, @cMsgErro)
+
+	// busca o cliente
+	If lContinua
+		lContinua := BuscaCliente(Self:oVirtusContrato:cgc_cliente, @cCodigoCliente, @cLojaCliente, @cMsgErro)
+	EndIf
+
+	// valida a regra de negociação
+	If lContinua
+		lContinua := ValidaRegraNegociacao(Self:oVirtusContrato:produto, Self:oVirtusContrato:forma_pagamento,;
+			Self:oVirtusContrato:quantidade_parcelas, Self:oVirtusContrato:valor_entrada,;
+			Self:oVirtusContrato:valor_desconto,  Self, @cMsgErro)
+	EndIf
+
+	If lContinua
+
+		//-- Cabecalho de contrato --//
+		AAdd(aCabecalho, {"U00_PLANO"	, Self:oVirtusContrato:produto })
+		AAdd(aCabecalho, {"U00_VENDED"	, cCodigoVendedor })
+		AAdd(aCabecalho, {"U00_DATA"	, Self:oVirtusContrato:data_cadastro })
+		AAdd(aCabecalho, {"U00_FAQUIS"	, Self:oVirtusContrato:forma_aquisicao })
+		AAdd(aCabecalho, {"U00_MIDIA"	, "" })
+		AAdd(aCabecalho, {"U00_CLIENT"	, cCodigoCliente })
+		AAdd(aCabecalho, {"U00_LOJA"	, cLojaCliente })
+		AAdd(aCabecalho, {"U00_QTDPAR"	, Self:oVirtusContrato:quantidade_parcelas })
+		AAdd(aCabecalho, {"U00_FORPG"	, Self:oVirtusContrato:forma_pagamento })
+		AAdd(aCabecalho, {"U00_DESCON"	, Self:oVirtusContrato:valor_desconto })
+		AAdd(aCabecalho, {"U00_VLRENT"	, Self:oVirtusContrato:valor_entrada })
+		AAdd(aCabecalho, {"U00_DTENTR"	, Self:oVirtusContrato:data_entrada })
+		AAdd(aCabecalho, {"U00_PRIMVE"	, Self:oVirtusContrato:primeiro_vencimento})
+		AAdd(aCabecalho, {"U00_REAJUS"	, Self:oVirtusContrato:tipo_reajuste })
+		AAdd(aCabecalho, {"U00_INDICE"	, cIndReajuste })
+
+		If Self:oVirtusContrato:valor_taxa_manutencao > 0
+			AAdd(aCabecalho, {"U00_TXMANU"	, Self:oVirtusContrato:valor_taxa_manutencao })
+		EndIf
+
+		If !Empty(Self:oVirtusContrato:forma_pagamento_manutencao)
+			AAdd(aCabecalho, {"U00_FPTAXA"	, Self:oVirtusContrato:forma_pagamento_manutencao  })
+		EndIf
+
+		AAdd(aCabecalho, {"U00_INDMAN"	, cIndManutencao })
+		AAdd(aCabecalho, {"U00_IDINTE"	, Self:oVirtusContrato:id_integracao })
+
+		If Len(Self:oVirtusContrato:autorizados) > 0
+
+			aAuxAutorizados := Self:oVirtusContrato:autorizados
+
+			For nI := 1 To Len(aAuxAutorizados)
+
+				aAux := {}
+				If !Empty(aAuxAutorizados[nI]["cgc"]) .And. lCadClienteAutorizado
+					aAdd(aAux, aAuxAutorizados[nI]["cgc"])
+				EndIf
+
+				aAdd(aAux, {"U02_NOME", aAuxAutorizados[nI]["nome"]})
+				aAdd(aAux, {"U02_DTNASC", aAuxAutorizados[nI]["data_nascimento"]})
+				aAdd(aAux, {"U02_GRAUPA", aAuxAutorizados[nI]["grau_parentesco"]})
+				aAdd(aAux, {"U02_CI", aAuxAutorizados[nI]["rg"]})
+				aAdd(aAux, {"U02_SEXO", aAuxAutorizados[nI]["sexo"]})
+				aAdd(aAux, {"U02_ESTCIV", aAuxAutorizados[nI]["estado_civil"]})
+				aAdd(aAux, {"U02_END", aAuxAutorizados[nI]["sexo"]})
+				aAdd(aAux, {"U02_COMPLE", aAuxAutorizados[nI]["complemento"]})
+				aAdd(aAux, {"U02_BAIRRO", aAuxAutorizados[nI]["bairro"]})
+				aAdd(aAux, {"U02_CEP", aAuxAutorizados[nI]["cep"]})
+				aAdd(aAux, {"U02_EST", aAuxAutorizados[nI]["estado"]})
+
+				If !Empty(aAuxAutorizados[nI]["codigo_municipio"])
+					aAdd(aAux, {"U02_CODMUN", aAuxAutorizados[nI]["codigo_municipio"]})
+				EndIf
+
+				aAdd(aAux, {"U02_MUN", aAuxAutorizados[nI]["municipio"]})
+				aAdd(aAux, {"U02_DDD", aAuxAutorizados[nI]["ddd"]})
+				aAdd(aAux, {"U02_FONE", aAuxAutorizados[nI]["telefone"]})
+				aAdd(aAux, {"U02_CELULA", aAuxAutorizados[nI]["celular"]})
+				aAdd(aAux, {"U02_EMAIL", aAuxAutorizados[nI]["email"]})
+
+			Next nI
+
+		EndIf
+
+		//-- Execuato de Inclusao de Contratos --//
+		If !U_RCPGE004(aCabecalho, aAutorizados,, 3,,, @cMsgErro, .F.)
+
+			lRetorno := .F.
+			Self:cMensagemRetorno += "Erro ao cadastrar contrato: " + cMsgErro
+			oStatusProcessamento["status"] := "erro"
+			oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+				"titulo": "Erro ao Cadastrar Contrato",;
+				"mensagem": EncodeUTF8(cMsgErro),;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+		Else
+			Self:cContratoSinc	:= U00->U00_CODIGO
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU00)
+	RestArea(aAreaU02)
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::FinalizarProcessamento
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param nRecnoU0A, numeric, param_description
+@param oStatusProcessamento, json, param_description
+@return variant, return_description
+/*/
+	Method FinalizarProcessamento(nRecnoU0A As Numeric,;
+		oStatusProcessamento As Json,;
+		lProcessamento AS Logical) Class CemiterioContratos
+
+	Local aArea					As Array
+	Local aAreaU0A				As Array
+	Local cJsonProcessamento 	As Character
+
+	Default nRecnoU0A				:= 0
+	Default oStatusProcessamento	:= JsonObject():New()
+	Default lProcessamento			:= .F.
+
+	// atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaU0A			:= U0A->(GetArea())
+	cJsonProcessamento	:= ""
+
+	If Empty(oStatusProcessamento["status"]) .Or. lProcessamento
+		oStatusProcessamento["status"] := "sincronizado"
+		oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+			"titulo": "Contrato Processado com Sucesso",;
+			"mensagem": EncodeUTF8("Contrato Processado com Sucesso no ERP."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+	EndIf
+
+	If nRecnoU0A > 0
+
+		// atribui valor a variavel
+		U0A->(DBGoTo(nRecnoU0A))
+
+		If U0A->(RecLock("U0A", .F.))
+			U0A->U0A_DTPROC := Date()
+			U0A->U0A_HRPROC := Time()
+			U0A->U0A_STATUS := iif(lProcessamento, "C", "E")
+			U0A->U0A_MSG	:= oStatusProcessamento["processamento_erp"]["titulo"]
+
+			If !Empty(Self:cContratoSinc)
+				U0A->U0A_CONTRA := Self:cContratoSinc
+			EndIf
+
+			U0A->U0A_MSPROC	:= SubStr(oStatusProcessamento["processamento_erp"]["mensagem"], 1, TamSX3("U0A_MSPROC")[1])
+			U0A->U0A_JSONPR	:= oStatusProcessamento:toJson()
+			U0A->(MsUnLock())
+		EndIf
+
+		Self:EnviarStatusProcessamento(U0A->U0A_ID, U0A->U0A_STATUS, U0A->U0A_CONTRA, oStatusProcessamento:toJson())
+
+		FreeObj(oStatusProcessamento)
+		oStatusProcessamento := JsonObject():New()
+
+	EndIf
+
+	RestArea(aAreaU0A)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioContratos::EnviarStatusProcessamento
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@return variant, return_description
+/*/
+Method EnviarStatusProcessamento(cIdIntegracao As Character, cStatusProcessamento As Character, cCodigoContrato As Character, cJsonProcessamento As Character) Class CemiterioContratos
+
+	Default cIdIntegracao			:= ""
+	Default cStatusProcessamento	:= ""
+
+	If Existblock("VCCustomEnviarStatus")
+		ExecBlock("VCCustomEnviarStatus", .F., .F., {cIdIntegracao, cStatusProcessamento, cCodigoContrato, cJsonProcessamento})
+	EndIf
+
+Return(Nil)
+
+Method AtivarContrato() Class CemiterioContratos
+
+	Local aArea		As Array
+	Local aAreaU00 	As Array
+	Local cLogError	As Character
+	Local lRetorno	As Logical
+
+	aArea 		:= GetArea()
+	aAreaU00 	:= U00->(GetArea())
+	lRetorno 	:= .T.
+	cLogError	:= ""
+
+	If !Empty(Self:cContratoSinc)
+
+		U00->(DbSetOrder(1))
+		If U00->(MsSeek(xFilial("U00")+Self:cContratoSinc))
+
+			// executo a ativacao do contrato
+			lRetorno := U_RCPGE045( Self:cContratoSinc, .T., @cLogError)
+
+			If !lRetorno
+				Self:cMensagemRetorno += "Contrato nao ativiado." + cLogError
+			Else
+				Self:cMensagemRetorno += "Contrato ativado com sucesso." + cLogError
+			EndIf
+
+		Else
+			lRetorno := .F.
+			Self:cMensagemRetorno += "Contrato nao encontrado no ERP."
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} BuscaVendedor
+description
+@type function
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param cVendedor, character, param_description
+@param cCodigoVendedor, character, param_description
+@param cMsgErro, character, param_description
+@return variant, return_description
+/*/
+Static Function BuscaVendedor(cVendedor As Character, cCodigoVendedor As Character, cMsgErro As Character)
+
+	Local cQuery 		As Character
+	Local lRetorno		As Logical
+
+	Default cVendedor		:= ""
+	Default cCodigoVendedor	:= ""
+	Default cMsgErro		:= ""
+
+	// atribui valores a variaveis
+	lRetorno	:= .T.
+
+	// monto a query
+	cQuery := " SELECT VENDEDOR.A3_COD AS CODIGO "
+	cQuery += " FROM " + RetSqlName("SA3") + " VENDEDOR "
+	cQuery += " WHERE VENDEDOR.D_E_L_E_T_ = ' ' "
+	cQuery += " AND VENDEDOR.A3_FILIAL = '" + xFilial("SA3") + "' "
+	cQuery += " AND VENDEDOR.A3_CGC = '" + cVendedor + "' "
+
+	MPSysOpenQuery( cQuery, "TRBSA3")
+
+	If TRBSA3->(!Eof())
+		cCodigoVendedor := TRBSA3->CODIGO
+	Else
+		lRetorno := .F.
+		cMsgErro := "Vendedor nao encontrado no cadastro de vendedor no ERP."
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} BuscaCliente
+description
+@type function
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param cCGCCliente, character, param_description
+@param cCodigoCliente, character, param_description
+@param cLojaCliente, character, param_description
+@param cMsgErro, character, param_description
+@return variant, return_description
+/*/
+Static Function BuscaCliente(cCGCCliente As Character, cCodigoCliente As Character, cLojaCliente As Character, cMsgErro As Character)
+
+	Local cQuery	As Character
+	Local lRetorno	As Logical
+
+	Default cCGCCliente		:= ""
+	Default cCodigoCliente	:= ""
+	Default cLojaCliente	:= ""
+	Default cMsgErro		:= ""
+
+	// atribui valores a variaveis
+	lRetorno	:= .T.
+
+	// monto a query
+	cQuery := " SELECT CLIENTE.A1_COD AS CODIGO, CLIENTE.A1_LOJA AS LOJA "
+	cQuery += " FROM " + RetSqlName("SA1") + " CLIENTE "
+	cQuery += " WHERE CLIENTE.D_E_L_E_T_ = ' ' "
+	cQuery += " AND CLIENTE.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery += " AND CLIENTE.A1_CGC = '" + cCGCCliente + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBSA1")
+
+	If TRBSA1->(!Eof())
+		cCodigoCliente 	:= TRBSA1->CODIGO
+		cLojaCliente 	:= TRBSA1->LOJA
+	Else
+		lRetorno := .F.
+		cMsgErro := "Cliente nao encontrado no cadastro de clientes do ERP."
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ValidaRegraNegociacao
+description
+@type function
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param cCodigoPlano, character, param_description
+@param cFormaPag, character, param_description
+@param nQtdParcelas, numeric, param_description
+@param oContrato, object, param_description
+@param cMsgErro, character, param_description
+@return variant, return_description
+/*/
+Static Function ValidaRegraNegociacao(cCodigoProduto As Character,;
+		cFormaPag	As Character,;
+		nQtdParcelas As Numeric,;
+		nValorEntrada As Numeric,;
+		nValorDesconto As Numeric,;
+		oContrato As Object,;
+		cMsgErro	As Character)
+
+	Local lRetorno		As Logical
+	Local oResponse		As Json
+
+	Default cCodigoProduto	:= ""
+	Default cFormaPag		:= ""
+	Default nQtdParcelas	:= 0
+	Default nValorEntrada	:= 0
+	Default nValorDesconto	:= 0
+	Default oContrato		:= Nil
+	Default cMsgErro		:= ""
+
+	// atribui valores a variaveis
+	lRetorno	:= .T.
+	oResponse	:= JsonObject():New()
+
+	oContrato:Consulta(cCodigoProduto,;
+		cFormaPag,;
+		nQtdParcelas,;
+		nValorEntrada,;
+		nValorDesconto,;
+		@oResponse)
+
+	// verifico o retorno
+	if oResponse["status"] <> 200
+		lRetorno 	:= .F.
+		cMsgErro	:= oResponse["mensagem"]
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ExecAutoCadastroCliente
+description
+@type function
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param cNome, character, param_description
+@param cTpPessoa, character, param_description
+@param cNReduz, character, param_description
+@param cEndereco, character, param_description
+@param cComplemento, character, param_description
+@param cPtoReferencia, character, param_description
+@param cBairro, character, param_description
+@param cEstado, character, param_description
+@param cCodMunicipio, character, param_description
+@param cMunicipio, character, param_description
+@param cCep, character, param_description
+@param cDdd, character, param_description
+@param cTelefone, character, param_description
+@param cCgc, character, param_description
+@param cRg, character, param_description
+@param cEmail, character, param_description
+@param cCelular, character, param_description
+@param cDDDCel, character, param_description
+@param dDataNasc, date, param_description
+@param cSexo, character, param_description
+@param cEstCivil, character, param_description
+@param cProfissao, character, param_description
+@param cLogError, character, param_description
+@return variant, return_description
+/*/
+Static Function ExecAutoCadastroCliente(cNome As Character, cTpPessoa As Character, cNReduz As Character,;
+		cEndereco As Character, cComplemento As Character, cPtoReferencia As Character, cBairro As Character,;
+		cEstado As Character, cCodMunicipio As Character, cMunicipio As Character, cCep As Character, cDdd As Character,;
+		cTelefone As Character, cCgc As Character, cRg As Character, cEmail As Character,;
+		cCelular As Character, cDDDCel As Character, dDataNasc As Date, cSexo As Character,;
+		cEstCivil As Character, cProfissao As Character, cLogError As Character)
+
+	Local aArea				As Array
+	Local aAreaSA1			As Array
+	Local cBkpFunName		As Character
+	Local lMVAtuCliente		As Logical
+	Local lMVMVCSA1			As Logical
+	Local lContinua			As Logical
+	Local lRetorno			As Logical
+	Local lOk				As Logical
+	Local nOperacaoAuto		As Numeric
+	Local oModelMATA030		As Object
+	Local oSA1Mod			As Object
+
+	Private lMsErroAuto		As Logical
+
+	Default cNome			:= ""
+	Default	cTpPessoa		:= ""
+	Default cNReduz			:= ""
+	Default cEndereco		:= ""
+	Default cComplemento	:= ""
+	Default cPtoReferencia	:= ""
+	Default cBairro			:= ""
+	Default cEstado			:= ""
+	Default cCodMunicipio	:= ""
+	Default cMunicipio		:= ""
+	Default cCep			:= ""
+	Default cDdd			:= ""
+	Default cTelefone		:= ""
+	Default cCgc			:= ""
+	Default cRg				:= ""
+	Default cEmail			:= ""
+	Default cCelular		:= ""
+	Default cDDDCel			:= ""
+	Default dDataNasc		:= StoD("")
+	Default cSexo			:= ""
+	Default cEstCivil		:= ""
+	Default cProfissao		:= ""
+	Default cLogError		:= ""
+
+	// atribui valor as variaveis
+	aArea			:= GetArea()
+	aAreaSA1		:= SA1->(GetArea())
+	cBkpFunName		:= ""
+	lMVMVCSA1		:= SuperGetMV("MV_MVCSA1", .F., .F.)
+	lMVAtuCliente	:= SuperGetMV("MV_XATUAPI", .F., .F.)
+	lContinua		:= .T.
+	lRetorno		:= .T.
+
+	SA1->(DbSetOrder(3)) //-- A1_FILIAL+A1_CGC
+	If SA1->( MsSeek(xFilial("SA1") + cCgc) )
+		nOperacaoAuto := 4
+	Else
+		nOperacaoAuto := 3
+	EndIf
+
+	// se for alteracao, valido se o parametro de atualizacao permite
+	If nOperacaoAuto == 4 .And. !lMVAtuCliente
+		lContinua	:= .F.
+	EndIf
+
+	// backup da funcao funname
+	cBkpFunName := FunName()
+
+	If lMVMVCSA1
+		SetFunName("CRMA980")
+	Else
+		SetFunName("MATA030")
+	EndIf
+
+	If lContinua
+
+		oModelMATA030 := FWLoadModel("MATA030")
+		oModelMATA030:SetOperation(nOperacaoAuto)
+		oModelMATA030:Activate()
+
+		oSA1Mod := oModelMATA030:getModel("MATA030_SA1")
+
+		oSA1Mod:setValue("A1_NOME",    Alltrim(Upper(cNome)) )
+		oSA1Mod:setValue("A1_NREDUZ",  Upper(cNReduz)        )
+		oSA1Mod:setValue("A1_PESSOA",  cTpPessoa             )
+		oSA1Mod:setValue("A1_END",     Upper(cEndereco)           )
+		oSA1Mod:setValue("A1_BAIRRO",  Upper(cBairro)        )
+		oSA1Mod:setValue("A1_COMPLEM", Upper(cComplemento)         )
+		oSA1Mod:setValue("A1_XREFERE", Upper(cPtoReferencia)        )
+		oSA1Mod:setValue("A1_EST",     Upper(AllTrim(cEstado))  )
+		oSA1Mod:setValue("A1_COD_MUN", AllTrim(cCodMunicipio)      )
+
+		If Empty(cCodMunicipio) .And. !Empty(cMunicipio)
+			oSA1Mod:setValue("A1_MUN", 	AllTrim(cMunicipio)      )
+		EndIf
+
+		oSA1Mod:setValue("A1_CEP",     cCep                  )
+		oSA1Mod:setValue("A1_CGC",     cCgc                  )
+		oSA1Mod:setValue("A1_RG",      cRg                   )
+		oSA1Mod:setValue("A1_PFISICA", cRg                   )
+		oSA1Mod:setValue("A1_DDD",     cDdd                  )
+		oSA1Mod:setValue("A1_TEL",     cTelefone             )
+		oSA1Mod:setValue("A1_XCEL",    cCelular              )
+		oSA1Mod:setValue("A1_XDDDCEL", cDDDCel               )
+		oSA1Mod:setValue("A1_EMAIL",   Upper(cEmail)         )
+		oSA1Mod:setValue("A1_XDTNASC", dDataNasc             )
+		oSA1Mod:setValue("A1_XSEXO",   cSexo                 )
+		oSA1Mod:setValue("A1_XESTCIV", cEstCivil             )
+		oSA1Mod:setValue("A1_XPROFIS", cProfissao            )
+		oSA1Mod:setValue("A1_XINTCA",  "S"                   )
+
+		If oModelMATA030:VldData()
+			If oModelMATA030:CommitData()
+				lOk := .T.
+			Else
+				lOk := .F.
+			EndIf
+		Else
+			lOk := .F.
+		EndIf
+
+		If !lOk
+			aErro := oModelMATA030:GetErrorMessage()
+
+			AutoGrLog("Id do formulário de origem:"  + ' [' + AllToChar(aErro[01]) + ']')
+			AutoGrLog("Id do campo de origem: "      + ' [' + AllToChar(aErro[02]) + ']')
+			AutoGrLog("Id do formulário de erro: "   + ' [' + AllToChar(aErro[03]) + ']')
+			AutoGrLog("Id do campo de erro: "        + ' [' + AllToChar(aErro[04]) + ']')
+			AutoGrLog("Id do erro: "                 + ' [' + AllToChar(aErro[05]) + ']')
+			AutoGrLog("Mensagem do erro: "           + ' [' + AllToChar(aErro[06]) + ']')
+			AutoGrLog("Mensagem da solução: "        + ' [' + AllToChar(aErro[07]) + ']')
+			AutoGrLog("Valor atribuído: "            + ' [' + AllToChar(aErro[08]) + ']')
+			AutoGrLog("Valor anterior: "             + ' [' + AllToChar(aErro[09]) + ']')
+
+			lRetorno  := .F.
+			cLogError += AllTrim( MostraErro('/temp') )
+		EndIf
+
+		oModelMATA030:DeActivate()
+
+	EndIf
+
+	SetFunName(cBkpFunName)
+
+	RestArea(aArea)
+	RestArea(aAreaSA1)
+
+	FreeObj(oModelMATA030)
+	FreeObj(oSA1Mod)
+
+Return(lRetorno)

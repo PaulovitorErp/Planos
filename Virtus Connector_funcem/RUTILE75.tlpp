@@ -1,0 +1,1663 @@
+#include "protheus.ch"
+
+User Function RUTILE75()
+Return(Nil)
+
+/*/{Protheus.doc} ServicosFuneraria
+description
+@type class
+@version  
+@author g.sampaio
+@since 22/12/2023
+/*/
+	Class ServicosFuneraria
+
+		Public Data aApontamentos			As Array
+		Public Data cMensagemRetorno		As Character
+		Public Data cApontamentoCad 		As Character
+		Public Data cApontamentoSinc		As Character
+		Public Data dDataAtual				As Date
+		Public Data oVirtusApontamento		As Object
+
+		Public Method New() Constructor
+		Public Method ConsultaPrecos()			// metodo para consulta de precos para servicos funerarios
+		Public Method GravarApontamento()		// metodo para gravacao intermediaria do apontamento
+		Public Method ValidaDadosApontamento()	// metorho para validacao dos dados do apontamento enviado
+		Public Method ProcessaApontamento()		// metodo para processamento do apontamento intermediario
+		Public Method ApontamentoServicos()		// metodo para inclusao do apontamento de servicos
+		Public Method FinalizarProcessamento()
+		Public Method EnviarStatusProcessamento()
+		Public Method CadastrarCliente()
+		Public Method BuscarApontamentosPendentes()
+		Public Method AtualizarDataBase()
+
+	EndClass
+
+Method New() Class ServicosFuneraria
+
+	Self:aApontamentos		:= {}
+	Self:cMensagemRetorno	:= ""
+	Self:cApontamentoCad	:= ""
+	Self:cApontamentoSinc	:= ""
+	Self:dDataAtual			:= dDatabase
+	Self:oVirtusApontamento	:= Nil
+
+Return(Nil)
+
+	Method ConsultaPrecos(cCNPJServicos As Character,;
+		cContrato As Character,;
+		cBeneficiario As Character,;
+		cProdServ As Character,;
+		jResponse As Json) Class ServicosFuneraria
+
+	Local aArea         					As Array
+	Local aAreaUF2      					As Array
+	Local aAreaUF4      					As Array
+	Local aAreaUJ0      					As Array
+	Local aDadosPrecos 						As Array
+	Local cQuery        					As Character
+	Local cCodEmpresa   					As Character
+	Local cCodFilial    					As Character
+	Local cTabela       					As Character
+	Local cFilialBkp   	 					As Character
+	Local lCarencia     					As Logical
+	Local nCarencia     					As Numeric
+	Local nItem								As Numeric
+	Local oModVirtusPrecoServicosFuneraria	As Object
+
+	Default cCNPJServicos   := ""
+	Default cContrato       := ""
+	Default cBeneficiario   := ""
+	Default cProdServ       := ""
+
+	aArea       	:= GetArea()
+	aAreaUF2    	:= UF2->(GetArea())
+	aAreaUF4    	:= UF4->(GetArea())
+	aAreaUJ0    	:= UJ0->(GetArea())
+	aDadosPrecos	:= {}
+	lCarencia   	:= .F.
+	nItem			:= 0
+	cFilialBkp		:= cFilAnt
+
+	// para quando o contrato
+	If Empty(cContrato)
+
+		// pego informacao da filial de servicos
+		RetEmpFilial(cCNPJServicos, @cCodEmpresa, @cCodFilial)
+
+		If !Empty(cCodFilial)
+
+			cFilAnt := cCodFilial
+
+			cTabela := Alltrim(SuperGetMv("MV_XTABSER",.F.,"001"))
+
+			cQuery := "SELECT
+			cQuery += " DA1.DA1_CODPRO				AS PRODUTO ,
+			cQuery += " ISNULL(DA1.DA1_PRCVEN,0)	AS PRECO_VENDA,
+			cQuery += " 1							AS QUANTIDADE, "
+			cQuery += " '' 							AS CARENCIA, "
+			cQuery += " '' 							AS TIPO "
+			cQuery += " FROM "
+			cQuery += RetSqlName("DA1") + " DA1 "
+			cQuery += " WHERE DA1.D_E_L_E_T_ 	= ' ' "
+			cQuery += " AND DA1.DA1_FILIAL 	= '" + xFilial("DA1") + "' "
+			cQuery += " AND DA1.DA1_CODTAB	= '" + cTabela + "' "
+
+			If !Empty(cProdServ)
+				cQuery += " AND DA1.DA1_CODPRO = '" + AllTrim(cProdServ) + "' "
+			EndIf
+
+			cQuery += " ORDER BY DA1.DA1_CODPRO ASC"
+
+			cQuery := ChangeQuery(cQuery)
+
+			// executo a query e crio o alias temporario
+			MPSysOpenQuery( cQuery, 'TRBPRD' )
+
+			If TRBPRD->(!Eof())
+
+				jResponse["status"]     := 200
+				jResponse["mensagem"]	:= "Ok! Consulta de Precos retornou dados!"
+				jResponse["dados"]  	:= {}
+
+				While TRBPRD->(!Eof())
+
+					nItem++
+
+					SB1->(DbSetOrder(1)) //B1_FILIAL + B1_COD
+
+					//posiciono se na SB1 pra pegar nome e armazem
+					If SB1->(DbSeek(xFilial("SB1")+TRBPRD->PRODUTO))
+
+						oModVirtusPrecoServicosFuneraria := ModVirtusPrecoServicosFuneraria():New()
+						oModVirtusPrecoServicosFuneraria:tabela                 := cTabela
+						oModVirtusPrecoServicosFuneraria:item                   := StrZero(nItem,2)
+						oModVirtusPrecoServicosFuneraria:produto                := AllTrim(SB1->B1_COD)
+						oModVirtusPrecoServicosFuneraria:descricao              := AllTrim(SB1->B1_DESC)
+						oModVirtusPrecoServicosFuneraria:carencia               := "Nao"
+						oModVirtusPrecoServicosFuneraria:tipo_servico           := "Particular"
+						oModVirtusPrecoServicosFuneraria:estoque                := EstoqueProduto(TRBPRD->PRODUTO)
+						oModVirtusPrecoServicosFuneraria:preco_tabela           := TRBPRD->PRECO_VENDA
+						oModVirtusPrecoServicosFuneraria:percentual_cobertura    := 0
+						oModVirtusPrecoServicosFuneraria:valor_desconto         := 0
+						oModVirtusPrecoServicosFuneraria:preco_venda            := TRBPRD->PRECO_VENDA
+
+						Aadd(aDadosPrecos, oModVirtusPrecoServicosFuneraria:toJsonObject())
+
+					EndIf
+
+					TRBPRD->(DBSkip())
+
+				EndDo
+
+				If Len(aDadosPrecos) > 0
+					jResponse["dados"]  	:= aDadosPrecos
+				EndIf
+
+			EndIf
+
+		Else
+
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Filial de Servicos ("+cCNPJServicos+") nao encontrado."
+			jResponse["dados"]  	:= {}
+
+		EndIf
+
+	Else
+
+		// posiciono no contrato
+		UF2->(DBSetOrder(1))
+		If UF2->(MsSeek(xFilial("UF2")+cContrato))
+
+			nCarencia   := If(UF2->UF2_PERCEN > 0, 100 - UF2->UF2_PERCEN, 0  )
+			cTabela     := Alltrim(SuperGetMv("MV_XTABSER",.F.,"001"))
+
+			// posiciono no beneficiario
+			UF4->(DBSetOrder(1))
+			If UF4->(MsSeek(xFilial("UF4")+UF2->UF2_CODIGO+cBeneficiario))
+
+				If UF4->UF4_CAREN > dDatabase
+					lCarencia := .T.
+				EndIf
+
+				// pego informacao da filial de servicos
+				RetEmpFilial(cCNPJServicos, @cCodEmpresa, @cCodFilial)
+
+				If !Empty(cCodFilial)
+
+					cFilAnt := cCodFilial
+
+					cTabela := Alltrim(SuperGetMv("MV_XTABSER",.F.,"001"))
+
+					cQuery := "SELECT
+					cQuery += " UF1.UF1_PROD				AS PRODUTO ,
+					cQuery += " ISNULL(DA1.DA1_PRCVEN,0)	AS PRECO_VENDA,
+					cQuery += " UF1.UF1_QUANT				AS QUANTIDADE, "
+					cQuery += " '	' 						AS CARENCIA, "
+					cQuery += " ' ' 						AS TIPO "
+					cQuery += " FROM "
+					cQuery += RetSQLName("UF1") + " UF1 "
+					cQuery += " LEFT JOIN  "
+					cQuery += RetSqlName("DA1") + " DA1
+					cQuery += " ON UF1.UF1_PROD = DA1.DA1_CODPRO"
+					cQuery += " AND DA1.D_E_L_E_T_ 	<> '*'"
+					cQuery += " AND DA1.DA1_FILIAL 	= '" + xFilial("DA1") + "' "
+					cQuery += " AND DA1.DA1_CODTAB	= '" + cTabela + "' "
+					cQuery += " WHERE UF1.D_E_L_E_T_ 	<> '*'"
+					cQuery += " AND UF1.UF1_FILIAL 	= '" + xFilial("UF1") + "' "
+					cQuery += " AND UF1.UF1_CODIGO 	= '" + UF2->UF2_PLANO + "'"
+
+					If !Empty(cProdServ)
+						cQuery += " AND UF1.UF1_PROD = '" + AllTrim(cProdServ) + "' "
+					EndIf
+
+					cQuery += " AND NOT EXISTS "
+					cQuery += " ( "
+					cQuery += " 	SELECT UF3_PROD "
+					cQuery += "	FROM "
+					cQuery += 	RetSQLName("UF3") + " ITENS "
+					cQuery += " 	WHERE "
+					cQuery += " 	ITENS.D_E_L_E_T_ = ' ' "
+					cQuery += " 	AND ITENS.UF3_FILIAL = '" + xFilial("UF3") + "' "
+					cQuery += " 	AND ITENS.UF3_CODIGO = '" + UF2->UF2_CODIGO + "' "
+					cQuery += " 	AND ITENS.UF3_TIPO = 'ADDITENS.PNG' "
+					cQuery += "	AND ITENS.UF3_PROD = UF1.UF1_PROD "
+					cQuery += " )
+
+					//consulto na tabela do contrato os itens personalizados, somente se o apontamento possui contrato preenchido
+					if !Empty(cContrato)
+
+						cQuery += " UNION "
+
+						cQuery += " SELECT "
+						cQuery += " UF3.UF3_PROD 					PRODUTO, "
+						cQuery += " ISNULL(DA1.DA1_PRCVEN,0) AS	PRECO_VENDA,  "
+						cQuery += " UF3.UF3_SALDO					QUANTIDADE, "
+						cQuery += " UF3.UF3_CARENC AS				CARENCIA, "
+						cQuery += " UF3.UF3_TIPO AS 				TIPO "
+						cQuery += " FROM "
+						cQuery += RetSqlName("UF3")+" UF3 "
+						cQuery += " LEFT JOIN "
+						cQuery += RetSqlName("DA1") + " DA1
+						cQuery += " ON UF3.UF3_PROD = DA1.DA1_CODPRO "
+						cQuery += " AND DA1.D_E_L_E_T_ 	<> '*' "
+						cQuery += " AND DA1.DA1_FILIAL 	= '" + xFilial("DA1") + "' "
+						cQuery += " AND DA1.DA1_CODTAB	= '" + cTabela + "' "
+						cQuery += " WHERE UF3.D_E_L_E_T_ 	<> '*' "
+						cQuery += " AND UF3.UF3_FILIAL 	= '" + xFilial("UF3") + "' "
+						cQuery += " AND UF3.UF3_CODIGO 	= '" + UF2->UF2_CODIGO + "' "
+
+						If !Empty(cProdServ)
+							cQuery += " AND UF3.UF3_PROD = '" + AllTrim(cProdServ) + "' "
+						EndIf
+
+						cQuery += " AND UF3.UF3_TIPO 		= 'ADDITENS.PNG' " //ITENS PERSONALIZADOS DO CONTRATO
+						cQuery += " AND (UF3.UF3_CTRSLD = 'S' AND UF3.UF3_SALDO > 0 OR UF3.UF3_CTRSLD = 'N')"
+
+					endif
+
+					cQuery += " ORDER BY 1 DESC"
+
+					// executo a query e crio o alias temporario
+					MPSysOpenQuery( cQuery, 'TRBPRD' )
+
+					If TRBPRD->(!Eof())
+
+						jResponse["status"]     := 200
+						jResponse["mensagem"]	:= "Ok! Consulta de Precos retornou dados!"
+						jResponse["dados"]  	:= {}
+
+						While TRBPRD->(!Eof())
+
+							nItem++
+
+							SB1->(DbSetOrder(1)) //B1_FILIAL + B1_COD
+
+							//posiciono se na SB1 pra pegar nome e armazem
+							If SB1->(DbSeek(xFilial("SB1")+TRBPRD->PRODUTO))
+
+								nDescontoCarencia := 0
+
+								If lCarencia
+									nDescontoCarencia := TRBPRD->PRECO_VENDA * (nCarencia/100)
+								Else
+									nDescontoCarencia := TRBPRD->PRECO_VENDA
+								Endif
+
+								oModVirtusPrecoServicosFuneraria := ModVirtusPrecoServicosFuneraria():New()
+								oModVirtusPrecoServicosFuneraria:tabela                 := cTabela
+								oModVirtusPrecoServicosFuneraria:item                   := StrZero(nItem,2)
+								oModVirtusPrecoServicosFuneraria:produto                := AllTrim(SB1->B1_COD)
+								oModVirtusPrecoServicosFuneraria:descricao              := AllTrim(SB1->B1_DESC)
+								oModVirtusPrecoServicosFuneraria:carencia               := If(lCarencia,"Sim","Nao")
+								oModVirtusPrecoServicosFuneraria:tipo_servico           := "Associado"
+								oModVirtusPrecoServicosFuneraria:estoque                := EstoqueProduto(TRBPRD->PRODUTO)
+								oModVirtusPrecoServicosFuneraria:preco_tabela           := TRBPRD->PRECO_VENDA
+								oModVirtusPrecoServicosFuneraria:percentual_cobertura   := If(lCarencia,nCarencia,100)
+								oModVirtusPrecoServicosFuneraria:valor_desconto         := nDescontoCarencia
+								oModVirtusPrecoServicosFuneraria:preco_venda            := TRBPRD->PRECO_VENDA - nDescontoCarencia
+
+								Aadd(aDadosPrecos, oModVirtusPrecoServicosFuneraria:toJsonObject())
+
+							EndIf
+
+							TRBPRD->(DBSkip())
+
+						EndDo
+
+						If Len(aDadosPrecos) > 0
+							jResponse["dados"]  	:= aDadosPrecos
+						EndIf
+
+					Else
+
+						jResponse["status"]     := 200
+						jResponse["mensagem"]	:= "A consulta nao retornou dados."
+						jResponse["dados"]  	:= {}
+
+					EndIf
+
+				Else
+
+					jResponse["status"]     := 200
+					jResponse["mensagem"]	:= "Filial de Servicos ("+cCNPJServicos+") nao encontrado."
+					jResponse["dados"]  	:= {}
+
+				endif
+
+			Else
+
+				jResponse["status"]     := 200
+				jResponse["mensagem"]	:= "Beneficiario ("+cBeneficiario+") invalido."
+				jResponse["dados"]  	:= {}
+
+			EndIf
+
+		Else
+
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Contrato ("+cContrato+") nao encontrado."
+			jResponse["dados"]  	:= {}
+
+		EndIf
+
+	EndIf
+
+	// restaurar a filial
+	cFilAnt := cFilialBkp
+
+	RestArea(aAreaUJ0)
+	RestArea(aAreaUF4)
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method BuscarApontamentosPendentes() Class ServicosFuneraria
+
+Return(Nil)
+
+Method GravarApontamento(cBodyJson As Character, cIdIntegracao As Character, jResponse As Json) Class ServicosFuneraria
+
+	Local aArea 			As Array
+	Local aAreaUK8 			As Array
+	Local cMensagemRetorno	As Character
+	Local lContinua			As Logical
+	Local lAtualiza			As Logical
+	Local lProcessa			As Logical
+
+	Default cBodyJson		:= ""
+	Default cIdIntegracao	:= ""
+	Default jResponse		:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaUK8			:= UK8->(GetArea())
+	cMensagemRetorno	:= ""
+	lContinua			:= .T.
+	lAtualiza			:= .F.
+	lProcessa			:= SuperGetMv("MV_XPROAPT",.F.,.T.)
+
+	// faco uma pre validacao dos dados do json
+	lContinua	:= Self:ValidaDadosApontamento(cBodyJson)
+
+	If lContinua
+
+		If !Empty(cIdIntegracao)
+
+			//-- Verifica se o contrato ja existe --//
+			UK8->(DbSetOrder(2))
+			lAtualiza := UK8->(MsSeek(xFilial("UK8") + cIdIntegracao))
+			Self:cApontamentoSinc	:= UK8->UK8_CODIGO
+
+		EndIf
+
+		BEGIN TRANSACTION
+
+			If !lAtualiza
+
+				// crio o codigo sequencial
+				Self:cApontamentoSinc	:= GetSxeNum("UK8","UK8_CODIGO")
+
+				UK8->(DbSetOrder(1))
+				While UK8->(MsSeek(xFilial("UK8") + Self:cApontamentoSinc))
+					UK8->(ConfirmSX8())
+					Self:cApontamentoSinc := GetSxeNum("UK8","UK8_CODIGO")
+				EndDo
+
+				// verifico se o codigo esta em uso
+				FreeUsedCode()
+				While !MayIUseCode( "UK8"+xFilial("UK8")+Self:cApontamentoSinc )
+					// gero uma nova fatura
+					Self:cApontamentoSinc := Soma1( Alltrim(Self:cApontamentoSinc) )
+				EndDo
+
+			else
+
+				// por seguranca, valido se o contrato ja foi concluido no sistema
+				If UK8->UK8_STATUS == "C"
+					lContinua := .F.
+				EndIf
+
+			EndIf
+
+			If lContinua
+
+				If UK8->(Reclock("UK8", Iif(lAtualiza, .F., .T.)))
+
+					If !lAtualiza
+						UK8->UK8_FILIAL	:= xFilial("UK8")
+						UK8->UK8_CODIGO	:= Self:cApontamentoSinc
+					EndIf
+
+					UK8->UK8_DATA	:= dDatabase
+					UK8->UK8_HORA	:= Time()
+					UK8->UK8_STATUS	:= "P" // P=Pendente; C=Concluido; E=Erro
+					UK8->UK8_MSG	:= Upper("Apontamento sincronizado com o ERP, aguardando processamento!")
+					UK8->UK8_JSON	:= cBodyJson
+					UK8->UK8_ID 	:= cIdIntegracao
+					UK8->UK8_MODULO	:= "F"
+					UK8->UK8_APONTA	:= ""
+
+					If !lAtualiza
+						UK8->(ConfirmSX8())
+					EndIf
+
+					UK8->(MsUnlock())
+
+				Else
+					lContinua := .F.
+					UK8->(DisarmTransaction())
+				EndIf
+
+			EndIf
+
+		END TRANSACTION
+
+	EndIf
+
+	if lContinua
+
+		If lAtualiza
+			jResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+			jResponse["mensagem"]   		:= "Contrato sincronizado e atualizado no ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Apontamento enviado para ERP",;
+				"mensagem": "Apontamento sincronizado e atualizado no ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		else
+			jResponse["status"] 			:= 201 // created - O recurso informado foi criado com sucesso.
+			jResponse["mensagem"]  			:= "Contrato sincronizado com o ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Apontamento enviado para ERP",;
+				"mensagem": "Apontamento sincronizado com o ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		EndIf
+
+		jResponse["apontamento"]   := "enviado"
+
+		If lProcessa
+			Self:ProcessaApontamento(Nil, @jResponse)
+		EndIf
+
+	else
+		jResponse["status"] 			:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		jResponse["apontamento"]  		:= "erro"
+		jResponse["mensagem"] 			:= "Erro ao sincronizar Apontamento: " + Self:cMensagemRetorno
+		jResponse["processamento_erp"] 	:= { "status": "erro",;
+			"titulo": "Apontamento foi recebido, mas nao processado no ERP!",;
+			"mensagem": "Nao foi possivel processar o Apontamento, inconsistencias: " + Self:cMensagemRetorno ,;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	endIf
+
+	// limpo a mensagemde de retorno
+	Self:cMensagemRetorno 	:= ""
+
+	RestArea(aAreaUK8)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method ValidaDadosApontamento(cBodyJson As Character) Class ServicosFuneraria
+
+	Local aArea 			As Array
+	Local aAreaUF2			As Array
+	Local aAreaUF4			As Array
+	Local aAreaSA1			As Array
+	Local aAreaSB1			As Array
+	Local aApontamento		As Array
+	Local aItens 			As Array
+	Local aItensAux			As Array
+	Local cMsgErro			As Character
+	Local cCodEmpresa		As Character
+	Local cCodFilial		As Character
+	Local cTabela			As Character
+	Local cMSG				As Character
+	Local lRetorno			As Logical
+	Local nX 				As Numeric
+	Local nPosFilSer		As Numeric
+	Local nPosDatFale		As Numeric
+	Local nPosCodBen 		As Numeric
+	Local nPosTpServ 		As Numeric
+	Local nPosProduto		As Numeric
+	Local nPosCliPV			As Numeric
+	Local nPosLojPV			As Numeric
+	Local nPosCondPag		As Numeric
+	Local nPosNomeFal		As Numeric
+
+	Default cBodyJson	:= ""
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaUF2	:= UF2->(GetArea())
+	aAreaUF4	:= UF4->(GetArea())
+	aAreaSA1	:= SB1->(GetArea())
+	aAreaSB1	:= SB1->(GetArea())
+	cMsgErro	:= ""
+	cMSG		:= ""
+	lRetorno	:= .T.
+
+	// atribui valor as variaveis
+	Self:oVirtusApontamento	:= ModVirtusApontamentoFunerario():New()
+
+	If !Empty(cBodyJson)
+		lRetorno := Self:oVirtusApontamento:FromJson(cBodyJson, @cMsgErro)
+	Else
+		lRetorno := .F.
+	EndIf
+
+	If lRetorno
+
+		ConOut(Self:oVirtusApontamento:jsonApontamento:toJson())
+
+		aApontamento := Self:oVirtusApontamento:jsonApontamento["apontamento"]
+
+		If Self:oVirtusApontamento:gerapv == "S"
+
+			// posicoes do apontamento
+			nPosCliPV 	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_CLIPV" } )
+			nPosLojPV	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_LOJAPV" } )
+			nPosCondPag	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_CONDPV" } )
+
+			If !Empty(Self:oVirtusApontamento:cgcclientepv)
+
+				SA1->(DbSetOrder(3))
+				If !SA1->(MsSeek(xFilial("SA1")+Self:oVirtusApontamento:cgcclientepv))
+					lRetorno := .F.
+					Self:cMensagemRetorno	:= "[cgcclientepv] Cliente nao cadastrado no ERP "
+				EndIf
+
+			ElseIf nPosCliPV > 0 .And. nPosLojPV > 0
+
+				If Empty(aApontamento[nPosCliPV]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_CLIPV] Cliente do Pedido de Vendas nao informado"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_CLIPV] Loja do Cliente do Pedido de Vendas nao informada"
+					EndIf
+				EndIf
+
+				If Empty(aApontamento[nPosLojPV]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_LOJAPV] Loja do Cliente nao informada"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_LOJAPV] Loja do Cliente nao informada"
+					EndIf
+				EndIf
+
+				If !Empty(aApontamento[nPosCliPV]["valor"]) .And. !Empty(aApontamento[nPosLojPV]["valor"])
+
+					SA1->(DbSetOrder(1))
+					If !SA1->(MsSeek(xFilial("SA1")+aApontamento[nPosCliPV]["valor"]+aApontamento[nPosLojPV]["valor"]))
+						lRetorno := .F.
+						If !Empty(Self:cMensagemRetorno)
+							Self:cMensagemRetorno	+= ", Cliente ("+aApontamento[nPosCliPV]["valor"]+") e Loja ("+aApontamento[nPosLojPV]["valor"]+") Cliente nao cadastrado no ERP"
+						Else
+							Self:cMensagemRetorno	:= "Cliente ("+aApontamento[nPosCliPV]["valor"]+") e Loja ("+aApontamento[nPosLojPV]["valor"]+") Cliente nao cadastrado no ERP"
+						EndIf
+					EndIf
+
+				EndIf
+
+			Else
+				lRetorno := .F.
+				If !Empty(Self:cMensagemRetorno)
+					Self:cMensagemRetorno	+= ", Sem dados de faturamento [UJ0_CLIPV], [UJ0_LOJAPV] ou [cgcclientepv] nao informados"
+				Else
+					Self:cMensagemRetorno	:= " Sem dados de faturamento [UJ0_CLIPV], [UJ0_LOJAPV] ou [cgcclientepv] nao informados"
+				EndIf
+			EndIf
+
+			If nPosCondPag > 0
+
+				If Empty(aApontamento[nPosCondPag]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_CONDPV] Condicao de pagamento nao informada"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_CONDPV] Condicao de pagamento nao informada"
+					EndIf
+				EndIf
+
+			Else
+				lRetorno := .F.
+				If !Empty(Self:cMensagemRetorno)
+					Self:cMensagemRetorno	+= ", [UJ0_CONDPV] Condicao de pagamento nao informada"
+				Else
+					Self:cMensagemRetorno	:= "[UJ0_CONDPV] Condicao de pagamento nao informada"
+				EndIf
+			endif
+
+		EndIf
+
+		// posicoes do apontamento
+		nPosFilSer 	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_FILSER" } )
+		nPosDatFale	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_DTFALE" } )
+		nPosCodBen	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_CODBEN" } )
+		nPosTpServ	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_TPSERV" } )
+		nPosNomeFal	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_NOMEFA" } )
+		nPosTabPrc	:= aScan( aApontamento, { |x| AllTrim(x["campo"]) == "UJ0_TABPRC" } )
+
+		If nPosFilSer > 0
+
+			If !Empty(Self:oVirtusApontamento:filialservicos)
+
+				// pego informacao da filial de servicos
+				RetEmpFilial(Self:oVirtusApontamento:filialservicos, @cCodEmpresa, @cCodFilial)
+
+				Self:oVirtusApontamento:jsonApontamento["apontamento"][nPosFilSer]["valor"] := cCodFilial
+				aApontamento[nPosFilSer]["valor"] := cCodFilial
+			EndIf
+
+			If Empty(aApontamento[nPosFilSer]["valor"])
+				lRetorno := .F.
+				Self:cMensagemRetorno	:= "[UJ0_FILSER] Filial de Servico Nao informada"
+			EndIf
+		EndIf
+
+		If !Empty(Self:oVirtusApontamento:contrato) .And. Self:oVirtusApontamento:modulo == "F"
+
+			If nPosTpServ > 0
+				If !Empty(aApontamento[nPosTpServ]["valor"]) .And. aApontamento[nPosTpServ]["valor"] <> "1"
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_TPSERV] Para apontamento de Associado o Tipo de Servico nao deve ser diferente de '1'."
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_TPSERV] Para apontamento de Associado o Tipo de Servico nao deve ser diferente de '1'"
+					EndIf
+				EndIf
+			EndIf
+
+			UF2->(DbSetOrder(1))
+			IF !UF2->(MsSeek(xFilial("UF2")+Self:oVirtusApontamento:contrato))
+				lRetorno := .F.
+				If !Empty(Self:cMensagemRetorno)
+					Self:cMensagemRetorno	+= ", [contrato] Contrato (" + Self:oVirtusApontamento:contrato + ") nao encontrato no sistema!"
+				Else
+					Self:cMensagemRetorno	:= "[contrato] Contrato (" + Self:oVirtusApontamento:contrato + ") nao encontrato no sistema!"
+				EndIf
+			EndIf
+
+			If nPosCodBen > 0
+
+				If !Empty(aApontamento[nPosCodBen]["valor"])
+
+					If nPosDatFale > 0
+
+						If Empty(aApontamento[nPosDatFale]["valor"])
+
+							lRetorno := .F.
+							If !Empty(Self:cMensagemRetorno)
+								Self:cMensagemRetorno	+= ", [UJ0_DTFALE] Nao informado para o beneficiario"
+							Else
+								Self:cMensagemRetorno	:= "[UJ0_DTFALE] Nao informado para o beneficiario"
+							EndIf
+
+						EndIf
+
+					EndIf
+
+					UF4->(DbSetOrder(1))
+					If UF4->(MsSeek(xFilial("UF4")+UF2->UF2_CODIGO+aApontamento[nPosCodBen]["valor"]))
+						If !Empty(UF4->UF4_FALECI)
+
+							lRetorno := .F.
+							If !Empty(Self:cMensagemRetorno)
+								Self:cMensagemRetorno	+= ", [UJ0_CODBEN] Beneficiario ("+aApontamento[nPosCodBen]["valor"]+") falecido !"
+							Else
+								Self:cMensagemRetorno	:= "[UJ0_CODBEN] Beneficiario ("+aApontamento[nPosCodBen]["valor"]+") falecido !"
+							EndIf
+
+						EndIf
+					Else
+						lRetorno := .F.
+						If !Empty(Self:cMensagemRetorno)
+							Self:cMensagemRetorno	+= ", [UJ0_CODBEN] Beneficiario ("+aApontamento[nPosCodBen]["valor"]+") nao encontrado no contrato "+ Self:oVirtusApontamento:contrato +" !"
+						Else
+							Self:cMensagemRetorno	:= "[UJ0_CODBEN] Beneficiario ("+aApontamento[nPosCodBen]["valor"]+") nao encontrado no contrato "+ Self:oVirtusApontamento:contrato +" !"
+						EndIf
+
+					EndIf
+
+				Else
+
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_CODBEN] Beneficiario nao informado"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_CODBEN] Beneficiario nao informado"
+					EndIf
+
+				EndIf
+			EndIf
+
+		else
+
+			If nPosTpServ > 0
+				If Empty(aApontamento[nPosTpServ]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_TPSERV] Tipo de Servico nao informado"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_TPSERV] Tipo de Servico nao informado"
+					EndIf
+				EndIf
+			EndIf
+
+			If nPosNomeFal > 0
+				If Empty(aApontamento[nPosNomeFal]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_NOMEFA] Nome do Falecido nao informado"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_NOMEFA] Nome do Falecido nao informad"
+					EndIf
+				EndIf
+			EndIf
+
+			If nPosCodBen > 0
+				If !Empty(aApontamento[nPosCodBen]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ0_CODBEN] O codigo do beneficiario sera somente utilizado para apontamento de associados"
+					Else
+						Self:cMensagemRetorno	:= "[UJ0_CODBEN] O codigo do beneficiario sera somente utilizado para apontamento de associados"
+					EndIf
+				EndIf
+			EndIf
+
+			If nPosTabPrc > 0
+				If Empty(aApontamento[nPosTabPrc]["valor"])
+					cTabela := Alltrim(SuperGetMv("MV_XTABSER",.F.,"001"))
+				Else
+					cTabela := AllTrim(aApontamento[nPosTabPrc]["valor"])
+				EndIf
+			EndIf
+
+		EndIf
+
+		// pego os itens do apontamento
+		aItens		 := Self:oVirtusApontamento:jsonApontamento["itens"]
+
+		For nX := 1 To Len(aItens)
+
+			aItensAux := aItens[nX]
+
+			// posicoes dos itens
+			nPosProduto := aScan( aItensAux, { |x| AllTrim(x["campo"]) == "UJ2_PRODUT" } )
+
+			If nPosProduto > 0
+				If Empty(aItensAux[nPosProduto]["valor"])
+					lRetorno := .F.
+					If !Empty(Self:cMensagemRetorno)
+						Self:cMensagemRetorno	+= ", [UJ2_PRODUT] Linha: " + cValToChar(nX) + " - Produto nao informado"
+					Else
+						Self:cMensagemRetorno	:= "[UJ2_PRODUT] Linha: " + cValToChar(nX) + " - Produto nao informado"
+					EndIf
+				Else
+					SB1->(DbSetOrder(1))
+					If !SB1->(MsSeek(xFilial("SB1")+aItensAux[nPosProduto]["valor"]))
+						lRetorno := .F.
+						If !Empty(Self:cMensagemRetorno)
+							Self:cMensagemRetorno	+= ", [UJ2_PRODUT] Linha: " + cValToChar(nX) + " - Produto ("+aItensAux[nPosProduto]["valor"]+") nao cadastrado no ERP!"
+						Else
+							Self:cMensagemRetorno	:= "[UJ2_PRODUT] Linha: " + cValToChar(nX) + " - Produto ("+aItensAux[nPosProduto]["valor"]+") nao cadastrado no ERP!""
+						EndIf
+					EndIf
+
+					If !(RetPrecoVenda(cTabela,aItensAux[nPosProduto]["valor"],@cMSG))
+						If !Empty(Self:cMensagemRetorno)
+							Self:cMensagemRetorno	+= ", [UJ2_PRODUT] Linha: " + cValToChar(nX) + " - " + cMSG
+						Else
+							Self:cMensagemRetorno	:= "[UJ2_PRODUT] Linha: " + cValToChar(nX) + " - " + cMSG
+						EndIf
+					EndIF
+
+				EndIf
+
+			endif
+
+		Next nX
+
+	EndIf
+
+	RestArea(aAreaSB1)
+	RestArea(aAreaSA1)
+	RestArea(aAreaUF4)
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+Method ProcessaApontamento(lProcessamentoManual As Logical, jResponse As Json) Class ServicosFuneraria
+
+	Local aArea						As Array
+	Local aAreaUK8					As Array
+	Local lContinua					As Logical
+	Local oStatusProcessamento 		As Json
+	Local nX 						As Numeric
+
+	Default lProcessamentoManual	:= .F.
+	Default jResponse				:= JsonObject():New()
+
+	// atribui valor das variaveis
+	aArea						:= GetArea()
+	aAreaUK8					:= UK8->(GetArea())
+	lContinua					:= .F.
+	oStatusProcessamento		:= JsonObject():New()
+	nX 							:= 0
+
+	// busca os contratos pendentes
+	If !Empty(Self:cApontamentoSinc) .Or. Self:BuscarApontamentosPendentes(lProcessamentoManual)
+
+		If !Empty(Self:cApontamentoSinc)
+
+			UK8->(DbSetOrder(1))
+			If UK8->(MsSeek(xFilial("UK8")+Self:cApontamentoSinc))
+				Self:aApontamentos := {}
+				Aadd(Self:aApontamentos, UK8->(Recno()))
+			EndIf
+
+		EndIf
+
+		// faco o processamento dos contratos
+		For nX := 1 To Len(Self:aApontamentos)
+
+			// verifico se o recno esta preenchido
+			If Self:aApontamentos[nX] > 0
+
+				// posiciono no contrato pendente
+				UK8->(DBGoTo(Self:aApontamentos[nX]))
+
+				Self:cMensagemRetorno	:= ""
+
+				// atualiza a data base para a data atual
+				Self:AtualizarDataBase()
+
+				// faco a validacao inicial dos dados
+				lContinua := Self:ValidaDadosApontamento(UK8->UK8_JSON)
+
+				If lContinua
+
+					// atualiza a data base do sistema conforme a data de cadastro
+					Self:AtualizarDataBase(Self:oVirtusApontamento:data_cadastro)
+
+					BEGIN TRANSACTION
+
+						// faco o cadastro do cliente
+						If Len(Self:oVirtusApontamento:cliente_pv) > 0
+							lContinua := Self:CadastrarCliente(@oStatusProcessamento)
+						EndIf
+
+						// faco o o cadastro do contrato
+						If lContinua
+							lContinua := Self:ApontamentoServicos(@oStatusProcessamento)
+						EndIf
+
+						If !lContinua
+							DisarmTransaction()
+							BREAK
+						EndIf
+
+					END TRANSACTION
+
+					// atualiza a data base para a data atual
+					Self:AtualizarDataBase()
+
+				EndIf
+
+				If !lContinua
+					oStatusProcessamento["status"] 		:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+					oStatusProcessamento["apontamento"] := "erro"
+					oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+						"titulo": "Erro no processamento do apontamento",;
+						"mensagem": EncodeUTF8(Self:cMensagemRetorno),;
+						"data_hora": FWTimeStamp(5, Date(), Time()) }
+				EndIf
+
+				jResponse := oStatusProcessamento
+
+				//-- Enviar status final de processamento --//
+				Self:FinalizarProcessamento( Self:aApontamentos[nX], @oStatusProcessamento, lContinua )
+
+			EndIf
+
+		Next nX
+
+	EndIf
+
+	RestArea(aAreaUK8)
+	RestArea(aArea)
+
+Return(Nil)
+
+	Method FinalizarProcessamento(nRecnoUK8 As Numeric,;
+		oStatusProcessamento As Json,;
+		lProcessamento AS Logical) Class ServicosFuneraria
+
+	Local aArea					As Array
+	Local aAreaUK8				As Array
+	Local cJsonProcessamento 	As Character
+
+	Default nRecnoUK8				:= 0
+	Default oStatusProcessamento	:= JsonObject():New()
+	Default lContinua				:= .T.
+
+	// atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaUK8			:= UK8->(GetArea())
+	cJsonProcessamento	:= ""
+
+	If Empty(oStatusProcessamento["status"])
+		oStatusProcessamento["status"] 				:= 200
+		oStatusProcessamento["filial"] 				:= UJ0->UJ0_FILIAL
+		oStatusProcessamento["apontamento"] 		:= UJ0->UJ0_CODIGO
+		oStatusProcessamento["pedido_venda"] 	 	:= iff(!Empty(UJ0->UJ0_PV), UJ0->UJ0_PV, UJ0_PV2)
+		oStatusProcessamento["processamento_erp"] 	:= { "status": "processado",;
+			"titulo": "Apontamento Processado com Sucesso",;
+			"mensagem": EncodeUTF8("Apontamento Processado com Sucesso no ERP."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+	EndIf
+
+	If nRecnoUK8 > 0
+
+		// atribui valor a variavel
+		UK8->(DBGoTo(nRecnoUK8))
+
+		If UK8->(RecLock("UK8", .F.))
+			UK8->UK8_DTPROC := Date()
+			UK8->UK8_HRPROC := Time()
+			UK8->UK8_STATUS := iif(oStatusProcessamento["processamento_erp"]["status"] == "sincronizado", "C", "E")
+			UK8->UK8_JSOCPO	:= Self:oVirtusApontamento:toJsonObject()
+
+			If !Empty(Self:cApontamentoCad)
+				UK8->UK8_APONTA := Self:cApontamentoCad
+			EndIf
+
+			UK8->UK8_MSPRO	:= SubStr(oStatusProcessamento["processamento_erp"]["mensagem"], 1, TamSX3("UK8_MSPRO")[1])
+			UK8->UK8_JSOPRO	:= oStatusProcessamento:toJson()
+			UK8->(MsUnLock())
+		EndIf
+
+		If Empty(Self:cApontamentoSinc)
+			Self:EnviarStatusProcessamento(UK8->UK8_ID, UK8->UK8_STATUS, UK8->UK8_APONTA, oStatusProcessamento:toJson())
+		EndIf
+
+		FreeObj(oStatusProcessamento)
+		oStatusProcessamento := JsonObject():New()
+
+	EndIf
+
+	RestArea(aAreaUK8)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method EnviarStatusProcessamento() Class ServicosFuneraria
+
+Return(Nil)
+
+Method ApontamentoServicos(oStatusProcessamento As json) Class ServicosFuneraria
+
+	Local aArea				As Array
+	Local aAreaUF2			As Array
+	Local aAreaUF4			As Array
+	Local aUJ0 				As Array
+	Local aUJ2				As Array
+	Local aCabec        	As Array
+	Local aCabecAux 		As Array
+	Local aItem         	As Array
+	Local aItens        	As Array
+	Local aItemAux 			As Array
+	Local aDetalhes			As Array
+	Local cFunBackup 		As Character
+	Local cBeneficiario		As Character
+	Local cFilialServico	As Character
+	Local cPv1				As Character
+	Local cPv2				As Character
+	Local cTabela			As Character
+	Local lConsCarCust		As Logical
+	Local lCarCustom		As Logical
+	Local lCarencia			As Logical
+	Local nCabec			As Numeric
+	Local nItem				As Numeric
+	Local nX 				As Numeric
+
+	Private cLogError	As Character
+
+	aArea 			:= GetArea()
+	aAreaUF2		:= UF2->(GetArea())
+	aAreaUF4		:= UF4->(GetArea())
+	cFunBackup		:= FunName()
+	cLogError		:= ""
+	aCabec			:= {}
+	aCabecAux		:= {}
+	aItens			:= {}
+	aItem			:= {}
+	aItemAux		:= {}
+	aDetalhes		:= {}
+	lConsCarCust	:= SuperGetMV("MV_XCOCCUS", .F., .F.) // Considera Carencia Customizada
+	lCarCustom		:= .T.
+
+	aUJ0 := Self:oVirtusApontamento:jsonApontamento["apontamento"]
+	aUJ2 := Self:oVirtusApontamento:jsonApontamento["itens"]
+
+	If !Empty(Self:oVirtusApontamento:contrato)
+
+		SetFunname("RFUNA002")
+
+		UF2->(DbSetOrder(1)) //UF2_FILIAL + UF2_CODIGO
+		if UF2->(MsSeek(xFilial("UF2") + Self:oVirtusApontamento:contrato))
+
+			nCarencia := If(UF2->UF2_PERCEN > 0, 100 - UF2->UF2_PERCEN, 0  )
+
+			if UF2->( FieldPos("UF2_NUMSO2") ) > 0 .And. !Empty(UF2->UF2_NUMSO2)
+				cNumSorte := UF2->UF2_NUMSO2
+			else
+				cNumSorte := UF2->UF2_NUMSOR
+			endif
+
+			For nCabec := 1 To Len(aUJ0)
+
+				If aUJ0[nCabec]["campo"] == "UJ0_CODBEN"
+					cBeneficiario := aUJ0[nCabec]["valor"]
+				ElseIf aUJ0[nCabec]["campo"] == "UJ0_FILSER"
+					cFilialServico := aUJ0[nCabec]["valor"]
+				ElseIf aUJ0[nCabec]["campo"] == "UJ0_TPSERV"
+					cTipoServico := "1"
+				ElseIf !Empty(aUJ0[nCabec]["valor"])
+					aAdd( aCabecAux, {aUJ0[nCabec]["campo"], aUJ0[nCabec]["valor"]	} )
+				EndIf
+
+			Next nCabec
+
+			If Empty(cTipoServico)
+				cTipoServico := "1"
+			EndIf
+
+			aAdd( aCabec, {'UJ0_TPSERV'         , cTipoServico 	} ) //Observacao
+			aAdd( aCabec, {'UJ0_CONTRA'         , UF2->UF2_CODIGO 	} ) //Codigo do contrato
+			aAdd( aCabec, {'UJ0_CODBEN'      	, cBeneficiario 	} ) //Codigo do Beneficiario (UF4_ITEM)
+			aAdd( aCabec, {'UJ0_PLANOC'         , UF2->UF2_PLANO	} ) //Codigo do Plano
+			aAdd( aCabec, {'UJ0_US0'          	, UF2->UF2_USO	} ) // tipo do uso do apontamento
+			aAdd( aCabec, {'UJ0_FILSER'     	, cFilialServico 	} ) // Codigo da Filial de Servico
+			aAdd( aCabec, {'UJ0_PERCDE'         , nCarencia	} ) // Carencia
+			aAdd( aCabec, {'UJ0_NUMSOR'         , cNumSorte	} ) // Numero da Sorte
+			aAdd( aCabec, {'UJ0_REGRA'          , UF2->UF2_REGRA	} ) //Regra do Contrato
+
+			UF4->(DbSetOrder(1))
+			If UF4->(MsSeek(xFilial("UF4")+UF2->UF2_CODIGO+cBeneficiario))
+
+				if UF4->UF4_CAREN > dDatabase
+					lCarencia := .T.
+				else
+					lCarencia := .F.
+				EndIF
+
+				If ExistBlock("PFUN75CR")
+
+					Conout(" >> Usa PE PFUN75CR na API de APontamento")
+
+					lCarCustom := ExecBlock("PFUN75CR",.F.,.F.,{Iif(lCarencia, "S", "N")})
+
+				EndIf
+
+				If (lCarencia .And. lCarCustom) .Or. (lCarCustom .And. lConsCarCust)
+					aAdd( aCabec, {'UJ0_CARENC'         , "S"	} ) // Carencia
+				Else
+					aAdd( aCabec, {'UJ0_CARENC'         , "N"	} ) // Carencia
+				EndIf
+
+			EndIf
+
+			// percorro o array auxiliar de cabecalho
+			For nCabec := 1 To Len(aCabecAux)
+				If !Empty(aCabecAux[nCabec, 2])
+					aAdd( aCabec, {aCabecAux[nCabec, 1]          , aCabecAux[nCabec, 2]	} ) //Regra do Contrato
+				EndIf
+			Next nCabec
+
+			//preencho os campos de seguro na Ordem de Servico
+			if UI2->(DbSeek(xFilial("UI2")+UF2->UF2_PLNSEG))
+
+				aAdd( aCabec, {'UJ0_PLNSEG'      , UF2->UF2_PLNSEG	} ) //Plano de Seguro
+				aAdd( aCabec, {'UJ0_DSCPLN'      , UI2->UI2_DESCRI	} )
+				aAdd( aCabec, {'UJ0_PLNM'      	 , UI2->UI2_MORTE	} )
+				aAdd( aCabec, {'UJ0_PLNMAC'      , UI2->UI2_MORACD	} )
+				aAdd( aCabec, {'UJ0_PLNALI'      , UI2->UI2_AUXALI	} )
+
+			endif
+
+			For nItem := 1 To Len(aUJ2)
+
+				aItemAux := aUJ2[nItem]
+
+				aItem := {}
+				aAdd(aItem, {"UJ2_ITEM"		, StrZero(nItem, TamSX3("UJ2_ITEM")[1])			    } ) //item sequencial do produto
+
+				For nX := 1 To Len(aItemAux)
+					If !Empty(aItemAux[nX]["valor"])
+						aAdd( aItem, {aItemAux[nX]["campo"], aItemAux[nX]["valor"]	} )
+					EndIf
+				Next nX
+
+				Aadd(aItens, aItem)
+
+			Next nItem
+
+		endif
+
+	Else
+
+		SetFunname("RFUNA034")
+
+		For nCabec := 1 To Len(aUJ0)
+
+			If aUJ0[nCabec]["campo"] == "UJ0_FILSER"
+				cFilialServico := aUJ0[nCabec]["valor"]
+			ElseIf aUJ0[nCabec]["campo"] == "UJ0_TPSERV"
+				cTipoServico := aUJ0[nCabec]["valor"]
+			ElseIf aUJ0[nCabec]["campo"] == "UJ0_TABPRC"
+				If Empty(aUJ0[nCabec]["valor"])
+					cTabela := Alltrim(SuperGetMv("MV_XTABSER",.F.,"001"))
+				Else
+					cTabela := aUJ0[nCabec]["valor"]
+				EndIf
+			Else
+				aAdd( aCabecAux, {aUJ0[nCabec]["campo"], aUJ0[nCabec]["valor"]	} )
+			EndIf
+
+		Next nCabec
+
+		aAdd( aCabec, {'UJ0_TPSERV'         , cTipoServico 		} ) // Tipo de Serviço
+		aAdd( aCabec, {'UJ0_FILSER'     	, cFilialServico 	} ) // Codigo da Filial de Servico
+		aAdd( aCabec, {'UJ0_TABPRC'     	, cTabela 			} ) // Tabela de precos
+
+		// percorro o array auxiliar de cabecalho
+		For nCabec := 1 To Len(aCabecAux)
+			If !Empty(aCabecAux[nCabec, 2]) .And. NotServicoParticular(aCabecAux[nCabec, 1])
+				aAdd( aCabec, {aCabecAux[nCabec, 1]          , aCabecAux[nCabec, 2]	} ) //Regra do Contrato
+			EndIf
+		Next nCabec
+
+		For nItem := 1 To Len(aUJ2)
+
+			aItemAux := aUJ2[nItem]
+
+			aItem := {}
+			aAdd(aItem, {"UJ2_ITEM"		, StrZero(nItem, TamSX3("UJ2_ITEM")[1])			    } ) //item sequencial do produto
+
+			For nX := 1 To Len(aItemAux)
+				If !Empty(aItemAux[nX]["valor"])
+					aAdd( aItem, {aItemAux[nX]["campo"], aItemAux[nX]["valor"]	} )
+				EndIf
+			Next nX
+
+			Aadd(aItens, aItem)
+
+		Next nItem
+
+	EndIf
+
+	If Len(aCabec) > 0 .And. Len(aItens) > 0
+
+		Conout("Cabec: " + U_toString(aCabec) )
+		Conout("Itens: " + U_toString(aItens) )
+		Conout("==>  Executa o Execauto do Apontamennto de Servicos Funerarios" )
+
+		lRetorno := U_RFUNE052(aCabec,aItens, 3, @cLogError)
+
+		If lRetorno
+
+			If Self:oVirtusApontamento:gerapv == "S"
+
+				//-- Detalhes para cabeçalho pedido de venda --//
+				aDetalhes	:= {}
+				AADD(aDetalhes, UJ0->UJ0_NOMEFA)
+				AADD(aDetalhes, UJ0->UJ0_DTFALE)
+				AADD(aDetalhes, UJ0->UJ0_DECOBT)
+				AADD(aDetalhes, UJ0->UJ0_CADOBT)
+				If !Empty(UJ0->UJ0_REMOCA)
+					AADD(aDetalhes, AllTrim(Posicione("UJC", 1, xFilial("UJC") + UJ0->UJ0_REMOCA, "UJC_DESCRI")))
+				Else
+					AADD(aDetalhes, AllTrim(UJ0->UJ0_LOCREM))
+				EndIf
+				If !Empty(UJ0->UJ0_VELORI)
+					AADD(aDetalhes, AllTrim(Posicione("UJD", 1, xFilial("UJD") + UJ0->UJ0_VELORI, "UJD_DESCRI")))
+				Else
+					AADD(aDetalhes, AllTrim(UJ0->UJ0_LOCVEL))
+				EndIf
+				AADD(aDetalhes, UJ0->UJ0_MOTORI)
+				AADD(aDetalhes, AllTrim(Posicione("UJB", 1, xFilial("UJB") + UJ0->UJ0_MOTORI, "UJB_NOME")))
+				AADD(aDetalhes, UJ0->UJ0_RELIGI)
+				AADD(aDetalhes, AllTrim(Posicione("UG3", 1, xFilial("UG3") + UJ0->UJ0_RELIGI, "UG3_DESC")))
+				AADD(aDetalhes, UJ0->UJ0_ATENDE)
+
+				lRetorno := U_GeraPV_J(@cPv1,@cPv2,;
+					UJ0->UJ0_CLIPV,;
+					UJ0->UJ0_LOJAPV,;
+					UJ0->UJ0_CONDPV,;
+					UJ0->UJ0_MENNFS,;
+					UJ0->UJ0_CODIGO,;
+					UJ0->UJ0_CONTRA,;
+					"C",;
+					UJ0->UJ0_TABPRC,;
+					aDetalhes)
+
+				//Atualiza status
+				If lRetorno
+					If UJ0->(RecLock("UJ0",.F.))
+						UJ0->UJ0_PV  := cPv1
+						UJ0->UJ0_PV2 := cPv2
+						UJ0->(MsUnlock())
+					EndIf
+				Endif
+
+				If lRetorno
+
+					oStatusProcessamento["status"] := 200
+					oStatusProcessamento["filial"] := UJ0->UJ0_FILIAL
+					oStatusProcessamento["apontamento"] := UJ0->UJ0_CODIGO
+					oStatusProcessamento["pedido_venda"] := If(!Empty(cPv1),cPv1,cPV2)
+					oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+						"titulo": "Apontamento Incluido e Pedido de Venda Gerado",;
+						"mensagem": EncodeUTF8("Apontamento incluido com sucesso! ("+UJ0->UJ0_CODIGO+") e Pedido Venda: (" + If(!Empty(cPv1),cPv1,cPV2) + ")" ),;
+						"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+				Else
+
+					oStatusProcessamento["status"] 		 := 200
+					oStatusProcessamento["filial"] 		 := UJ0->UJ0_FILIAL
+					oStatusProcessamento["apontamento"]  := UJ0->UJ0_CODIGO
+					oStatusProcessamento["pedido_venda"] := ""
+					oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+						"titulo": "Apontamento Incluido!",;
+						"mensagem": EncodeUTF8("Apontamento incluido com sucesso! ("+UJ0->UJ0_CODIGO+")"),;
+						"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+				EndIf
+
+			Else
+
+				oStatusProcessamento["status"] 		 := 200
+				oStatusProcessamento["filial"]       := UJ0->UJ0_FILIAL
+				oStatusProcessamento["apontamento"]  := UJ0->UJ0_CODIGO
+				oStatusProcessamento["pedido_venda"] := ""
+				oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+					"titulo": "Apontamento Incluido!",;
+					"mensagem": EncodeUTF8("Apontamento incluido com sucesso! ("+UJ0->UJ0_CODIGO+")"),;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			EndIf
+
+			If UJ0->(FieldPos("UJ0_IDAPI")) > 0
+				If UJ0->(RecLock("UJ0", .F.))
+					UJ0->UJ0_IDAPI := UK8->UK8_ID
+					UJ0->(MsUnLock())
+				EndIf
+			Endif
+
+		Else
+			Self:cMensagemRetorno := cLogError
+		EndIf
+
+	EndIf
+
+	SetFunname(cFunBackup)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::CadastrarCliente
+description
+@type method
+@version  
+@author g.sampaio
+@since 13/09/2023
+@param oStatusProcessamento, json, param_description
+@return variant, return_description
+/*/
+Method CadastrarCliente(oStatusProcessamento AS Json) Class ServicosFuneraria
+
+	Local cLogError			As Character
+	Local cNomeReduzido		As Character
+	Local lRetorno			As Logical
+
+	Default oStatusProcessamento	:= JsonObject():New()
+
+	// trato a informacao do nome reduzido
+	cNomeReduzido 	:= If(!Empty(Self:oVirtusApontamento:nome_reduzido),Self:oVirtusApontamento:nome_reduzido,Self:oVirtusApontamento:nome_cliente)
+	cLogError		:= ""
+	lRetorno		:= .T.
+
+	If !ExecCadastroCliente(Self:oVirtusApontamento:nome_cliente, Self:oVirtusApontamento:tipo_pessoa,cNomeReduzido,;
+			Self:oVirtusApontamento:endereco, Self:oVirtusApontamento:complemento, Self:oVirtusApontamento:ponto_referencia, Self:oVirtusApontamento:bairro,;
+			Self:oVirtusApontamento:estado, Self:oVirtusApontamento:cod_municipio, Self:oVirtusApontamento:municipio, Self:oVirtusApontamento:cep, Self:oVirtusApontamento:ddd,;
+			Self:oVirtusApontamento:telefone, Self:oVirtusApontamento:cgc_cliente , Self:oVirtusApontamento:rg_cliente, Self:oVirtusApontamento:email,;
+			Self:oVirtusApontamento:celular , Self:oVirtusApontamento:ddd_celular, Self:oVirtusApontamento:data_nascimento, Self:oVirtusApontamento:sexo,;
+			Self:oVirtusApontamento:estado_civil , Self:oVirtusApontamento:profissao, @cLogError)
+
+		lRetorno := .F.
+		oStatusProcessamento["status"] 			:= 422
+		oStatusProcessamento["apontamento"]  	:= "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Cadastrar Cliente",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} CemiterioContratos::AtualizarDataBase
+Metodo para atualizqr a data base do sistema
+@type method
+@version 1.0  
+@author g.sampaio
+@since 09/09/2023
+@param dDataCadastro, date, data de cadastro do contrato na integracao
+/*/
+Method AtualizarDataBase(dDataCadastro 	As Date) Class ServicosFuneraria
+
+	Local lDataCorrent	 	As Logical
+
+	Default dDataCadastro := StoD("")
+
+	lDataCorrent	:= SuperGetMv("MV_XDINTVI",.F.,.F.) //Utiliza a data corrente do sistema, ao invés da data de criação da venda (data_da_criacao_app) - Default .F., ou seja utiliza a data de criação da venda (data_da_criacao_app)
+
+	If !Empty(dDataCadastro) .and. !lDataCorrent
+		//-- Se data da venda menor que data atual,
+		//-- atualiza para data da venda
+		If dDataCadastro < dDataBase
+			dDataBase := dDataCadastro
+		EndIf
+	Else
+		dDataBase := Self:dDataAtual
+	EndIf
+
+Return(Nil)
+
+Static Function EstoqueProduto(cCodigoProduto As Character)
+
+	Local aArea		As Array
+	Local aAreaSB1	As Array
+	Local aAreaSB2	As Array
+	Local cRetorno 	As Character
+
+	Default cCodigoProduto	:= ""
+
+	aArea		:= GetArea()
+	aAreaSB1	:= SB1->(GetArea())
+	aAreaSB2	:= SB2->(GetArea())
+
+	SB1->(DbSetOrder(1))
+	If SB1->(MsSeek(xFilial("SB1")+cCodigoProduto))
+
+		SB2->(DbSetOrder(1)) //B2_FILIAL+B2_COD+B2_LOCAL
+		If SB1->B1_TIPO $ "MO|SV" //tipo do produto é SERVIÇO
+			cRetorno := "Servico" // ->> Serviço
+		ElseIf SB2->(DbSeek(xFilial('SB2') + SB1->B1_COD + SB1->B1_LOCPAD))
+			nQtdEst := SaldoMov(Nil,Nil,Nil,Nil,Nil,Nil, /*lSaldoSemR*/.F., /*dDataEmis*/dDataBase)
+			If nQtdEst > 0
+				cRetorno := "Saldo em estoque" // ->> Serviço
+			Else
+				cRetorno := "Sem estoque" // ->> Serviço
+			EndIf
+		Else //não tem SB2 (considera como serviço - default)
+			cLegenda := "Servico" // ->> Serviço
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSB2)
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} RetEmpFilial
+Retorna codigo da empresa/filial pelo cnpj
+@type function
+@version 1.0
+@author nata.queiroz
+@since 3/1/2021
+@param cCnpj, character, cCnpj
+@param cCodEmp, character, cCodEmp
+@param cCodFil, character, cCodFil
+/*/
+Static Function RetEmpFilial(cCnpj, cCodEmp, cCodFil)
+
+	Local aEmpresas		:= FWLoadSM0()
+	Local nI			:= 1
+
+	// Encontra empresa e filial com o CNPJ enviado
+	For nI := 1 To Len(aEmpresas)
+
+		If aEmpresas[nI,18] == cCnpj
+
+			cCodEmp := aEmpresas[nI,1] // Grupo
+			cCodFil	:= aEmpresas[nI,2] // Filial
+
+		EndIf
+
+	Next nI
+
+Return(Nil)
+
+Static Function ExecCadastroCliente(cNome As Character, cTpPessoa As Character, cNReduz As Character,;
+		cEndereco As Character, cComplemento As Character, cPtoReferencia As Character, cBairro As Character,;
+		cEstado As Character, cCodMunicipio As Character, cMunicipio As Character, cCep As Character, cDdd As Character,;
+		cTelefone As Character, cCgc As Character, cRg As Character, cEmail As Character,;
+		cCelular As Character, cDDDCel As Character, dDataNasc As Date, cSexo As Character,;
+		cEstCivil As Character, cProfissao As Character, cLogError As Character)
+
+	Local aArea				As Array
+	Local aAreaSA1			As Array
+	Local cBkpFunName		As Character
+	Local lMVAtuCliente		As Logical
+	Local lMVMVCSA1			As Logical
+	Local lContinua			As Logical
+	Local lRetorno			As Logical
+	Local lOk				As Logical
+	Local nOperacaoAuto		As Numeric
+	Local oModelMATA030		As Object
+	Local oSA1Mod			As Object
+
+	Private lMsErroAuto		As Logical
+
+	Default cNome			:= ""
+	Default	cTpPessoa		:= ""
+	Default cNReduz			:= ""
+	Default cEndereco		:= ""
+	Default cComplemento	:= ""
+	Default cPtoReferencia	:= ""
+	Default cBairro			:= ""
+	Default cEstado			:= ""
+	Default cCodMunicipio	:= ""
+	Default cMunicipio		:= ""
+	Default cCep			:= ""
+	Default cDdd			:= ""
+	Default cTelefone		:= ""
+	Default cCgc			:= ""
+	Default cRg				:= ""
+	Default cEmail			:= ""
+	Default cCelular		:= ""
+	Default cDDDCel			:= ""
+	Default dDataNasc		:= StoD("")
+	Default cSexo			:= ""
+	Default cEstCivil		:= ""
+	Default cProfissao		:= ""
+	Default cLogError		:= ""
+
+	// atribui valor as variaveis
+	aArea			:= GetArea()
+	aAreaSA1		:= SA1->(GetArea())
+	cBkpFunName		:= ""
+	lMVMVCSA1		:= SuperGetMV("MV_MVCSA1", .F., .F.)
+	lMVAtuCliente	:= SuperGetMV("MV_XATUAPI", .F., .F.)
+	lContinua		:= .T.
+	lRetorno		:= .T.
+
+	SA1->(DbSetOrder(3)) //-- A1_FILIAL+A1_CGC
+	If SA1->( MsSeek(xFilial("SA1") + cCgc) )
+		nOperacaoAuto := 4
+	Else
+		nOperacaoAuto := 3
+	EndIf
+
+	// se for alteracao, valido se o parametro de atualizacao permite
+	If nOperacaoAuto == 4 .And. !lMVAtuCliente
+		lContinua	:= .F.
+	EndIf
+
+	// backup da funcao funname
+	cBkpFunName := FunName()
+
+	If lMVMVCSA1
+		SetFunName("CRMA980")
+	Else
+		SetFunName("MATA030")
+	EndIf
+
+	If lContinua
+
+		oModelMATA030 := FWLoadModel("MATA030")
+		oModelMATA030:SetOperation(nOperacaoAuto)
+		oModelMATA030:Activate()
+
+		oSA1Mod := oModelMATA030:getModel("MATA030_SA1")
+
+		oSA1Mod:setValue("A1_NOME",    Alltrim(Upper(cNome)) )
+		oSA1Mod:setValue("A1_NREDUZ",  Upper(cNReduz)        )
+		oSA1Mod:setValue("A1_PESSOA",  cTpPessoa             )
+		oSA1Mod:setValue("A1_END",     Upper(cEndereco)           )
+		oSA1Mod:setValue("A1_BAIRRO",  Upper(cBairro)        )
+		oSA1Mod:setValue("A1_COMPLEM", Upper(cComplemento)         )
+		oSA1Mod:setValue("A1_XREFERE", Upper(cPtoReferencia)        )
+		oSA1Mod:setValue("A1_EST",     Upper(AllTrim(cEstado))  )
+		oSA1Mod:setValue("A1_COD_MUN", AllTrim(cCodMunicipio)      )
+
+		If Empty(cCodMunicipio) .And. !Empty(cMunicipio)
+			oSA1Mod:setValue("A1_MUN", 	AllTrim(cMunicipio)      )
+		EndIf
+
+		oSA1Mod:setValue("A1_CEP",     cCep                  )
+		oSA1Mod:setValue("A1_CGC",     cCgc                  )
+		oSA1Mod:setValue("A1_RG",      cRg                   )
+		oSA1Mod:setValue("A1_PFISICA", cRg                   )
+		oSA1Mod:setValue("A1_DDD",     cDdd                  )
+		oSA1Mod:setValue("A1_TEL",     cTelefone             )
+		oSA1Mod:setValue("A1_XCEL",    cCelular              )
+		oSA1Mod:setValue("A1_XDDDCEL", cDDDCel               )
+		oSA1Mod:setValue("A1_EMAIL",   Upper(cEmail)         )
+		oSA1Mod:setValue("A1_XDTNASC", dDataNasc             )
+		oSA1Mod:setValue("A1_XSEXO",   cSexo                 )
+		oSA1Mod:setValue("A1_XESTCIV", cEstCivil             )
+		oSA1Mod:setValue("A1_XPROFIS", cProfissao            )
+		oSA1Mod:setValue("A1_XINTCA",  "S"                   )
+
+		If oModelMATA030:VldData()
+			If oModelMATA030:CommitData()
+				lOk := .T.
+			Else
+				lOk := .F.
+			EndIf
+		Else
+			lOk := .F.
+		EndIf
+
+		If !lOk
+			aErro := oModelMATA030:GetErrorMessage()
+
+			AutoGrLog("Id do formulário de origem:"  + ' [' + AllToChar(aErro[01]) + ']')
+			AutoGrLog("Id do campo de origem: "      + ' [' + AllToChar(aErro[02]) + ']')
+			AutoGrLog("Id do formulário de erro: "   + ' [' + AllToChar(aErro[03]) + ']')
+			AutoGrLog("Id do campo de erro: "        + ' [' + AllToChar(aErro[04]) + ']')
+			AutoGrLog("Id do erro: "                 + ' [' + AllToChar(aErro[05]) + ']')
+			AutoGrLog("Mensagem do erro: "           + ' [' + AllToChar(aErro[06]) + ']')
+			AutoGrLog("Mensagem da solução: "        + ' [' + AllToChar(aErro[07]) + ']')
+			AutoGrLog("Valor atribuído: "            + ' [' + AllToChar(aErro[08]) + ']')
+			AutoGrLog("Valor anterior: "             + ' [' + AllToChar(aErro[09]) + ']')
+
+			lRetorno  := .F.
+			cLogError += AllTrim( MostraErro('/temp') )
+		EndIf
+
+		oModelMATA030:DeActivate()
+
+	EndIf
+
+	SetFunName(cBkpFunName)
+
+	RestArea(aArea)
+	RestArea(aAreaSA1)
+
+	FreeObj(oModelMATA030)
+	FreeObj(oSA1Mod)
+
+Return(lRetorno)
+
+Static Function RetPrecoVenda(cCodTab,cProduto,cMSG)
+
+	Local aArea		:= GetArea()
+	Local aAreaDA1	:= DA1->(GetArea())
+	Local cQry 		:= ""
+	Local lRetorno	:= .T.
+
+	Default cMSG	:= ""
+
+	cQry := " SELECT "
+	cQry += " DA1_PRCVEN PRECO, "
+	cQry += " DA1_DATVIG VIGENCIA "
+	cQry += " FROM  "
+	cQry += + RetSQLName("DA1")
+	cQry += " WHERE "
+	cQry += " D_E_L_E_T_ = ' '  "
+	cQry += " AND DA1_FILIAL = '"+xFilial("DA1")+"' "
+	cQry += " AND DA1_CODPRO = '"+cProduto+"'
+	cQry += " AND DA1_CODTAB = '"+cCodTab+"'
+	cQry += " ORDER BY DA1_DATVIG DESC"
+
+	if Select("QRYTAB") > 0
+		QRYTAB->(DbCloseArea())
+	endif
+
+	cQry := ChangeQuery(cQry)
+
+	MPSysOpenQuery(cQry, "QRYTAB")
+
+	//verifico se o preco esta vigente
+	if STOD(QRYTAB->VIGENCIA) <= dDataBase
+		lRetorno := .T.
+	else
+		cMSG := 'O Produto/Servico: '+ Alltrim(cProduto) +' não possui preço vigente na tabela: ' +Alltrim(cCodTab)+''
+	endif
+
+	RestArea(aAreaDA1)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+Static Function NotServicoParticular(cCampoApontamento)
+
+	Local lRetorno	As Logical
+
+	Default cCampoApontamento	:= ""
+
+	lRetorno := .T.
+
+	Conout("RUTILE75 - NotServicoParticular")
+
+	If AllTrim(cCampoApontamento) $ "UJ0_CODBEN|UJ0_CLIPA|UJ0_LOJAPA|UJ0_CONDPA|UJ0_TABPRE|";
+			+ "UJ0_PVADM|UJ0_AUDIT|UJ0_DTAUDT|UJ0_USRAUD|UJ0_OBSAUD|UJ0_DTCA|UJ0_CODCAN|";
+			+ "UJ0_DESCAN|UJ0_USRCAN|UJ0_USO"
+
+		lRetorno := .F.
+	Else
+		lRetorno := .T.
+	EndIf
+
+Return(lRetorno)

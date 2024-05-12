@@ -1,0 +1,68 @@
+#include "totvs.ch"
+/*
+
+{
+  cliente: "",
+  nome: "",
+  cgc: "",
+  rg:"",
+  uf:"",
+  cidade:"",
+  bairro:"",
+  sexo: "",
+  data_nascimento:""
+}
+
+*/
+User Function ModVirtusConsultaCliente()
+Return(Nil)
+
+	Class ModVirtusConsultaCliente
+
+		Public Data cliente         As Character
+		Public Data nome            As Character
+		Public Data cgc             As Character
+		Public Data rg              As Character
+		Public Data uf              As Character
+		Public Data cidade          As Character
+        Public Data bairro          As Character
+        Public Data sexo            As Character
+        Public Data data_nascimento As Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusConsultaCliente
+
+	Self:cliente            := ""
+	Self:nome               := ""
+	Self:cgc                := ""
+	Self:rg                 := ""
+	Self:uf                 := ""
+	Self:cidade             := ""
+    Self:bairro             := ""
+    Self:sexo               := ""
+    Self:data_nascimento    := DtoC(SToD(""))
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusConsultaCliente
+
+	Local jJsonRet  As Json
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["cliente"]         := Self:cliente
+	jJsonRet["nome"]            := Self:nome
+	jJsonRet["cgc"]             := Self:cgc
+	jJsonRet["rg"]              := Self:rg
+	jJsonRet["uf"]              := Self:uf
+	jJsonRet["cidade"]          := Self:cidade
+    jJsonRet["bairro"]          := Self:bairro
+    jJsonRet["sexo"]            := Self:sexo
+    jJsonRet["data_nascimento"] := Self:data_nascimento
+
+Return(jJsonRet)
+

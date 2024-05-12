@@ -1,0 +1,340 @@
+#include "totvs.ch"
+
+User Function ModVirtusApontamentoFunerario()
+Return(Nil)
+
+	Class ModVirtusApontamentoFunerario
+
+		Public Data cliente_pv	 		As Array
+		Public Data apontamento     	As Array
+		Public Data cnpjemp         	As Character
+		Public Data filialservicos		As Character
+		Public Data data_cadastro		As Date
+		Public Data contrato        	As Character
+		Public Data id_integracao   	As Character
+		Public Data modulo  		 	As Character
+		Public Data gerapv 				As Character
+		Public Data cgcclientepv		As Character
+		Public Data jsonApontamento		As Json
+
+		Public Method New() Constructor
+		Public Method FromJson()
+		Public Method ConvertData()
+		Public Method FormatData()
+		Public Method toJsonObject()
+		Public Method toEstruJsonSX3()
+		Public Method ModClientePV()
+
+	EndClass
+
+Method New() Class ModVirtusApontamentoFunerario
+
+	Self:cliente_pv   		:= {}
+	Self:apontamento     	:= {}
+	Self:cnpjemp         	:= ""
+	Self:data_cadastro		:= StoD("")
+	Self:contrato        	:= ""
+	Self:filialservicos		:= ""
+	Self:id_integracao   	:= ""
+	Self:modulo   			:= ""
+	Self:gerapv   			:= ""
+	Self:cgcclientepv   	:= ""
+	Self:jsonApontamento	:= JsonObject():New()
+
+Return(Self)
+
+Method FromJson(cJson As Character, cErro As Character) Class ModVirtusApontamentoFunerario
+
+	Local aDataAux      As Array
+	Local aEstrUJ0      As Array
+	Local aEstrUJ2      As Array
+	Local aApont 		As Array
+	Local aItens		As Array
+	Local cRetJson      As Character
+	Local cTipoServico	As Character
+	Local jJson         As Json
+	Local jApontamento  As Json
+	Local jItens		As Json
+	Local jLinhaItem	As Json
+	Local jJsonItem		As Json
+	Local lRetorno      As Logical
+	Local lHoraVerao    As Logical
+	Local nHoraVerao    As Numeric
+	Local nApontamento	As Numeric
+	Local nItem         As Numeric
+	Local nLinha		As Numeric
+
+	Default cJson   := ""
+	Default cErro   := ""
+
+	// atribui valor as variavies
+	aDataAux    	:= {}
+	aApont			:= {}
+	aItens			:= {}
+	lRetorno    	:= .T.
+	lHoraVerao  	:= SuperGetMV("MV_HVERAO",.F.,.T.)
+	nHoraVerao  	:= Iif(lHoraVerao, 1, 0)
+	jJson       	:= JsonObject():New()
+	jApontamento	:= JsonObject():New()
+	jItens			:= JsonObject():New()
+	jLinhaItem		:= JsonObject():New()
+	jJsonItem		:= JsonObject():New()
+	cRetJson    	:= ""
+	cTipoServico	:= ""
+
+	// valido os dados do json
+	cRetJson    := jJson:fromJson(cJson)
+	lRetorno    := ValType(cRetJson) == "U"
+
+	// verifico se esta tudo certo
+	If lRetorno
+
+		Self:jsonApontamento	:= JsonObject():New()
+		Self:cnpjemp            := iif(jJson["cnpjemp"] <> Nil, jJson["cnpjemp"], Self:cnpjemp)
+		Self:filialservicos     := iif(jJson["filialservicos"] <> Nil, jJson["filialservicos"], Self:filialservicos)
+		Self:id_integracao      := iif(jJson["id_integracao"] <> Nil, jJson["id_integracao"], Self:id_integracao)
+		Self:contrato           := iif(jJson["contrato"] <> Nil, jJson["contrato"], Self:contrato)
+		Self:data_cadastro		:= IIF(jJson["data_cadastro"] <> Nil,;
+			FwDateTimeToLocal(jJson["data_cadastro"], nHoraVerao)[1], STOD(Space(8)) )
+		Self:modulo 			:= "F"
+		Self:gerapv				:=  iif(jJson["gerapv"] <> Nil, jJson["gerapv"], "N")
+		Self:cgcclientepv		:=  iif(jJson["cgcclientepv"] <> Nil, jJson["cgcclientepv"], Self:cgcclientepv)
+
+		If jJson["cliente_pv"] <> Nil
+			Self:cliente_pv			:= Self:ModClientePV(jJson["cliente_pv"])
+		EndIf
+
+		// caso a data de cadastro esteja preenchida
+		If jJson["apontamento"] <> Nil
+
+			jApontamento := jJson["apontamento"][1]
+
+			// verifico se os itens foram enviados
+			If jApontamento["itens"] <> Nil
+
+				jItens := jApontamento["itens"]
+
+				aEstrUJ2 := Self:toEstruJsonSX3("UJ2")
+
+				Self:jsonApontamento["itens"] := {}
+
+				For nItem := 1 To Len(jItens)
+
+					jLinhaItem := jItens[nItem]
+
+					For nLinha := 1 To Len(aEstrUJ2)
+
+						jJsonItem := JsonObject():New()
+						jJsonItem["campo"] := aEstrUJ2[nLinha, 1]
+						If aEstrUJ2[nLinha, 2] == "Data"
+							jJsonItem["valor"] := iif(jLinhaItem[aEstrUJ2[nLinha, 1]] <> Nil, StoD(jLinhaItem[aEstrUJ2[nLinha, 1]]), aEstrUJ2[nLinha, 3])
+						Else
+							jJsonItem["valor"] := iif(jLinhaItem[aEstrUJ2[nLinha, 1]] <> Nil, jLinhaItem[aEstrUJ2[nLinha, 1]], aEstrUJ2[nLinha, 3])
+						EndIf
+
+						Aadd(aItens, jJsonItem)
+
+					Next nLinha
+
+					If Len(aItens) > 0
+
+						Aadd(Self:jsonApontamento["itens"], aItens)
+						aItens := {}
+
+					EndIf
+
+				Next nItem
+
+				cTipoServico := ""
+
+				aEstrUJ0 := Self:toEstruJsonSX3("UJ0")
+
+				nPosTipServ := AScan(aEstrUJ0,{|x| AllTrim(x[1]) == "UJ0_TPSERV"})
+
+				If nPosTipServ > 0
+					cTipoServico := jApontamento['UJ0_TPSERV']
+				EndIf
+
+				Conout("+=========================================+")
+				Conout("Tipo de Servico: " + cTipoServico)
+				Conout("+=========================================+")
+
+				For nApontamento := 1 To Len(aEstrUJ0)
+
+					If !Empty(cTipoServico) .And. cTipoServico <> "1" .And. NotServicoParticular(aEstrUJ0[nApontamento, 1])
+
+						jJsonItem := JsonObject():New()
+						jJsonItem["campo"] := aEstrUJ0[nApontamento, 1]
+
+						If aEstrUJ0[nApontamento, 2] == "Data"
+							jJsonItem["valor"] := iif(jApontamento[aEstrUJ0[nApontamento, 1]] <> Nil, StoD(jApontamento[aEstrUJ0[nApontamento, 1]]), aEstrUJ0[nApontamento, 3])
+						Else
+							jJsonItem["valor"] := iif(jApontamento[aEstrUJ0[nApontamento, 1]] <> Nil, jApontamento[aEstrUJ0[nApontamento, 1]], aEstrUJ0[nApontamento, 3])
+						EndIf
+
+						Aadd(aApont, jJsonItem)
+
+					ElseIf Empty(cTipoServico) .Or. cTipoServico == "1" 
+
+						jJsonItem := JsonObject():New()
+						jJsonItem["campo"] := aEstrUJ0[nApontamento, 1]
+
+						If aEstrUJ0[nApontamento, 2] == "Data"
+							jJsonItem["valor"] := iif(jApontamento[aEstrUJ0[nApontamento, 1]] <> Nil, StoD(jApontamento[aEstrUJ0[nApontamento, 1]]), aEstrUJ0[nApontamento, 3])
+						Else
+							jJsonItem["valor"] := iif(jApontamento[aEstrUJ0[nApontamento, 1]] <> Nil, jApontamento[aEstrUJ0[nApontamento, 1]], aEstrUJ0[nApontamento, 3])
+						EndIf
+
+						Aadd(aApont, jJsonItem)
+
+					EndIf
+
+				Next nApontamento
+
+				If Len(aApont) > 0
+
+					Self:jsonApontamento["apontamento"] := aApont
+
+				EndIf
+
+			EndIf
+
+		EndIf
+
+		//-- Formata dados do modelo --//
+		Self:FormatData()
+
+	else
+		cErro 	:= xRet
+
+	EndIf
+
+Return(lRetorno)
+
+Method FormatData() Class ModVirtusApontamentoFunerario
+
+	If !Empty(Self:contrato)
+		Self:contrato := PadL(Self:contrato, TamSX3("UF2_CODIGO")[1], "0")
+	EndIf
+
+Return(Nil)
+
+Method toJsonObject() Class ModVirtusApontamentoFunerario
+
+	Local jJsonRet      As Json
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["cnpjemp"]         := Self:cnpjemp
+	jJsonRet["contrato"]        := Self:contrato
+	jJsonRet["id_integracao"]   := Self:id_integracao
+	jJsonRet["apontamento"]     := Self:apontamento
+	jJsonRet["filialservicos"] 	:= Self:filialservicos
+	jJsonRet["data_cadastro"] 	:= Self:data_cadastro
+	jJsonRet["cliente_pv"] 		:= Self:cliente_pv
+	jJsonRet["modulo"] 			:= Self:modulo
+	jJsonRet["jsonApontamento"] := Self:jsonApontamento
+	jJsonRet["gerapv"] 			:= Self:gerapv
+	jJsonRet["cgcclientepv"] 	:= Self:cgcclientepv
+
+Return(jJsonRet)
+
+Method toEstruJsonSX3(cTabela As Character) Class ModVirtusApontamentoFunerario
+
+	Local aDadosUJ0                         As Array
+	Local aEstrutura                        As Array
+	Local aRetorno							As Array
+	Local nLinha                            As Numeric
+	Local nEstrutura                        As Numeric
+	Local oModVirtusEstruturaTabelas    	As Object
+
+	Default cTabela := ""
+
+	oModVirtusEstruturaTabelas := ModVirtusEstruturaTabelas():New()
+
+	aDadosUJ0 	:= oModVirtusEstruturaTabelas:GetEstrutura(cTabela)
+	aRetorno	:= {}
+
+	For nLinha := 1 To Len(aDadosUJ0)
+
+		If aDadosUJ0[nLinha, 1] == cTabela
+
+			aEstrutura := aDadosUJ0[nLinha, 2]
+
+			For nEstrutura := 1 To Len(aEstrutura)
+
+				If oModVirtusEstruturaTabelas:ValidCampo(cTabela, aEstrutura[nEstrutura]["campo_api"])
+
+					If aEstrutura[nEstrutura]["tipo"] == "Numerico"
+						Aadd(aRetorno, {aEstrutura[nEstrutura]["campo_api"], aEstrutura[nEstrutura]["tipo"], 0})
+					ElseIf aEstrutura[nEstrutura]["tipo"] == "Data"
+						Aadd(aRetorno, {aEstrutura[nEstrutura]["campo_api"], aEstrutura[nEstrutura]["tipo"], StoD("")})
+					Else
+						Aadd(aRetorno, {aEstrutura[nEstrutura]["campo_api"], aEstrutura[nEstrutura]["tipo"], ""})
+					EndIf
+
+				EndIf
+
+			Next nEstrutura
+
+		EndIf
+
+	Next nLinha
+
+Return(aRetorno)
+
+Method ModClientePV(jJsonCliente) Class ModVirtusApontamentoFunerario
+
+	Local jJsonRet      As Json
+
+	Default jJsonCliente	:= JsonObject():New()
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["cgc_cliente"]  		:= iif(jJsonCliente["cgc_cliente"] <> Nil, jJsonCliente["cgc_cliente"], "")
+	jJsonRet["rg_cliente"]      	:= iif(jJsonCliente["rg_cliente"] <> Nil, jJsonCliente["rg_cliente"], "")
+	jJsonRet["nome_cliente"]    	:= iif(jJsonCliente["nome_cliente"] <> Nil, jJsonCliente["nome_cliente"], "")
+	jJsonRet["nome_reduzido"]   	:= iif(jJsonCliente["nome_reduzido"] <> Nil, jJsonCliente["nome_reduzido"], "")
+	jJsonRet["tipo_pessoa"]     	:= iif(jJsonCliente["tipo_pessoa"] <> Nil, jJsonCliente["tipo_pessoa"], "")
+	jJsonRet["sexo"]           	 	:= iif(jJsonCliente["sexo"] <> Nil, jJsonCliente["sexo"], "")
+	jJsonRet["profissao"]   		:= iif(jJsonCliente["profissao"] <> Nil, jJsonCliente["profissao"], "")
+	jJsonRet["estado_civil"]    	:= iif(jJsonCliente["estado_civil"] <> Nil, jJsonCliente["estado_civil"], "")
+	jJsonRet["conjuge"]         	:= iif(jJsonCliente["conjuge"] <> Nil, jJsonCliente["conjuge"], "")
+	jJsonRet["email"]           	:= iif(jJsonCliente["email"] <> Nil, jJsonCliente["email"], "")
+	jJsonRet["ddd"]             	:= iif(jJsonCliente["ddd"] <> Nil, jJsonCliente["ddd"], "")
+	jJsonRet["telefone"]        	:= iif(jJsonCliente["telefone"] <> Nil, jJsonCliente["telefone"], "")
+	jJsonRet["ddd_celular"]     	:= iif(jJsonCliente["ddd_celular"] <> Nil, jJsonCliente["ddd_celular"], "")
+	jJsonRet["celular"]         	:= iif(jJsonCliente["celular"] <> Nil, jJsonCliente["celular"], "")
+	jJsonRet["celular2"]        	:= iif(jJsonCliente["celular2"] <> Nil, jJsonCliente["celular2"], "")
+	jJsonRet["estado"]          	:= iif(jJsonCliente["estado"] <> Nil, jJsonCliente["estado"], "")
+	jJsonRet["cod_municipio"]   	:= iif(jJsonCliente["cod_municipio"] <> Nil, jJsonCliente["cod_municipio"], "")
+	jJsonRet["municipio"]       	:= iif(jJsonCliente["municipio"] <> Nil, jJsonCliente["municipio"], "")
+	jJsonRet["cep"]             	:= iif(jJsonCliente["cep"] <> Nil, jJsonCliente["cep"], "")
+	jJsonRet["endereco"]        	:= iif(jJsonCliente["endereco"] <> Nil, jJsonCliente["endereco"], "")
+	jJsonRet["numero"]          	:= iif(jJsonCliente["numero"] <> Nil, jJsonCliente["numero"], "")
+	jJsonRet["bairro"]          	:= iif(jJsonCliente["bairro"] <> Nil, jJsonCliente["bairro"], "")
+	jJsonRet["complemento"]     	:= iif(jJsonCliente["complemento"] <> Nil, jJsonCliente["complemento"], "")
+	jJsonRet["ponto_referencia"]    := iif(jJsonCliente["ponto_referencia"] <> Nil, jJsonCliente["ponto_referencia"], "")
+
+Return(jJsonRet)
+
+Static Function NotServicoParticular(cCampoApontamento)
+
+	Local lRetorno	As Logical
+
+	Default cCampoApontamento	:= ""
+
+	lRetorno := .T.
+
+	Conout("ModVirtusApontamentoFunerario - NotServicoParticular")
+
+	If AllTrim(cCampoApontamento) $ "UJ0_CODBEN|UJ0_CLIPA|UJ0_LOJAPA|UJ0_CONDPA|UJ0_TABPRE|";
+			+ "UJ0_PVADM|UJ0_AUDIT|UJ0_DTAUDT|UJ0_USRAUD|UJ0_OBSAUD|UJ0_DTCA|UJ0_CODCAN|";
+			+ "UJ0_DESCAN|UJ0_USRCAN|UJ0_USO"
+
+		lRetorno := .F.
+	Else
+		lRetorno := .T.
+	EndIf
+
+Return(lRetorno)

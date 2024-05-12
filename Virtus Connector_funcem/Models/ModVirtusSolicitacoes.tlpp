@@ -1,0 +1,195 @@
+#include "totvs.ch"
+
+User Function ModVirtusSolicitacoes()
+Return(Nil)
+
+	Class ModVirtusSolicitacoes
+
+		Public Data cnpjemp					As Character
+		Public Data id_integracao			As Character
+		Public Data tipo_servico            As Character
+		Public Data contrato                As Character
+		Public Data autorizado              As Character
+		Public Data solicitante             As Character
+		Public Data telefone                As Character
+		Public Data email                   As Character
+		Public Data grau_parentesco         As Character
+		Public Data observacao              As Character
+		Public Data item                    As Character
+		Public Data data_hora_solicitacao	As Character
+		Public Data data_solicitacao        As Character
+		Public Data hora_solicitacao        As Character
+
+		Public Method New() Constructor
+		Public Method FromJson()
+		Public Method ToJsonObject()
+		Public Method ModTiposSolicitacao()
+		Public Method ModTotal()
+		Public Method ModTotalSolicitacao()
+		Public Method ModStatusSolicitacao()
+
+	EndClass
+
+Method New() Class ModVirtusSolicitacoes
+
+	Self:cnpjemp                := ""
+	Self:id_integracao          := ""
+	Self:contrato               := ""
+	Self:autorizado             := ""
+	Self:solicitante            := ""
+	Self:data_hora_solicitacao  := ""
+	Self:data_solicitacao       := ""
+	Self:hora_solicitacao       := ""
+	Self:item                   := ""
+	Self:tipo_servico           := ""
+	Self:telefone               := ""
+	Self:email                  := ""
+	Self:grau_parentesco        := ""
+	Self:observacao             := ""
+
+Return(Nil)
+
+Method FromJson(cJson As Character, cErro As Character) Class ModVirtusSolicitacoes
+
+	Local cRetJson      As Character
+	Local jJson         As Json
+	Local lRetorno      As Logical
+	Local lHoraVerao    As Logical
+	Local nHoraVerao    As Numeric
+
+	Default cJson	:= ""
+	Default cErro	:= ""
+
+	// atribui valor as variaveis
+	lRetorno    	:= .T.
+	lHoraVerao  	:= SuperGetMV("MV_HVERAO",.F.,.T.)
+	nHoraVerao  	:= Iif(lHoraVerao, 1, 0)
+	jJson       	:= JsonObject():New()
+
+	// valido os dados do json
+	cRetJson    := jJson:fromJson(cJson)
+	lRetorno    := ValType(cRetJson) == "U"
+
+	// verifico se esta tudo certo
+	If lRetorno
+
+		Self:cnpjemp            := iif(jJson["cnpjemp"] <> Nil, jJson["cnpjemp"], Self:cnpjemp)
+		Self:tipo_servico     	:= iif(jJson["tipo_servico"] <> Nil, jJson["tipo_servico"], Self:tipo)
+		Self:id_integracao 		:= iif(jJson["id_integracao"] <> Nil, jJson["id_integracao"], Self:id_integracao)
+		Self:contrato      		:= iif(jJson["contrato"] <> Nil, jJson["contrato"], Self:contrato)
+		Self:autorizado      	:= iif(jJson["autorizado"] <> Nil, jJson["autorizado"], Self:autorizado)
+		Self:solicitante		:= iif(jJson["solicitante"] <> Nil, jJson["solicitante"], Self:solicitante)
+		Self:email           	:= iif(jJson["email"] <> Nil, jJson["email"], Self:email)
+		Self:telefone 			:= iif(jJson["telefone"] <> Nil, jJson["telefone"], Self:telefone)
+		Self:observacao			:= iif(jJson["observacao"] <> Nil, jJson["observacao"], Self:observacao)
+		Self:grau_parentesco	:= iif(jJson["grau_parentesco"] <> Nil, jJson["grau_parentesco"], Self:grau_parentesco)
+		Self:data_solicitacao	:= iif(jJson["data_hora_agendamento"] <> Nil,;
+			FwDateTimeToLocal(jJson["data_hora_agendamento"], nHoraVerao)[1], STOD(Space(8)) )
+		Self:hora_solicitacao 	:= iif(jJson["data_hora_agendamento"] <> Nil,;
+			FwDateTimeToLocal(jJson["data_hora_agendamento"], nHoraVerao)[2], "" )
+		Self:item           	:= iif(jJson["item"] <> Nil, jJson["item"], GetEndereco(Self:contrato))
+
+	else
+		cErro 	:= xRet
+	EndIf
+
+Return(lRetorno)
+
+Method ToJsonObject() Class ModVirtusSolicitacoes
+
+	Local jJsonSolicitacoes AS Json
+
+	jJsonSolicitacoes := JsonObject():New()
+	If !Empty(Self:cnpjemp)
+		jJsonSolicitacoes["cnpjemp"]       		:= Self:cnpjemp
+	EndIf
+
+	If !Empty(Self:id_integracao)
+		jJsonSolicitacoes["id_integracao"]      := Self:id_integracao
+	EndIf
+
+	If !Empty(Self:contrato)
+		jJsonSolicitacoes["contrato"]      		:= Self:contrato
+	EndIf
+
+	jJsonSolicitacoes["autorizado"]      	:= Self:autorizado
+	jJsonSolicitacoes["tipo_servico"]       := Self:tipo_servico
+	jJsonSolicitacoes["data_solicitacao"]   := Self:data_solicitacao
+	jJsonSolicitacoes["hora_solicitacao"]  	:= Self:hora_solicitacao
+	jJsonSolicitacoes["item"]       		:= Self:item
+	jJsonSolicitacoes["solicitante"]       	:= Self:solicitante
+	jJsonSolicitacoes["telefone"]           := Self:telefone
+	jJsonSolicitacoes["email"]              := Self:email
+	jJsonSolicitacoes["grau_parentesco"]    := Self:grau_parentesco
+	jJsonSolicitacoes["observacao"]         := Self:observacao
+
+Return(jJsonSolicitacoes)
+
+Method ModTiposSolicitacao() Class ModVirtusSolicitacoes
+
+	Local jJsonTiposSolicitacoes    As Json
+
+	jJsonTiposSolicitacoes := JsonObject():New()
+	jJsonTiposSolicitacoes["codigo"]    := ""
+	jJsonTiposSolicitacoes["tipo"]      := ""
+	jJsonTiposSolicitacoes["descricao"] := ""
+
+Return(jJsonTiposSolicitacoes)
+
+Method ModTotal() Class ModVirtusSolicitacoes
+
+	Local jJsonTotal      As Json
+
+	jJsonTotal    := JsonObject():New()
+
+	jJsonTotal["tipo"] 			:= ""
+	jJsonTotal["total"] 		:= 0
+	jJsonTotal["solicitacao"] 	:= {}
+
+Return(jJsonTotal)
+
+Method ModTotalSolicitacao() Class ModVirtusSolicitacoes
+
+	Local jJsonTotal      As Json
+
+	jJsonTotal    := JsonObject():New()
+
+	jJsonTotal["tipo"] 			:= ""
+	jJsonTotal["total"] 		:= 0
+	jJsonTotal["status"] 		:= {}
+
+Return(jJsonTotal)
+
+Method ModStatusSolicitacao() Class ModVirtusSolicitacoes
+
+	Local jStatusSolicitacao      As Json
+
+	jStatusSolicitacao    := JsonObject():New()
+
+	jStatusSolicitacao["status"] 			:= ""
+	jStatusSolicitacao["quantidade"] 		:= 0
+
+Return(jStatusSolicitacao)
+
+Static Function GetEndereco(cContrato)
+
+	Local cQuery 	As Character
+
+	// busca o item do contrato
+	cRetorno := ""
+
+	cQuery := " SELECT U04.U04_ITEM AS ITEM "
+	cQuery += " FROM " + RetSQLName("U04") + " U04 (NOLOCK) "
+	cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U04.U04_CODIGO = '" + cContrato + "' "
+	cQuery += " ORDER BY U04.U04_ITEM ASC "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBEND" )
+
+	If TRBEND->(!Eof())
+		cRetorno := TRBEND->U04_ITEM
+	EndIf
+
+Return(cRetorno)

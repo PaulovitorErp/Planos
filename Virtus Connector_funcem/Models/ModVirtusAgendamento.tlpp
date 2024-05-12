@@ -1,0 +1,286 @@
+#include "totvs.ch"
+
+User Function ModVirtusAgendamento()
+Return(Nil)
+
+	Class ModVirtusAgendamento
+
+		Public Data agendamento 			As Array
+		Public Data cnpjemp					As Character
+		Public Data id_integracao			As Character
+		Public Data contrato				As Character
+		Public Data tipo 					As Character
+		Public Data autorizado 				As Character
+		Public Data email 					As Character
+		Public Data telefone 				As Character
+		Public Data solicitante				As Character
+		Public Data data_hora_agendamento	As Character
+		Public Data data_agendamento 		As Character
+		Public Data hora_agendamento 		As Character
+
+		Public Method New() Constructor
+		Public Method FromJson()
+		Public Method ToJsonObject()
+		Public Method FormatData()
+		Public Method ModSepultamento()
+		Public Method ModExumacao()
+		Public Method ModTransTitularidade()
+		Public Method ModSaidaRestosMortais()
+		Public Method ModEntradaRestosMortais()
+		Public Method ModCremacao()
+		Public Method ModRetiradaCinzas()
+		Public Method ModTotal()
+		Public Method ModStatusAgendamentos()
+
+	EndClass
+
+Method New() Class ModVirtusAgendamento
+
+	Self:agendamento 			:= {}
+	Self:cnpjemp				:= ""
+	Self:id_integracao			:= ""
+	Self:contrato				:= ""
+	Self:tipo 					:= ""
+	Self:autorizado 			:= ""
+	Self:email 					:= ""
+	Self:telefone 				:= ""
+	Self:solicitante			:= ""
+	Self:data_hora_agendamento	:= "" //Recebe uma string no formato DateTime reconhecido pelo W3C (ISO 8601 e RFC 3339) e converte para uma data e hora local.
+	Self:data_agendamento 		:= ""
+	Self:hora_agendamento 		:= ""
+
+Return(Nil)
+
+Method FromJson(cJson As Character, cErro As Character) Class ModVirtusAgendamento
+
+	Local aAgendamento	As Array
+	Local cRetJson      As Character
+	Local jJson         As Json
+	Local jAgendamento	As Json
+	Local lRetorno      As Logical
+	Local lHoraVerao    As Logical
+	Local nHoraVerao    As Numeric
+
+	Default cJson	:= ""
+	Default cErro	:= ""
+
+	// atribui valor as variaveis
+	aAgendamento	:= {}
+	lRetorno    	:= .T.
+	lHoraVerao  	:= SuperGetMV("MV_HVERAO",.F.,.T.)
+	nHoraVerao  	:= Iif(lHoraVerao, 1, 0)
+	jJson       	:= JsonObject():New()
+
+	// valido os dados do json
+	cRetJson    := jJson:fromJson(cJson)
+	lRetorno    := ValType(cRetJson) == "U"
+
+	// verifico se esta tudo certo
+	If lRetorno
+
+		Self:cnpjemp            := iif(jJson["cnpjemp"] <> Nil, jJson["cnpjemp"], Self:cnpjemp)
+		Self:tipo     			:= iif(jJson["tipo"] <> Nil, jJson["tipo"], Self:tipo)
+		Self:id_integracao 		:= iif(jJson["id_integracao"] <> Nil, jJson["id_integracao"], Self:id_integracao)
+		Self:contrato      		:= iif(jJson["contrato"] <> Nil, jJson["contrato"], Self:contrato)
+		Self:autorizado      	:= iif(jJson["autorizado"] <> Nil, jJson["autorizado"], Self:autorizado)
+		Self:solicitante		:= iif(jJson["solicitante"] <> Nil, jJson["solicitante"], Self:solicitante)
+		Self:email           	:= iif(jJson["email"] <> Nil, jJson["email"], Self:email)
+		Self:data_agendamento	:= iif(jJson["data_hora_agendamento"] <> Nil,;
+			FwDateTimeToLocal(jJson["data_hora_agendamento"], nHoraVerao)[1], STOD(Space(8)) )
+		Self:hora_agendamento 	:= iif(jJson["data_hora_agendamento"] <> Nil,;
+			FwDateTimeToLocal(jJson["data_hora_agendamento"], nHoraVerao)[2], "" )
+		Self:telefone 			:= iif(jJson["telefone"] <> Nil, jJson["telefone"], Self:telefone)
+		// caso a data de cadastro esteja preenchida
+		If jJson["agendamento"] <> Nil
+
+			// 1=Sepultamento;2=Exumacao;3=Transf.Titularidade;4=Saida de Restos Mortais;5=Entrada de Restos Mortais
+			If !Empty(Self:tipo)
+
+				jAgendamento := jJson["agendamento"][1]
+
+				If Self:tipo == "1" // sepultamento
+
+					Aadd( aAgendamento, Self:ModSepultamento(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "2" // exumacao
+
+					Aadd( aAgendamento, Self:ModExumacao(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "3" // Transf.Titularidade
+
+					Aadd( aAgendamento, Self:ModTransTitularidade(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "4" // Saida de Restos Mortais
+
+					Aadd( aAgendamento, Self:ModSaidaRestosMortais(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "5" // Entrada de Restos Mortais
+
+					Aadd( aAgendamento, Self:ModEntradaRestosMortais(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "6" // cremacao
+
+					Aadd( aAgendamento, Self:ModCremacao(jAgendamento, @cErro))
+
+				ElseIf Self:tipo == "7" // retirada de cinzas
+
+					Aadd( aAgendamento, Self:ModRetiradaCinzas(jAgendamento, @cErro))
+
+				EndIf
+
+				If Len(aAgendamento) > 0
+					Self:agendamento := aAgendamento
+				EndIf
+
+			EndIf
+		else
+			cErro 	:= xRet
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+Method ModSepultamento(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonSepultamento      As Json
+
+	jJsonSepultamento    := JsonObject():New()
+
+	jJsonSepultamento["falecido"] 	:= iif(jAgendamento["falecido"] <> Nil, jAgendamento["falecido"], "")
+	jJsonSepultamento["turno"] 		:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+	jJsonSepultamento["quadra"] 	:= iif(jAgendamento["quadra"] <> Nil, jAgendamento["quadra"], "")
+	jJsonSepultamento["modulo"] 	:= iif(jAgendamento["modulo"] <> Nil, jAgendamento["modulo"], "")
+	jJsonSepultamento["jazigo"] 	:= iif(jAgendamento["jazigo"] <> Nil, jAgendamento["jazigo"], "")
+	jJsonSepultamento["gaveta"] 	:= iif(jAgendamento["gaveta"] <> Nil, jAgendamento["gaveta"], "")
+
+Return(jJsonSepultamento)
+
+Method ModExumacao(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonExumacao      As Json
+
+	jJsonExumacao    := JsonObject():New()
+
+	jJsonExumacao["item"] 		:= iif(jAgendamento["item"] <> Nil, jAgendamento["item"], "")
+	jJsonExumacao["turno"] 		:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+
+Return(jJsonExumacao)
+
+Method ModTransTitularidade(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonTransTitularidade     As Json
+
+	jJsonTransTitularidade    := JsonObject():New()
+
+	jJsonTransTitularidade["nome_novo_cliente"] 	:= iif(jAgendamento["nome_novo_cliente"] <> Nil, jAgendamento["nome_novo_cliente"], "")
+	jJsonTransTitularidade["motivo"] 				:= iif(jAgendamento["motivo"] <> Nil, jAgendamento["motivo"], "")
+	jJsonTransTitularidade["valor_taxa"] 			:= iif(jAgendamento["valor_taxa"] <> Nil, jAgendamento["valor_taxa"], "")
+	jJsonTransTitularidade["codigo_novo_cliente"] 	:= iif(jAgendamento["codigo_novo_cliente"] <> Nil, jAgendamento["codigo_novo_cliente"], "")
+	jJsonTransTitularidade["loja_novo_cliente"] 	:= iif(jAgendamento["loja_novo_cliente"] <> Nil, jAgendamento["loja_novo_cliente"], "")
+
+Return(jJsonTransTitularidade)
+
+Method ModSaidaRestosMortais(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonSaidaRestosMortais      As Json
+
+	jJsonSaidaRestosMortais    := JsonObject():New()
+
+	jJsonSaidaRestosMortais["item"] 			:= iif(jAgendamento["item"] <> Nil, jAgendamento["item"], "")
+	jJsonSaidaRestosMortais["turno"] 			:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+	jJsonSaidaRestosMortais["local_destino"] 	:= iif(jAgendamento["local_destino"] <> Nil, jAgendamento["local_destino"], "")
+
+Return(jJsonSaidaRestosMortais)
+
+Method ModEntradaRestosMortais(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonEntradaRestosMortais     As Json
+
+	jJsonEntradaRestosMortais    := JsonObject():New()
+
+	jJsonEntradaRestosMortais["falecido"] 		:= iif(jAgendamento["falecido"] <> Nil, jAgendamento["falecido"], "")
+	jJsonEntradaRestosMortais["turno"] 			:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+	jJsonEntradaRestosMortais["local_origem"] 	:= iif(jAgendamento["local_origem"] <> Nil, jAgendamento["local_origem"], "")
+	jJsonEntradaRestosMortais["tipo"] 			:= iif(jAgendamento["tipo"] <> Nil, jAgendamento["tipo"], "")
+	jJsonEntradaRestosMortais["quadra"] 		:= iif(jAgendamento["quadra"] <> Nil, jAgendamento["quadra"], "")
+	jJsonEntradaRestosMortais["modulo"] 		:= iif(jAgendamento["modulo"] <> Nil, jAgendamento["modulo"], "")
+	jJsonEntradaRestosMortais["jazigo"] 		:= iif(jAgendamento["jazigo"] <> Nil, jAgendamento["jazigo"], "")
+	jJsonEntradaRestosMortais["gaveta"] 		:= iif(jAgendamento["gaveta"] <> Nil, jAgendamento["gaveta"], "")
+	jJsonEntradaRestosMortais["ossario"] 		:= iif(jAgendamento["ossario"] <> Nil, jAgendamento["ossario"], "")
+	jJsonEntradaRestosMortais["nicho"] 			:= iif(jAgendamento["nicho"] <> Nil, jAgendamento["nicho"], "")
+
+Return(jJsonEntradaRestosMortais)
+
+Method ModCremacao(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonCremacao      As Json
+
+	jJsonCremacao    := JsonObject():New()
+
+	jJsonCremacao["falecido"] 		:= iif(jAgendamento["falecido"] <> Nil, jAgendamento["falecido"], "")
+	jJsonCremacao["turno"] 			:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+	jJsonCremacao["crematorio"] 	:= iif(jAgendamento["crematorio"] <> Nil, jAgendamento["crematorio"], "")
+	jJsonCremacao["nicho"] 			:= iif(jAgendamento["nicho"] <> Nil, jAgendamento["nicho"], "")
+
+Return(jJsonCremacao)
+
+Method ModRetiradaCinzas(jAgendamento As Json, cErro As Character) Class ModVirtusAgendamento
+
+	Local jJsonRetiradaCinzas      As Json
+
+	jJsonRetiradaCinzas    := JsonObject():New()
+
+	jJsonRetiradaCinzas["item"] 			:= iif(jAgendamento["item"] <> Nil, jAgendamento["item"], "")
+	jJsonRetiradaCinzas["turno"] 			:= iif(jAgendamento["turno"] <> Nil, jAgendamento["turno"], "")
+
+Return(jJsonRetiradaCinzas)
+
+Method ModTotal() Class ModVirtusAgendamento
+
+	Local jJsonTotal      As Json
+
+	jJsonTotal    := JsonObject():New()
+
+	jJsonTotal["tipo"] 			:= ""
+	jJsonTotal["total"] 		:= 0
+	jJsonTotal["status"] 		:= {}
+
+Return(jJsonTotal)
+
+Method ModStatusAgendamentos() Class ModVirtusAgendamento
+
+	Local jStatusAgendamento      As Json
+
+	jStatusAgendamento    := JsonObject():New()
+
+	jStatusAgendamento["status"] 			:= ""
+	jStatusAgendamento["quantidade"] 		:= 0
+
+Return(jStatusAgendamento)
+
+Method ToJsonObject() Class ModVirtusAgendamento
+
+	Local jRetorno	As Json
+
+	jRetorno	:= JsonObject():New()
+
+	jRetorno["cnpjemp"] 			:= Self:cnpjemp
+	jRetorno["tipo"] 				:= Self:tipo
+	jRetorno["id_integracao"] 		:= Self:id_integracao
+	jRetorno["contrato"] 			:= Self:contrato
+	jRetorno["autorizado"] 			:= Self:autorizado
+	jRetorno["solicitante"] 		:= Self:solicitante
+	jRetorno["email"] 				:= Self:email
+	jRetorno["data_agendamento"] 	:= Self:data_agendamento
+	jRetorno["hora_agendamento"] 	:= Self:hora_agendamento
+	jRetorno["telefone"] 			:= Self:telefone
+	jRetorno["email"] 				:= Self:email
+	jRetorno["telefone"] 			:= Self:telefone
+	jRetorno["agendamento"] 		:= Self:agendamento
+
+Return(jRetorno)
+
+Method FormatData() Class ModVirtusAgendamento
+
+Return(Nil)

@@ -1,0 +1,76 @@
+#include "totvs.ch"
+
+User Function ModVirtusSepultados()
+Return(Nil)
+
+	Class ModVirtusSepultados
+
+		Public Data item                As Character
+		Public Data sepultado           As Character
+		Public Data endereco            As Character
+		Public Data tipo                As Character
+		Public Data quadra              As Character
+		Public Data modulo              As Character
+		Public Data jazigo              As Character
+		Public Data gaveta              As Character
+		Public Data situacao            As Character
+		Public Data ossuario            As Character
+        Public Data lacre               As Character
+		Public Data nicho_ossuario      As Character
+		Public Data crematorio          As Character
+		Public Data nicho_columbario    As Character
+		Public Data data_servico        As Character
+		Public Data data_utilizacao     As Character
+		Public Data prazo_exumacao      As Character
+
+		Public Method New() Constructor
+		Public Method ToJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusSepultados
+
+	Self:item                := ""
+	Self:sepultado           := ""
+	Self:endereco            := ""
+	Self:tipo                := ""
+	Self:quadra              := ""
+	Self:modulo              := ""
+	Self:jazigo              := ""
+	Self:gaveta              := ""
+	Self:situacao            := ""
+    Self:lacre               := ""
+	Self:ossuario            := ""
+	Self:nicho_ossuario      := ""
+	Self:crematorio          := ""
+	Self:nicho_columbario    := ""
+	Self:data_servico        := U_TrataDataPOUI(StoD(""))
+	Self:data_utilizacao     := U_TrataDataPOUI(StoD(""))
+	Self:prazo_exumacao      := U_TrataDataPOUI(StoD(""))
+
+Return(Nil)
+
+Method ToJsonObject() Class ModVirtusSepultados
+
+	Local jJsonSepultados AS Json
+    
+    jJsonSepultados := JsonObject():New()
+	jJsonSepultados["item"]                := Self:item  
+	jJsonSepultados["sepultado"]           := Self:sepultado 
+	jJsonSepultados["endereco"]            := Self:endereco
+	jJsonSepultados["tipo"]                := Self:tipo
+	jJsonSepultados["quadra"]              := Self:quadra
+	jJsonSepultados["modulo"]              := Self:modulo
+	jJsonSepultados["jazigo"]              := Self:jazigo
+	jJsonSepultados["gaveta"]              := Self:gaveta
+    jJsonSepultados["lacre"]               := Self:lacre
+	jJsonSepultados["situacao"]            := Self:situacao
+	jJsonSepultados["ossuario"]            := Self:ossuario
+	jJsonSepultados["nicho_ossuario"]      := Self:nicho_ossuario
+	jJsonSepultados["crematorio"]          := Self:crematorio
+	jJsonSepultados["nicho_columbario"]    := Self:nicho_columbario
+	jJsonSepultados["data_servico"]        := U_TrataDataPOUI(StoD(""))
+	jJsonSepultados["data_utilizacao"]     := U_TrataDataPOUI(StoD(""))
+	jJsonSepultados["prazo_exumacao"]      := U_TrataDataPOUI(StoD(""))
+
+Return(jJsonSepultados)

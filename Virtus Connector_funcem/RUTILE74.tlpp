@@ -1,0 +1,1594 @@
+#include "totvs.ch"
+#INCLUDE "TOPCONN.CH"
+#include "tbiconn.ch"
+
+User Function RUTILE74()
+Return(Nil)
+
+	Class VirtusConsulta
+
+		Public Method New() Constructor
+		Public Method ConsultaCliente()
+		Public Method ConsultaContrato()
+		Public Method ContratoCemiterio()
+		Public Method ConsultaSepultados()
+		Public Method ConsultaEndereco()
+		Public Method GrauParentesco()
+		Public Method RetDadosCliente()
+		Public Method RetFinanceiroContrato()
+		Public Method RetEnderecamento()
+		Public Method RetHistoricoEnderecamento()
+		Public Method RetHistoricoTransfCessionario()
+		Public Method RetTransfEnderecamento()
+		Public Method RetAutorizados()
+		Public Method RetServicos()
+		Public Method RetManutencao()
+		Public Method RetReajustes()
+
+	EndClass
+
+Method New() Class VirtusConsulta
+
+Return(Nil)
+
+Method GrauParentesco(jResponse) Class VirtusConsulta
+
+	Local aDadosSX5				As Array
+	Local nSX5					As Numeric
+	Local oStruSX5				As Object
+	Local oUGetSxFile			As Object
+	Local oModGrauParentesco 	As Object
+
+	oUGetSxFile := UGetSxFile():New()
+	aDadosSX5	:= oUGetSxFile:GetInfoSX5("ZG")
+
+	If Len(aDadosSX5) > 0
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Dados clientes ok."
+		jResponse["dados"]  	:= {}
+
+		For nSX5 := 1 To Len(aDadosSX5)
+
+			// pego a estrutura da SX5
+			oStruSX5 := aDadosSX5[nSX5, 2]
+
+			oModGrauParentesco 				:= ModVirtusGrauParentesco():New()
+			oModGrauParentesco["codigo"] 	:= AllTrim(oStruSX5:cChave)
+			oModGrauParentesco["descricao"] := AllTrim(Capital(U_SpecialNoChar(oStruSX5:cDescricao)))
+
+			Aadd(jResponse["dados"], oModGrauParentesco:toJsonObject())
+
+			// limpo os dados do objeto
+			FreeObj(oStruSX5)
+			FreeObj(oModGrauParentesco)
+			oStruSX5 := Nil
+			oModGrauParentesco	:= Nil
+
+		Next nSX5
+
+	Else
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Requisição não retornou dados."
+		jResponse["dados"]  	:= {}
+
+	EndIf
+
+Return(Nil)
+
+Method ConsultaCliente(cCGCCliente, cNome, cContrato, jResponse) Class VirtusConsulta
+
+	Local aArea                         As Array
+	Local aAreaSA1                      As Array
+	Local cQuery                        As Character
+	Local nUF2                          As Numeric
+	Local nU00                          As Numeric
+	Local nRetorno  	                As Numeric
+	Local oModVirtusConsultaCliente     As Object
+	Local oSX2                          As Object
+
+	Default cCGCCliente := ""
+	Default cNome       := ""
+	Default cContrato   := ""
+	Default jResponse   := JsonObject():New()
+
+	// verifico se as tabelas existem
+	aArea       := GetArea()
+	aAreaSA1    := SA1->(GetArea())
+	oSX2		:= UGetSxFile():New()
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+	nRetorno	:= 0
+	cQuery		:= ""
+
+	cQuery += " SELECT DISTINCT SA1.A1_FILIAL, SA1.A1_COD, SA1.A1_LOJA "
+	cQuery += " FROM " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+
+	if nU00 > 0
+
+		//contratos cemiterio
+		cQuery += " LEFT JOIN " +RetSQLName("U00") + " U00 (NOLOCK) "
+		cQuery += "     ON U00.D_E_L_E_T_ = ' ' "
+		cQuery += "     AND U00.U00_CLIENT = SA1.A1_COD "
+		cQuery += "     AND U00.U00_LOJA = SA1.A1_LOJA "
+
+		If !Empty(cContrato)
+			cQuery += " AND U00.U00_CODIGO LIKE '%" + AllTrim(cContrato) + "%' "
+		EndIf
+
+	EndIf
+
+	if nUF2 > 0
+
+		//contratos funeraria
+		cQuery += " LEFT JOIN " +RetSQLName("UF2") + " UF2 (NOLOCK) ON "
+		cQuery += "     UF2.D_E_L_E_T_ = ' ' "
+		cQuery += "     AND UF2.UF2_CLIENT = SA1.A1_COD "
+		cQuery += "     AND UF2.UF2_LOJA = SA1.A1_LOJA "
+
+		If !Empty(cContrato)
+			cQuery += " AND UF2.UF2_CODIGO LIKE '%" + AllTrim(cContrato) + "%' "
+		EndIf
+
+	EndIf
+
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_CGC <> ' ' "
+
+	If !Empty(cCGCCliente)
+		cQuery += " AND SA1.A1_CGC LIKE '%" + AllTrim(cCGCCliente) + "%' "
+	EndIf
+
+	If !Empty(cNome)
+		cQuery += " AND SA1.A1_NOME LIKE '%" + AllTrim(cNome) + "%' "
+	EndIf
+
+	//filtro clientes que tenha algum contrato ou que deixou de ser titular de algum contrato
+	cQuery += " AND ( "
+
+	if nU00 > 0
+		cQuery += "     U00.U00_CODIGO <> ' ' "
+	endif
+
+	if nU00 > 0 .And. nUF2 > 0
+
+		cQuery += "     OR "
+
+	endif
+
+	if nUF2 > 0
+		cQuery += "     UF2.UF2_CODIGO <> ' ' "
+	endif
+
+	cQuery += " ) "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRBCLI' )
+
+	If TRBCLI->(!Eof())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Dados clientes ok."
+		jResponse["dados"]  	:= {}
+
+		While TRBCLI->(!Eof())
+
+			SA1->(DbSetOrder(1))
+			If SA1->(MsSeek(xFilial("SA1") + TRBCLI->A1_COD + TRBCLI->A1_LOJA ))
+
+				oModVirtusConsultaCliente := Nil
+				oModVirtusConsultaCliente := ModVirtusConsultaCliente():New()
+
+				oModVirtusConsultaCliente:cliente            := TRBCLI->A1_COD + TRBCLI->A1_LOJA
+				oModVirtusConsultaCliente:nome               := Alltrim(U_SpecialNoChar(SA1->A1_NOME))
+				oModVirtusConsultaCliente:cgc                := Alltrim(SA1->A1_CGC)
+				oModVirtusConsultaCliente:rg                 := Alltrim(SA1->A1_PFISICA)
+				oModVirtusConsultaCliente:uf                 := Alltrim(SA1->A1_EST)
+				oModVirtusConsultaCliente:cidade             := Alltrim(SA1->A1_MUN)
+				oModVirtusConsultaCliente:bairro             := Alltrim(U_SpecialNoChar(SA1->A1_BAIRRO))
+				oModVirtusConsultaCliente:sexo               := Iif(SA1->A1_XSEXO=="M", "Masculino", "Feminino")
+				oModVirtusConsultaCliente:data_nascimento    := U_TrataDataPOUI(SA1->A1_XDTNASC)
+
+				Aadd(jResponse["dados"], oModVirtusConsultaCliente:toJsonObject())
+
+			EndIf
+
+			FreeObj(oModVirtusConsultaCliente)
+			oModVirtusConsultaCliente := Nil
+
+			TRBCLI->(DBSkip())
+		EndDo
+
+	Else
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Requisição não retornou dados."
+
+	EndIf
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method ConsultaContrato(cCGCCliente, cNome, cContrato, jResponse) Class VirtusConsulta
+
+	Local aDados						As Array
+	Local cQuery                        As Character
+	Local nUF2                          As Numeric
+	Local nU00                          As Numeric
+	Local nRetorno  	                As Numeric
+	Local nDados						As Numeric
+	Local oModVirtusConsultaContratos  	As Object
+	Local oVirtusFin					As Object
+	Local oSX2                     		As Object
+
+	Default cCGCCliente := ""
+	Default cNome       := ""
+	Default cContrato   := ""
+	Default jResponse   := JsonObject():New()
+
+	// verifico se as tabelas existem
+	aDados		:= {}
+	oSX2		:= UGetSxFile():New()
+	nUF2		:= Len(oSX2:GetInfoSX2("UF2"))
+	nU00		:= Len(oSX2:GetInfoSX2("U00"))
+	nRetorno	:= 0
+	nDados		:= 0
+	cQuery		:= ""
+
+	// contrato de cemiterio
+	if nU00 > 0
+
+		If U00->(FieldPos("U00_MSFIL")) > 0
+			cQuery := " SELECT DISTINCT U00.U00_MSFIL FILIAL, U00.U00_CODIGO CODIGO, U00.U00_STATUS STATUS"
+		Else
+			cQuery := " SELECT DISTINCT U00.U00_FILIAL FILIAL, U00.U00_CODIGO CODIGO, U00.U00_STATUS STATUS"
+		EndIf
+
+		cQuery += " FROM " +RetSQLName("U00") + " U00 (NOLOCK) "
+
+		cQuery += " INNER JOIN " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+		cQuery += " ON SA1.D_E_L_E_T_ = ' '"
+		cQuery += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+		cQuery += "	AND SA1.A1_COD = U00.U00_CLIENT "
+		cQuery += " AND SA1.A1_LOJA = U00.U00_LOJA "
+
+		If !Empty(cCGCCliente)
+			cQuery += " AND SA1.A1_CGC LIKE '%" + AllTrim(cCGCCliente) + "%' "
+		EndIf
+
+		If !Empty(cNome)
+			cQuery += " AND SA1.A1_NOME LIKE '%" + AllTrim(cNome) + "%' "
+		EndIf
+
+		cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+
+		If !Empty(cContrato)
+			cQuery += " AND U00.U00_CODIGO LIKE '%" + AllTrim(cContrato) + "%' "
+		EndIf
+
+		cQuery := ChangeQuery(cQuery)
+
+		// executo a query e crio o alias temporario
+		MPSysOpenQuery( cQuery, 'TRBCEM' )
+
+
+		While TRBCEM->(!Eof())
+
+			oVirtusFin := VirtusFin():New()
+
+			aAux := {}
+			Aadd( aAux, TRBCEM->CODIGO )
+
+			If TRBCEM->STATUS == "C"
+				Aadd( aAux, "Cancelado")
+			Else
+				Aadd( aAux, If(oVirtusFin:ContratoAdimplente(TRBCEM->CODIGO, "C"),"Adimplemente", "Inadimplente") )
+			EndIf
+
+			If TRBCEM->STATUS == "A"
+				Aadd( aAux, "Contrato Ativo" )
+			ElseIf TRBCEM->STATUS == "S"
+				Aadd( aAux, "Contrato Suspenso" )
+			ElseIf TRBCEM->STATUS == "C"
+				Aadd( aAux, "Contrato Cancelado" )
+			ElseIf TRBCEM->STATUS == "F"
+				Aadd( aAux, "Contrato Finalizado" )
+			Else
+				Aadd( aAux, "Pendente Ativacao" )
+			EndIf
+
+			Aadd( aAux, "Cemiterio" )
+			Aadd( aAux, TRBCEM->FILIAL )
+
+			Aadd( aDados, aAux )
+
+			FreeObj(oVirtusFin)
+			oVirtusFin := Nil
+
+			TRBCEM->(DBSkip())
+		EndDo
+
+	EndIf
+
+	// contrato de funeraria
+	if nUF2 > 0
+
+		If UF2->(FieldPos("UF2_MSFIL")) > 0
+			cQuery := " SELECT DISTINCT UF2.UF2_MSFIL FILIAL, UF2.UF2_CODIGO CODIGO, UF2.UF2_STATUS STATUS"
+		Else
+			cQuery := " SELECT DISTINCT UF2.UF2_FILIAL FILIAL, UF2.UF2_CODIGO CODIGO, UF2.UF2_STATUS STATUS"
+		EndIf
+
+		cQuery += " FROM " +RetSQLName("UF2") + " UF2 (NOLOCK) "
+		cQuery += " INNER JOIN " +RetSQLName("SA1") + " SA1 (NOLOCK) "
+		cQuery += " ON SA1.D_E_L_E_T_ = ' '"
+		cQuery += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+		cQuery += "	AND SA1.A1_COD = UF2.UF2_CLIENT "
+		cQuery += " AND SA1.A1_LOJA = UF2.UF2_LOJA "
+
+		If !Empty(cCGCCliente)
+			cQuery += " AND SA1.A1_CGC LIKE '%" + AllTrim(cCGCCliente) + "%' "
+		EndIf
+
+		If !Empty(cNome)
+			cQuery += " AND SA1.A1_NOME LIKE '%" + AllTrim(cNome) + "%' "
+		EndIf
+
+		cQuery += " WHERE UF2.D_E_L_E_T_ = ' ' "
+
+		If !Empty(cContrato)
+			cQuery += " AND UF2.UF2_CODIGO LIKE '%" + AllTrim(cContrato) + "%' "
+		EndIf
+
+		cQuery := ChangeQuery(cQuery)
+
+		// executo a query e crio o alias temporario
+		MPSysOpenQuery( cQuery, 'TRBFUN' )
+
+		While TRBFUN->(!Eof())
+
+			oVirtusFin := VirtusFin():New()
+
+			aAux := {}
+			Aadd( aAux, TRBFUN->CODIGO )
+
+			If TRBCEM->STATUS == "C"
+				Aadd( aAux, "Cancelado")
+			Else
+				Aadd( aAux, If(oVirtusFin:ContratoAdimplente(TRBFUN->CODIGO, "C"),"Adimplemente", "Inadimplente") )
+			EndIf
+
+			If TRBFUN->STATUS == "A"
+				Aadd( aAux, "Contrato Ativo" )
+			ElseIf TRBFUN->STATUS == "S"
+				Aadd( aAux, "Contrato Suspenso" )
+			ElseIf TRBFUN->STATUS == "C"
+				Aadd( aAux, "Contrato Cancelado" )
+			ElseIf TRBFUN->STATUS == "F"
+				Aadd( aAux, "Contrato Finalizado" )
+			Else
+				Aadd( aAux, "Pendente Ativacao" )
+			EndIf
+
+			Aadd( aAux, "Funeraria" )
+			Aadd( aAux, TRBFUN->FILIAL )
+
+			Aadd( aDados, aAux )
+
+			FreeObj(oVirtusFin)
+			oVirtusFin := Nil
+
+			TRBFUN->(DBSkip())
+		EndDo
+
+		If Len(aDados) > 0
+
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Dados de contrato ok."
+			jResponse["dados"]  	:= {}
+
+			For nDados := 1 To Len(aDados)
+
+				oVirtusFin := VirtusFin():New()
+
+				oModVirtusConsultaContratos := Nil
+				oModVirtusConsultaContratos := ModVirtusConsultaContratos():New()
+
+				oModVirtusConsultaContratos:contrato 			:= aDados[nDados, 1]
+				oModVirtusConsultaContratos:status_financeiro  	:= aDados[nDados, 2]
+				oModVirtusConsultaContratos:status_contrato 	:= aDados[nDados, 3]
+				oModVirtusConsultaContratos:modulo 				:= aDados[nDados, 4]
+				oModVirtusConsultaContratos:filial 				:= aDados[nDados, 5]
+
+				Aadd(jResponse["dados"], oModVirtusConsultaContratos:toJsonObject())
+
+				FreeObj(oModVirtusConsultaContratos)
+				oModVirtusConsultaContratos := Nil
+
+			Next nDados
+
+		Else
+
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Requisicao não retornou dados."
+
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+Method ContratoCemiterio(cContrato As Character, jResponse As Json) Class VirtusConsulta
+
+	Local cQuery As Character
+	Local cMensagem As Character
+	Local lContinua	As Logical
+	Local oModVirtusContratoCemiterio As Object
+
+	Default cContrato	:= ""
+
+	cQuery := ""
+	lContinua := .T.
+
+	If lContinua .And. Empty(AllTrim(cContrato))
+		lContinua := .F.
+		cMensagem := "Nao foi informado o codigo do contrato para consulta!"
+	EndIf
+
+	If lContinua .And. Len(AllTrim(cContrato)) <> TamSX3("U00_CODIGO")[1]
+		lContinua := .F.
+		cMensagem := "Codigo do contrato contrato informado, tem o formato invalido. ("+cValToChar(AllTrim(cContrato))+")"
+	EndIf
+
+	If lContinua
+
+		cQuery := " SELECT CONTRATO.* "
+		cQuery += " FROM " + RetSQLName("U00") + " (NOLOCK) CONTRATO "
+		cQuery += " WHERE CONTRATO.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND CONTRATO.U00_FILIAL = '" + xFilial("U00") + "' "
+		cQuery += " 	AND CONTRATO.U00_CODIGO = '" + cContrato + "' "
+
+		Conout("Query: " + cQuery)
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBCTR")
+
+		If TRBCTR->(!Eof())
+
+			oModVirtusContratoCemiterio := ModVirtusContratoCemiterio():New()
+			oModVirtusContratoCemiterio:contrato := TRBCTR->U00_CODIGO
+			oModVirtusContratoCemiterio:produto := TRBCTR->U00_PLANO + "-" + AllTrim(Posicione("U05",1,xFilial("U05")+TRBCTR->U00_PLANO,"U05_DESCRI"))
+			oModVirtusContratoCemiterio:vendedor := AllTrim(TRBCTR->U00_VENDED) + "-" + AllTrim(U_SpecialNoChar(Posicione("SA3",1,xFilial("SA3")+TRBCTR->U00_VENDED,"A3_NOME")))
+			oModVirtusContratoCemiterio:forma_aquisicao := IiF(TRBCTR->U00_FAQUIS == "I", "Uso Imediato", "Uso Preventivo")
+			oModVirtusContratoCemiterio:forma_pagamento := AllTrim(TRBCTR->U00_FORPG) + "-" + AllTrim(POSICIONE("SX5",1,XFILIAL("SX5") + "24" + TRBCTR->U00_FORPG,"X5_DESCRI"))
+			oModVirtusContratoCemiterio:forma_pagamento_manutencao := AllTrim(TRBCTR->U00_FPTAXA) + "-" + AllTrim(POSICIONE("SX5",1,XFILIAL("SX5") + "24" + TRBCTR->U00_FPTAXA ,"X5_DESCRI"))
+			oModVirtusContratoCemiterio:tipo_reajuste := IiF(TRBCTR->U00_FAQUIS == "I", "Uso Imediato", "Uso Preventivo")
+			oModVirtusContratoCemiterio:indice_reajuste := TRBCTR->U00_INDICE + "-" + AllTrim(POSICIONE("U22",1,XFILIAL("U22")+TRBCTR->U00_INDICE,"U22_DESC"))
+			oModVirtusContratoCemiterio:indice_manutencao := TRBCTR->U00_INDMAN + "-" + AllTrim(POSICIONE("U22",1,XFILIAL("U22")+TRBCTR->U00_INDMAN,"U22_DESC"))
+			oModVirtusContratoCemiterio:data_cadastro := U_TrataDataPOUI(StoD(TRBCTR->U00_DATA))
+			oModVirtusContratoCemiterio:data_entrada := U_TrataDataPOUI(StoD(TRBCTR->U00_DTENTR))
+			oModVirtusContratoCemiterio:primeiro_vencimento := U_TrataDataPOUI(StoD(TRBCTR->U00_PRIMVE))
+			oModVirtusContratoCemiterio:quantidade_parcelas := AllTrim(TransForm(TRBCTR->U00_QTDPAR, "@E 999"))
+			oModVirtusContratoCemiterio:valor_entrada := AllTrim(TransForm(TRBCTR->U00_VLRENT, "@E 999,999.99"))
+			oModVirtusContratoCemiterio:valor_desconto := AllTrim(TransForm(TRBCTR->U00_DESCON, "@E 999,999.99"))
+			oModVirtusContratoCemiterio:valor_taxa_manutencao := AllTrim(TransForm(TRBCTR->U00_TXMANU, "@E 999,999.99"))
+			oModVirtusContratoCemiterio:valor_total := AllTrim(TransForm(TRBCTR->U00_VLRBRU, "@E 999,999.99"))
+			oModVirtusContratoCemiterio:valor_liquido := AllTrim(TransForm(TRBCTR->U00_VALOR, "@E 999,999.99"))
+			oModVirtusContratoCemiterio:cessionario := Self:RetDadosCliente("TRBCTR", "C", oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:responsavel_financeiro := Self:RetDadosCliente("TRBCTR", "R", oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:autorizados := Self:RetAutorizados(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:financeiro := Self:RetFinanceiroContrato(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:enderecamento := Self:RetEnderecamento(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:historico_endereco := Self:RetHistoricoEnderecamento(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:historico_transferencia_cessionario := Self:RetHistoricoTransfCessionario(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:servicos := Self:RetServicos(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:transferencias_endereco := Self:RetTransfEnderecamento(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:reajustes := Self:RetReajustes(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+			oModVirtusContratoCemiterio:manutencao := Self:RetManutencao(TRBCTR->U00_CODIGO, oModVirtusContratoCemiterio)
+
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Contrato encontrado com sucesso!"
+			jResponse["dados"]  	:= oModVirtusContratoCemiterio:ToJsonObject()
+
+		else
+			jResponse["status"]     := 200
+			jResponse["mensagem"]	:= "Requisicao não retornou dados."
+			jResponse["dados"]  	:= {}
+		EndIf
+
+	Else
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= cMensagem
+		jResponse["dados"]  	:= {}
+
+	EndIf
+
+Return(Nil)
+
+	Method RetDadosCliente(cTabAlias As Character,;
+		cTipoCliente As Character,;
+		oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 		As Array
+	Local aAreaU00		As Array
+	Local aAreaSA1		As Array
+	Local cCodCliente	As Character
+	Local cLojCliente 	As Character
+	Local cQuery		As Character
+	Local JsonRetorno	As Json
+
+	Default cTabAlias		:= ""
+	Default cTipoCliente	:= ""
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU00	:= U00->(GetArea())
+	aAreaSA1	:= SA1->(GetArea())
+	JsonRetorno	:= JsonObject():New()
+
+	If cTipoCliente == "C" // cessionario
+
+		// verifico se o campo de cessionario estao preenchidos
+		If U00->(FieldPos("U00_CLICES")) > 0 .And. U00->(FieldPos("U00_LOJCES")) > 0
+			cCodCliente := (cTabAlias)->U00_CLICES
+			cLojCliente := (cTabAlias)->U00_LOJCES
+
+			If Empty(cCodCliente) .Or. Empty(cLojCliente)
+				cCodCliente := (cTabAlias)->U00_CLIENT
+				cLojCliente := (cTabAlias)->U00_LOJA
+			EndIf
+
+		Else
+			cCodCliente := (cTabAlias)->U00_CLIENT
+			cLojCliente := (cTabAlias)->U00_LOJA
+		EndIf
+
+		// query de consulta de cliente
+		cQuery := " SELECT * FROM " + RetSQLName("SA1") + " (NOLOCK) SA1 "
+		cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+		cQuery += " AND SA1.A1_FILIAL 	= '" + xFilial("SA1") + "' "
+		cQuery += " AND SA1.A1_COD 		= '" + cCodCliente + "' "
+		cQuery += " AND SA1.A1_LOJA 	= '" + cLojCliente + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBSA1")
+
+		If TRBSA1->(!Eof())
+
+			// pego o modelo de dados de cessionario
+			JsonRetorno := oModVirtusContratoCemiterio:ModCessionario()
+
+			JsonRetorno["codigo_cliente"] 		:= AllTrim(TRBSA1->A1_COD)
+			JsonRetorno["loja_cliente"] 		:= AllTrim(TRBSA1->A1_LOJA)
+			JsonRetorno["nome_cliente"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_NOME))
+			JsonRetorno["nome_reduzido"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_NREDUZ))
+			JsonRetorno["cgc_cliente"] 			:= AllTrim(TRBSA1->A1_CGC)
+			JsonRetorno["rg_cliente"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_PFISICA))
+			JsonRetorno["tipo_pessoa"] 			:= Iif(TRBSA1->A1_PESSOA == "J", "Juridica", "Fisica")
+			JsonRetorno["sexo"] 				:= Iif(TRBSA1->A1_XSEXO == "F", "Feminino", "Masculino")
+			JsonRetorno["profissao"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XPROFIS))
+			JsonRetorno["estado_civil"] 		:= AllTrim(U_SpecialNoChar(RetEstadoCivil(TRBSA1->A1_XESTCIV)))
+			JsonRetorno["conjuge"] 				:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XCONJUG))
+			JsonRetorno["estado_nascimento"]	:= AllTrim(TRBSA1->A1_XESTNAS)
+			JsonRetorno["codmun_nascimento"]	:= AllTrim(TRBSA1->A1_XMUNNAT)
+			JsonRetorno["municipio_nascimento"]	:= AllTrim(U_SpecialNoChar(POSICIONE("CC2",1,XFILIAL("CC2")+TRBSA1->A1_XESTNAS+TRBSA1->A1_XMUNNAT,"CC2_MUN")))
+			JsonRetorno["email"] 				:= AllTrim(TRBSA1->A1_EMAIL)
+
+			If SA1->(FieldPos("A1_XEMAIL")) > 0
+				JsonRetorno["email2"] 				:= AllTrim(TRBSA1->A1_XEMAIL)
+			Else
+				JsonRetorno["email2"] 				:= ""
+			EndIf
+
+			JsonRetorno["ddd"] 					:= AllTrim(TRBSA1->A1_DDD)
+			JsonRetorno["telefone"] 			:= AllTrim(TRBSA1->A1_TEL)
+			JsonRetorno["ddd_celular"] 			:= AllTrim(TRBSA1->A1_XDDDCEL)
+			JsonRetorno["celular"] 				:= AllTrim(TRBSA1->A1_XCEL)
+			JsonRetorno["celular2"] 			:= AllTrim(TRBSA1->A1_XCEL2)
+			JsonRetorno["estado"] 				:= AllTrim(TRBSA1->A1_EST)
+			JsonRetorno["cod_municipio"] 		:= AllTrim(TRBSA1->A1_COD_MUN)
+			JsonRetorno["municipio"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_MUN))
+			JsonRetorno["cep"] 					:= AllTrim(TRBSA1->A1_CEP)
+			JsonRetorno["endereco"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_END))
+			JsonRetorno["numero"] 				:= ""
+			JsonRetorno["bairro"] 				:= AllTrim(U_SpecialNoChar(TRBSA1->A1_BAIRRO))
+			JsonRetorno["cep_cobranca"] 		:= AllTrim(TRBSA1->A1_CEPC)
+			JsonRetorno["endereco_cobranca"]	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_ENDCOB))
+			JsonRetorno["numero_cobranca"] 		:= ""
+			JsonRetorno["bairro_cobranca"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_BAIRROC))
+			JsonRetorno["complemento"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_COMPLEM))
+			JsonRetorno["complemento_cobranca"] := AllTrim(U_SpecialNoChar(TRBSA1->A1_XCOMPCO))
+			JsonRetorno["ponto_referencia"] 	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XREFERE))
+			JsonRetorno["ponto_referencia_cobranca"] 	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XREFCOB))
+			JsonRetorno["data_nascimento"] 		:= U_TrataDataPOUI(StoD(TRBSA1->A1_XDTNASC))
+
+		EndIf
+
+	ElseIf cTipoCliente == "R" // responsavel financeiro
+
+		// codigo e loja do cliente
+		cCodCliente := (cTabAlias)->U00_CLIENT
+		cLojCliente := (cTabAlias)->U00_LOJA
+
+		// query de consulta de cliente
+		cQuery := " SELECT * FROM " + RetSQLName("SA1") + " (NOLOCK) SA1 "
+		cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+		cQuery += " AND SA1.A1_FILIAL 	= '" + xFilial("SA1") + "' "
+		cQuery += " AND SA1.A1_COD 		= '" + cCodCliente + "' "
+		cQuery += " AND SA1.A1_LOJA 	= '" + cLojCliente + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBSA1")
+
+		If TRBSA1->(!Eof())
+
+			// pego o modelo de dados do responsavel financeiro
+			JsonRetorno := oModVirtusContratoCemiterio:ModResponsavelFinanceiro()
+
+			JsonRetorno["codigo_cliente"] 		:= AllTrim(TRBSA1->A1_COD)
+			JsonRetorno["loja_cliente"] 		:= AllTrim(TRBSA1->A1_LOJA)
+			JsonRetorno["nome_cliente"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_NOME))
+			JsonRetorno["nome_reduzido"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_NREDUZ))
+			JsonRetorno["cgc_cliente"] 			:= AllTrim(TRBSA1->A1_CGC)
+			JsonRetorno["rg_cliente"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_PFISICA))
+			JsonRetorno["tipo_pessoa"] 			:= Iif(TRBSA1->A1_PESSOA == "J", "Juridica", "Fisica")
+			JsonRetorno["sexo"] 				:= Iif(TRBSA1->A1_XSEXO == "F", "Feminino", "Masculino")
+			JsonRetorno["profissao"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XPROFIS))
+			JsonRetorno["estado_civil"] 		:= AllTrim(U_SpecialNoChar(RetEstadoCivil(TRBSA1->A1_XESTCIV)))
+			JsonRetorno["conjuge"] 				:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XCONJUG))
+			JsonRetorno["estado_nascimento"]	:= AllTrim(TRBSA1->A1_XESTNAS)
+			JsonRetorno["codmun_nascimento"]	:= AllTrim(TRBSA1->A1_XMUNNAT)
+			JsonRetorno["municipio_nascimento"]	:= AllTrim(U_SpecialNoChar(POSICIONE("CC2",1,XFILIAL("CC2")+TRBSA1->A1_XESTNAS+TRBSA1->A1_XMUNNAT,"CC2_MUN")))
+			JsonRetorno["email"] 				:= AllTrim(TRBSA1->A1_EMAIL)
+
+			If SA1->(FieldPos("A1_XEMAIL")) > 0
+				JsonRetorno["email2"] 				:= AllTrim(TRBSA1->A1_XEMAIL)
+			Else
+				JsonRetorno["email2"] 				:= ""
+			EndIf
+
+			JsonRetorno["ddd"] 					:= AllTrim(TRBSA1->A1_DDD)
+			JsonRetorno["telefone"] 			:= AllTrim(TRBSA1->A1_TEL)
+			JsonRetorno["ddd_celular"] 			:= AllTrim(TRBSA1->A1_XDDDCEL)
+			JsonRetorno["celular"] 				:= AllTrim(TRBSA1->A1_XCEL)
+			JsonRetorno["celular2"] 			:= AllTrim(TRBSA1->A1_XCEL2)
+			JsonRetorno["estado"] 				:= AllTrim(TRBSA1->A1_EST)
+			JsonRetorno["cod_municipio"] 		:= AllTrim(TRBSA1->A1_COD_MUN)
+			JsonRetorno["municipio"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_MUN))
+			JsonRetorno["cep"] 					:= AllTrim(TRBSA1->A1_CEP)
+			JsonRetorno["endereco"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_END))
+			JsonRetorno["numero"] 				:= ""
+			JsonRetorno["bairro"] 				:= AllTrim(U_SpecialNoChar(TRBSA1->A1_BAIRRO))
+			JsonRetorno["cep_cobranca"] 		:= AllTrim(TRBSA1->A1_CEPC)
+			JsonRetorno["endereco_cobranca"]	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_ENDCOB))
+			JsonRetorno["numero_cobranca"] 		:= ""
+			JsonRetorno["bairro_cobranca"] 		:= AllTrim(U_SpecialNoChar(TRBSA1->A1_BAIRROC))
+			JsonRetorno["complemento"] 			:= AllTrim(U_SpecialNoChar(TRBSA1->A1_COMPLEM))
+			JsonRetorno["complemento_cobranca"] := AllTrim(U_SpecialNoChar(TRBSA1->A1_XCOMPCO))
+			JsonRetorno["ponto_referencia"] 	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XREFERE))
+			JsonRetorno["ponto_referencia_cobranca"] 	:= AllTrim(U_SpecialNoChar(TRBSA1->A1_XREFCOB))
+			JsonRetorno["data_nascimento"] 		:= U_TrataDataPOUI(StoD(TRBSA1->A1_XDTNASC))
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSA1)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(JsonRetorno)
+
+Method RetFinanceiroContrato(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 			As Array
+	Local aRetorno			As Array
+	Local cQuery			As Character
+	Local cTipoAtivacao		As Character
+	Local cTipoManutencao	As Character
+	Local jJsonFinanceiro	As Json
+	Local oVirtusFin		As Object
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 			:= GetArea()
+	aRetorno		:= {}
+	cTipoAtivacao	:= SuperGetMv("MV_XTIPOCT",.F.,"AT")
+	cTipoEntrada	:= SuperGetMv("MV_XTIPOEN",.F.,"ENT")
+	cTipoManutencao	:= SuperGetMv("MV_XTIPOMN",.F.,"MNT")
+	jJsonFinanceiro	:= JsonObject():New()
+	oVirtusFin		:= VirtusFin():New()
+
+	// query de consulta de titulos a recer
+	cQuery := " SELECT SE1.R_E_C_N_O_ AS RECSE1, SA1.A1_NOME AS NOME_CLIENTE FROM " + RetSQLName("SE1") + " (NOLOCK) SE1 "
+	cQuery += " INNER JOIN " + RetSQLName("SA1") + " (NOLOCK) SA1 ON SA1.D_E_L_E_T_ = ' '
+	cQuery += " 	AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery += " 	AND SA1.A1_COD = SE1.E1_CLIENTE "
+	cQuery += " 	AND SA1.A1_LOJA = SE1.E1_LOJA "
+	cQuery += " WHERE SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQuery += " 	AND SE1.E1_XCONTRA = '" + cCodigoContrato + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBSE1")
+
+	If TRBSE1->(!Eof())
+		While TRBSE1->(!Eof())
+
+			// posiciono no titulo
+			SE1->(DBGoTo(TRBSE1->RECSE1))
+
+			jJsonFinanceiro := oModVirtusContratoCemiterio:ModFinanceiro()
+			jJsonFinanceiro["contrato"] 		:= SE1->E1_XCONTRA
+			jJsonFinanceiro["clienteloja"]  	:= SE1->E1_CLIENTE + SE1->E1_LOJA
+			jJsonFinanceiro["nome"]  			:= AllTrim(U_SpecialNoChar(TRBSE1->NOME_CLIENTE))
+			jJsonFinanceiro["prefixo"]    		:= AllTrim(SE1->E1_PREFIXO)
+			jJsonFinanceiro["titulo"]       	:= AllTrim(SE1->E1_NUM)
+			jJsonFinanceiro["parcela"]         	:= AllTrim(SE1->E1_PARCELA)
+			jJsonFinanceiro["tipo"]             := AllTrim(SE1->E1_TIPO)
+			jJsonFinanceiro["emissao"]          := U_TrataDataPOUI(SE1->E1_EMISSAO)
+			jJsonFinanceiro["vencimento"]       := U_TrataDataPOUI(SE1->E1_VENCTO)
+			jJsonFinanceiro["vencimento_real"]  := U_TrataDataPOUI(SE1->E1_VENCREA)
+			jJsonFinanceiro["data_baixa"]       := U_TrataDataPOUI(SE1->E1_BAIXA)
+			jJsonFinanceiro["valor"]            := SE1->E1_VALOR
+			jJsonFinanceiro["valor_titulo"]    	:= oVirtusFin:RetValortitulo()
+			jJsonFinanceiro["saldo"]            := oVirtusFin:RetSaldoTitulo()
+			jJsonFinanceiro["juros"]            := oVirtusFin:RetJurosTitulo()
+			jJsonFinanceiro["multa"]            := oVirtusFin:RetMultaTitulo()
+			jJsonFinanceiro["acrescimo"]        := SE1->E1_ACRESC
+			jJsonFinanceiro["decrescimo"]		:= SE1->E1_DECRESC
+			jJsonFinanceiro["valor_pago"]		:= SE1->E1_VALLIQ
+			jJsonFinanceiro["forma_pagamento"]  := SE1->E1_XFORPG
+
+			If AllTrim(SE1->E1_TIPO) == AllTrim(cTipoAtivacao) .Or. AllTrim(SE1->E1_TIPO) == AllTrim(cTipoEntrada) //AT-ENT
+				jJsonFinanceiro["tipo_cobranca"]  	:= "Prestacao"
+			ElseIf AllTrim(SE1->E1_TIPO) == AllTrim(cTipoManutencao) //MNT
+				jJsonFinanceiro["tipo_cobranca"]  	:= "Taxa Manutencao"
+			Else // CUP
+				jJsonFinanceiro["tipo_cobranca"]  	:= "CUP"
+			EndIf
+
+			Aadd(aRetorno, jJsonFinanceiro)
+
+			TRBSE1->(DBSkip())
+		Enddo
+	Else
+		jJsonFinanceiro := oModVirtusContratoCemiterio:ModFinanceiro()
+
+		Aadd(aRetorno, jJsonFinanceiro)
+	EndIf
+
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetEnderecamento(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 				As Array
+	Local aAreaU04 				As Array
+	Local aRetorno				As Array
+	Local cQuery				As Character
+	Local jJsonEnderecamento	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 				:= GetArea()
+	aAreaU04			:= U04->(GetArea())
+	aRetorno			:= {}
+	jJsonEnderecamento	:= JsonObject():New()
+
+	cQuery := " SELECT U04.R_E_C_N_O_ RECU04, UJV.R_E_C_N_O_ RECUJV FROM " + RetSqlName("U04") + " U04 "
+	cQuery += " LEFT JOIN " + RetSqlName("UJV") + " UJV ON UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = '" + xFilial("UJV") + "' "
+	cQuery += " AND UJV.UJV_CODIGO = U04.U04_APONTA "
+	cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+	cQuery += " AND U04.U04_CODIGO = '" + AllTRim(cCodigoContrato) + "' "
+	cQuery += " AND U04.U04_QUEMUT <> ' ' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBEND")
+
+	If TRBEND->(!Eof())
+		While TRBEND->(!Eof())
+
+			// posiciono no titulo
+			U04->(DBGoTo(TRBEND->RECU04))
+			UJV->(DBGoTo(TRBEND->RECUJV))
+
+			jJsonEnderecamento := oModVirtusContratoCemiterio:ModEnderecamento()
+			jJsonEnderecamento["contrato"] 			:= Alltrim(U04->U04_CODIGO)
+			jJsonEnderecamento["tipo"]  			:= Alltrim(U04->U04_TIPO)
+			jJsonEnderecamento["item"]  			:= Alltrim(U04->U04_ITEM)
+
+			//verifico se possui endereco de jazigo
+			if Alltrim(U04->U04_TIPO) == "J"
+
+				jJsonEnderecamento["endereco"]  := "QD:" + Alltrim(U04->U04_QUADRA) + " | MD:" +  Alltrim(U04->U04_MODULO) + " | JAZ:" +  Alltrim(U04->U04_JAZIGO) + " | GAV:" +  Alltrim(U04->U04_GAVETA)
+
+			elseif Alltrim(U04->U04_TIPO) == "O"
+
+				jJsonEnderecamento["endereco"]  := "OSSARIO:" + Alltrim(U04->U04_OSSARI) + " | NICHO:" + Alltrim(U04->U04_NICHOO)
+
+			else
+
+				jJsonEnderecamento["endereco"]  := "CREMAT:" + Alltrim(U04->U04_CREMAT) + " | NICHO:" + Alltrim(U04->U04_NICHOC)
+
+			endif
+
+			jJsonEnderecamento["quadra"]  			:= Alltrim(U04->U04_QUADRA)
+			jJsonEnderecamento["modulo"]    		:= Alltrim(U04->U04_MODULO)
+			jJsonEnderecamento["jazigo"]       		:= Alltrim(U04->U04_JAZIGO)
+			jJsonEnderecamento["gaveta"]         	:= Alltrim(U04->U04_GAVETA)
+			jJsonEnderecamento["ossario"]           := Alltrim(U04->U04_OSSARI)
+			jJsonEnderecamento["nicho_ossario"]     := Alltrim(U04->U04_NICHOO)
+			jJsonEnderecamento["columbario"]       	:= Alltrim(U04->U04_CREMAT)
+			jJsonEnderecamento["nicho_columbario"]  := Alltrim(U04->U04_NICHOC)
+			jJsonEnderecamento["data_utilizacao"]   := U_TrataDataPOUI(U04->U04_DTUTIL)
+			jJsonEnderecamento["data_exumacao"]     := U_TrataDataPOUI(U04->U04_PRZEXU)
+			jJsonEnderecamento["falecido"]          := Alltrim(U04->U04_QUEMUT)
+			jJsonEnderecamento["previo"]  			:= IIF(U04->U04_PREVIO=="S","Sim","Nao")
+			jJsonEnderecamento["ocupa_gaveta"]  	:= IIF(U04->U04_OCUPAG=="S","Sim","Nao")
+			jJsonEnderecamento["apontamento"]  		:= Alltrim(U04->U04_APONTA)
+			jJsonEnderecamento["servico_utilizado"]	:= AllTrim(UJV->UJV_SERVIC) + "-" + AllTrim(Posicione("SB1",1,xFilial("SB1") + UJV->UJV_SERVIC,"B1_DESC"))
+
+			Aadd(aRetorno, jJsonEnderecamento)
+
+			TRBEND->(DbSkip())
+		EndDo
+
+	Else
+		jJsonEnderecamento := oModVirtusContratoCemiterio:ModEnderecamento()
+
+		Aadd(aRetorno, jJsonEnderecamento)
+	EndIf
+
+	RestArea(aAreaU04)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetHistoricoEnderecamento(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaU30					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonHistoricoEndereco	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU30				:= U30->(GetArea())
+	aRetorno				:= {}
+	jJsonHistoricoEndereco	:= JsonObject():New()
+
+	cQuery := "	SELECT U30.R_E_C_N_O_ RECU30 "
+	cQuery += " FROM " + RetSQLName("U30") + " U30 "
+	cQuery += "	WHERE U30.D_E_L_E_T_ = ' ' "
+	cQuery += "	AND U30.U30_CODIGO = '" + AllTRim(cCodigoContrato) + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBHST")
+
+	If TRBHST->(!Eof())
+		While TRBHST->(!Eof())
+
+			U30->(DBGoTo(TRBHST->RECU30))
+
+			jJsonHistoricoEndereco := oModVirtusContratoCemiterio:ModHistoricoEndereco()
+
+			jJsonHistoricoEndereco["data_historico"]  		:= U_TrataDataPOUI(U30->U30_DTHIST)
+			jJsonHistoricoEndereco["item"]  				:= Alltrim(U30->U30_ITEM)
+
+			//verifico se possui endereco de jazigo
+			if !Empty(U30->U30_QUADRA)
+
+				jJsonHistoricoEndereco["endereco"]   := "QD:" + Alltrim(U30->U30_QUADRA) + " | MD:" +  Alltrim(U38->U38_MODULO) + " | JAZ:" +  Alltrim(U30->U30_JAZIGO) + " | GAV:" +  Alltrim(U30->U30_GAVETA)
+
+			elseif !Empty(U30->U30_OSSARI)
+
+				jJsonHistoricoEndereco["endereco"]   := "OSSARIO:" + Alltrim(U30->U30_OSSARI) + " | NICHO:" + Alltrim(U30->U30_NICHOO)
+
+			elseif !Empty(U30->U30_CREMAT)
+
+				jJsonHistoricoEndereco["endereco"]   := "CREMATORIO:" + Alltrim(U30->U30_CREMAT) + " | NICHO:" + Alltrim(U30->U30_NICHOC)
+
+			endif
+
+			jJsonHistoricoEndereco["quadra"]  				:= Alltrim(U30->U30_QUADRA)
+			jJsonHistoricoEndereco["modulo"]  				:= Alltrim(U38->U38_MODULO)
+			jJsonHistoricoEndereco["jazigo"]  				:= Alltrim(U30->U30_JAZIGO)
+			jJsonHistoricoEndereco["gaveta"]  				:= Alltrim(U30->U30_GAVETA)
+			jJsonHistoricoEndereco["ossario"]  				:= Alltrim(U30->U30_OSSARI)
+			jJsonHistoricoEndereco["nicho_ossario"]  		:= Alltrim(U30->U30_NICHOO)
+			jJsonHistoricoEndereco["columbario"]  			:= Alltrim(U30->U30_CREMAT)
+			jJsonHistoricoEndereco["nicho_columbario"]  	:= Alltrim(U30->U30_NICHOC)
+			jJsonHistoricoEndereco["utilizacao"]  			:= U_TrataDataPOUI(U30->U30_DTUTIL)
+			jJsonHistoricoEndereco["falecido"]  			:= AllTRim(U30->U30_QUEMUT)
+			jJsonHistoricoEndereco["transferencia"]			:= Alltrim(U30->U30_TRANSF)
+			jJsonHistoricoEndereco["lacre_ossiario"]		:= AllTRim(U30->U30_LACOSS)
+			jJsonHistoricoEndereco["apontamento"]			:= AllTRim(U30->U30_APONTA)
+			jJsonHistoricoEndereco["rotina_origem"]			:= AllTRim(U30->U30_ORIGEM)
+			jJsonHistoricoEndereco["codigo_transferencia"]	:= AllTRim(U30->U30_CODORI)
+
+			Aadd(aRetorno, jJsonHistoricoEndereco)
+
+			TRBHST->(DbSkip())
+		EndDo
+	Else
+		jJsonHistoricoEndereco := oModVirtusContratoCemiterio:ModHistoricoEndereco()
+
+		Aadd(aRetorno, jJsonHistoricoEndereco)
+	EndIf
+
+	RestArea(aAreaU30)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetTransfEnderecamento(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaU38					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonHistoricoEndereco	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU38				:= U38->(GetArea())
+	aRetorno				:= {}
+	jJsonHistoricoEndereco	:= JsonObject():New()
+
+	cQuery := "	SELECT U38.R_E_C_N_O_ RECU38 "
+	cQuery += " FROM " + RetSQLName("U38") + " U38 "
+	cQuery += "	WHERE U38.D_E_L_E_T_ = ' ' "
+	cQuery += "	AND U38.U38_CTRORI = '" + AllTRim(cCodigoContrato) + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBHST")
+
+	If TRBHST->(!Eof())
+		While TRBHST->(!Eof())
+
+			U38->(DBGoTo(TRBHST->RECU38))
+
+			jJsonHistoricoEndereco := oModVirtusContratoCemiterio:ModTransferencias()
+
+			jJsonHistoricoEndereco["codigo"]  				:= AllTRim(U38->U38_CODIGO)
+			jJsonHistoricoEndereco["autorizado"]			:= AllTRim(U38->U38_AUTORI)
+
+			//verifico se possui endereco de jazigo
+			if !Empty(U38->U38_QUADRA)
+
+				jJsonHistoricoEndereco["endereco_origem"]   := "QD:" + Alltrim(U38->U38_QUADRA) + " | MD:" +  Alltrim(U38->U38_MODULO) + " | JAZ:" +  Alltrim(U38->U38_JAZIGO) + " | GAV:" +  Alltrim(U38->U38_GAVETA)
+
+			elseif !Empty(U38->U38_OSSARI)
+
+				jJsonHistoricoEndereco["endereco_origem"]   := "OSSARIO:" + Alltrim(U38->U38_OSSARI) + " | NICHO:" + Alltrim(U38->U38_NICHOO)
+
+			endif
+
+			//verifico se possui endereco de jazigo
+			if !Empty(U38->U38_QDDEST)
+
+				jJsonHistoricoEndereco["endereco_destino"]   := "QD:" + Alltrim(U38->U38_QDDEST) + " | MD:" +  Alltrim(U38->U38_MDDEST) + " | JAZ:" +  Alltrim(U38->U38_JZDEST) + " | GAV:" +  Alltrim(U38->U38_GVDEST)
+
+			elseif !Empty(U38->U38_OSDEST)
+
+				jJsonHistoricoEndereco["endereco_destino"]   := "OSSARIO:" + Alltrim(U38->U38_OSDEST) + " | NICHO:" + Alltrim(U38->U38_NODEST)
+
+			endif
+
+			jJsonHistoricoEndereco["tipo_transferencia"]	:= If(AllTRim(U38->U38_TPTRAN)=="i","Interna","Externa")
+			jJsonHistoricoEndereco["contrato_origem"]		:= AllTRim(U38->U38_CTRORI)
+			jJsonHistoricoEndereco["contrato_destino"]		:= AllTRim(U38->U38_CTRDES)
+			jJsonHistoricoEndereco["lacre_origem"]			:= AllTRim(U38->U38_LACORI)
+			jJsonHistoricoEndereco["utilizacao"]  			:= U_TrataDataPOUI(U38->U38_DTUTIL)
+			jJsonHistoricoEndereco["falecido"]  			:= AllTRim(U38->U38_QUEMUT)
+			jJsonHistoricoEndereco["transferencia"]			:= U_TrataDataPOUI(U38->U38_DATA)
+			jJsonHistoricoEndereco["lacre_ossiario"]		:= AllTRim(U38->U38_LACDST)
+
+			Aadd(aRetorno, jJsonHistoricoEndereco)
+
+			TRBHST->(DbSkip())
+		EndDo
+	Else
+		jJsonHistoricoEndereco := oModVirtusContratoCemiterio:ModHistoricoEndereco()
+
+		Aadd(aRetorno, jJsonHistoricoEndereco)
+	EndIf
+
+	RestArea(aAreaU38)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetHistoricoTransfCessionario(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaU19					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonTransfCessionario	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU19 				:= U19->(GetArea())
+	aRetorno				:= {}
+	jJsonTransfCessionario	:= JsonObject():New()
+
+	cQuery := "SELECT U19.R_E_C_N_O_ RECU19"
+	cQuery += " FROM "+RetSqlName("U19")+" U19"
+	cQuery += " WHERE U19.D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND U19.U19_FILIAL 	= '" + xFilial("U19") + "'"
+	cQuery += " AND U19.U19_CONTRA 	= '" + AllTRim(cCodigoContrato) + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBCES")
+
+	If TRBCES->(!Eof())
+		While TRBCES->(!Eof())
+
+			U19->(DBGoTo(TRBCES->RECU19))
+
+			jJsonTransfCessionario := oModVirtusContratoCemiterio:ModTransfCessionario()
+			jJsonTransfCessionario["cliente_antigo"]  		:= AllTRim(U19->U19_CLIANT) + "-" + AllTRim(U19->U19_LOJANT) + "-" + AllTRim(U19->U19_NOMANT)
+			jJsonTransfCessionario["cliente_novo"]  		:= AllTRim(U19->U19_CLIATU) + "-" + AllTRim(U19->U19_LOJATU) + "-" + AllTRim(U19->U19_NOMATU)
+			jJsonTransfCessionario["data_transferencia"]  	:= U_TrataDataPOUI(U19->U19_DATA)
+			jJsonTransfCessionario["motivo"]  				:= AllTRim(U19->U19_MOTIVO)
+
+			Aadd(aRetorno, jJsonTransfCessionario)
+
+			TRBCES->(DbSkip())
+		EndDo
+	Else
+		jJsonTransfCessionario := oModVirtusContratoCemiterio:ModTransfCessionario()
+
+		Aadd(aRetorno, jJsonTransfCessionario)
+	EndIf
+
+	RestArea(aAreaU19)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetAutorizados(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaU02					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonAutorizados			As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU02 				:= U02->(GetArea())
+	aRetorno				:= {}
+	jJsonAutorizados		:= JsonObject():New()
+
+	cQuery := "SELECT U02.R_E_C_N_O_ RECU02"
+	cQuery += " FROM "+RetSqlName("U02")+" U02"
+	cQuery += " WHERE U02.D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND U02.U02_FILIAL 	= '" + xFilial("U02") + "'"
+	cQuery += " AND U02.U02_CODIGO 	= '" + AllTRim(cCodigoContrato) + "'"
+	cQuery += " ORDER BY U02.U02_ITEM ASC "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBAUT")
+
+	If TRBAUT->(!Eof())
+		While TRBAUT->(!Eof())
+
+			U02->(DBGoTo(TRBAUT->RECU02))
+
+			jJsonAutorizados := oModVirtusContratoCemiterio:ModAutorizados()
+			jJsonAutorizados["item"]       			:= AllTrim(U02->U02_ITEM)
+			jJsonAutorizados["id_integracao"]       := ""
+			jJsonAutorizados["cgc"]                 := AllTrim(U02->U02_CPF)
+			jJsonAutorizados["nome"]                := AllTrim(U02->U02_NOME)
+			jJsonAutorizados["grau_parentesco"]     := AllTrim(U02->U02_GRAUPA)
+			jJsonAutorizados["rg"]                  := AllTrim(U02->U02_CI)
+			jJsonAutorizados["orgao_expedidor"]     := AllTrim(U02->U02_ORGAOE)
+			jJsonAutorizados["sexo"]                := AllTrim(U02->U02_SEXO)
+			jJsonAutorizados["naturlidade"]         := AllTrim(U02->U02_NATURA)
+			jJsonAutorizados["estado_civil"]        := AllTrim(U02->U02_ESTCIV)
+			jJsonAutorizados["endereco"]            := AllTrim(U02->U02_END)
+			jJsonAutorizados["complemento"]         := AllTrim(U02->U02_COMPLE)
+			jJsonAutorizados["bairro"]              := AllTrim(U02->U02_BAIRRO)
+			jJsonAutorizados["cep"]                 := AllTrim(U02->U02_CEP)
+			jJsonAutorizados["estado"]              := AllTrim(U02->U02_EST)
+			jJsonAutorizados["codigo_municipio"]    := AllTrim(U02->U02_CODMUN)
+			jJsonAutorizados["municipio"]           := AllTrim(U02->U02_MUN)
+			jJsonAutorizados["ddd"]                 := AllTrim(U02->U02_DDD)
+			jJsonAutorizados["telefone"]            := AllTrim(U02->U02_FONE)
+			jJsonAutorizados["ddd_celular"]         := AllTrim(U02->U02_DDD)
+			jJsonAutorizados["celular"]             := AllTrim(U02->U02_CELULA)
+			jJsonAutorizados["email"]               := AllTrim(U02->U02_EMAIL)
+			jJsonAutorizados["data_nascimento"]     := U_TrataDataPOUI(U02->U02_DTNASC)
+
+			Aadd(aRetorno, jJsonAutorizados)
+
+			TRBAUT->(DbSkip())
+		EndDo
+	Else
+		jJsonAutorizados := oModVirtusContratoCemiterio:ModAutorizados()
+
+		Aadd(aRetorno, jJsonAutorizados)
+	EndIf
+
+	RestArea(aAreaU02)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetServicos(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaUJV					As Array
+	Local aAreaU25					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local cSalaVelorio				As Character
+	Local cHoraIniVelorio			As Character
+	Local cHoraFimVelorio			As Character
+	Local dDataVelorio				As Date
+	Local jJsonServicos				As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaUJV 				:= UJV->(GetArea())
+	aAreaU25				:= U25->(GetArea())
+	aRetorno				:= {}
+	cSalaVelorio			:= ""
+	cHoraIniVelorio			:= ""
+	cHoraFimVelorio			:= ""
+	dDataVelorio			:= StoD("")
+	jJsonServicos			:= JsonObject():New()
+
+	cQuery := "SELECT UJV.R_E_C_N_O_ RECUJV"
+	cQuery += " FROM "+RetSqlName("UJV")+" UJV"
+	cQuery += " WHERE UJV.D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND UJV.UJV_FILIAL 	= '" + xFilial("UJV") + "'"
+	cQuery += " AND UJV.UJV_CONTRA 	= '" + AllTRim(cCodigoContrato) + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBAPT")
+
+	If TRBAPT->(!Eof())
+		While TRBAPT->(!Eof())
+
+			UJV->(DBGoTo(TRBAPT->RECUJV))
+
+			U25->(DbSetOrder(4))
+			If U25->(MsSeek(xFilial("U25")+UJV->UJV_CODIGO))
+				cSalaVelorio 	:= U25->U25_SALA + "-" + U25->U25_DESCSA
+				dDataVelorio	:= U25->U25_DATA
+				cHoraIniVelorio	:= TransForma(U25->U25_HRINIC, "@R 99:99")
+				cHoraFimVelorio	:= TransForma(U25->U25_HRFIM, "@R 99:99")
+			EndIf
+
+			jJsonServicos := oModVirtusContratoCemiterio:ModServicos()
+			jJsonServicos["contrato"] 						:= AllTrim(UJV->UJV_CONTRA)
+			jJsonServicos["apontamento"]  					:= AllTrim(UJV->UJV_CODIGO)
+			jJsonServicos["data"]  							:= U_TrataDataPOUI(UJV->UJV_DATA)
+			jJsonServicos["hora"]  							:= AllTrim(UJV->UJV_HORA)
+			jJsonServicos["atendente"]  					:= AllTrim(UJV->UJV_USRATE)
+			jJsonServicos["situacao"]  						:= AllTrim(UJV->UJV_STATUS)
+			jJsonServicos["observacao"]  					:= AllTrim(UJV->UJV_OBS)
+			jJsonServicos["tabela_preco"]  					:= AllTrim(UJV->UJV_TABPRC)
+			jJsonServicos["autorizado"]     				:= AllTrim(UJV->UJV_AUTORI)
+			jJsonServicos["aut_grau_parentesco"]    	 	:= AllTrim(UJV->UJV_XGRAUF)
+			jJsonServicos["desconto"]  						:= AllTrim(UJV->UJV_DESCON)
+			jJsonServicos["data_obito"]   					:= U_TrataDataPOUI(UJV->UJV_DTOBT)
+			jJsonServicos["data_servico"]      				:= U_TrataDataPOUI(UJV->UJV_DTSEPU)
+			jJsonServicos["data_certidao"]     				:= U_TrataDataPOUI(UJV->UJV_DTCERT)
+			jJsonServicos["hora_servico"]     				:= AllTrim(UJV->UJV_HORASE)
+			jJsonServicos["local_falecimento"]     			:= AllTrim(UJV->UJV_LOCFAL)
+			jJsonServicos["causa_morte"]     				:= AllTrim(UJV->UJV_CAUSA)
+			jJsonServicos["falecido"]          				:= AllTrim(UJV->UJV_NOME)
+			jJsonServicos["cpf_falecido"]         	 		:= AllTrim(UJV->UJV_CPFFAL)
+			jJsonServicos["rg_falecido"]          			:= AllTrim(UJV->UJV_RGFAL)
+			jJsonServicos["data_nascimento_falecido"]       := U_TrataDataPOUI(UJV->UJV_DTNASC)
+			jJsonServicos["sexo_falecido"]          		:= AllTrim(UJV->UJV_SEXO)
+			jJsonServicos["estado_civil_falecido"]          := AllTrim(UJV->UJV_ESTCIV)
+			jJsonServicos["nacionalidade_falecido"]         := AllTrim(UJV->UJV_DESNAT)
+			jJsonServicos["estado_falecido"]          		:= AllTrim(UJV->UJV_UF)
+			jJsonServicos["naturalidade_falecido"]          := AllTrim(UJV->UJV_MUN)
+			jJsonServicos["nome_mae_falecido"]     			:= AllTrim(UJV->UJV_NOMAE)
+			jJsonServicos["endereco_falecido"]     			:= AllTrim(UJV->UJV_ENDFAL)
+			jJsonServicos["funeraria"]     					:= AllTrim(UJV->UJV_FUNERA)
+			jJsonServicos["complemento_endereco_falecido"]  := AllTrim(UJV->UJV_CMPFAL)
+			jJsonServicos["tipo_endereco"]  				:= AllTrim(UJV->UJV_CONTRA)
+			jJsonServicos["quadra"]    						:= AllTrim(UJV->UJV_QUADRA)
+			jJsonServicos["modulo"]    						:= AllTrim(UJV->UJV_MODULO)
+			jJsonServicos["jazigo"]       					:= AllTrim(UJV->UJV_JAZIGO)
+			jJsonServicos["gaveta"]         				:= AllTrim(UJV->UJV_GAVETA)
+			jJsonServicos["ossario"]           				:= AllTrim(UJV->UJV_OSSARI)
+			jJsonServicos["nicho_ossario"]     				:= AllTrim(UJV->UJV_NICHOO)
+			jJsonServicos["lacre_ossario"]     				:= AllTrim(UJV->UJV_LACOSS)
+			jJsonServicos["columbario"]       				:= AllTrim(UJV->UJV_CREMAT)
+			jJsonServicos["nicho_columbario"]  				:= AllTrim(UJV->UJV_NICHOO)
+			jJsonServicos["status_endereco"] 	 			:= AllTrim(UJV->UJV_STENDE)
+			jJsonServicos["pedido_venda"]  					:= AllTrim(UJV->UJV_PEDIDO)
+			jJsonServicos["cliente_faturamento"]  			:= AllTrim(UJV->UJV_CLIENT)
+			jJsonServicos["sala_velorio"]  					:= AllTrim(cSalaVelorio)
+			jJsonServicos["data_velorio"]  					:= U_TrataDataPOUI(dDataVelorio)
+			jJsonServicos["hora_inicio"]  					:= AllTrim(cHoraIniVelorio)
+			jJsonServicos["hora_fim"]  						:= AllTrim(cHoraFimVelorio)
+			jJsonServicos["servicos"]  						:= RetServApontamentos(UJV->UJV_CODIGO, oModVirtusContratoCemiterio)
+
+			Aadd(aRetorno, jJsonServicos)
+
+			TRBAPT->(DbSkip())
+		EndDo
+	Else
+		jJsonApontamento := oModVirtusContratoCemiterio:ModServicos()
+
+		Aadd(aRetorno, jJsonApontamento)
+	EndIf
+
+	RestArea(aAreaU25)
+	RestArea(aAreaUJV)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetManutencao(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 					As Array
+	Local aAreaU26					As Array
+	Local aAreaU79					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonTransfCessionario	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU26 				:= U26->(GetArea())
+	aAreaU79				:= U79->(GetArea())
+	aRetorno				:= {}
+	jJsonTransfCessionario	:= JsonObject():New()
+
+	cQuery := "SELECT U26.R_E_C_N_O_ RECU26, U79.R_E_C_N_O_ RECU79 "
+	cQuery += " FROM "+RetSqlName("U26")+" U26"
+	cQuery += " LEFT JOIN "+RetSqlName("U79")+" U79 ON U79.D_E_L_E_T_ =  ' ' "
+	cQuery += " AND U79.U79_FILIAL 	= '" + xFilial("U79") + "'"
+	cQuery += " AND U79.U79_CODIGO 	= U26.U26_REGRA "
+	cQuery += " WHERE U26.D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND U26.U26_FILIAL 	= '" + xFilial("U26") + "'"
+	cQuery += " AND U26.U26_CONTRA 	= '" + AllTRim(cCodigoContrato) + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBMAN")
+
+	If TRBMAN->(!Eof())
+		While TRBMAN->(!Eof())
+
+			U26->(DBGoTo(TRBMAN->RECU26))
+			U79->(DBGoTo(TRBMAN->RECU79))
+
+			jJsonManutencao := oModVirtusContratoCemiterio:ModManutencao()
+			jJsonManutencao["codigo"]				:= AllTrim(U26->U26_CODIGO)
+			jJsonManutencao["data_manutencao"]		:= U_TrataDataPOUI(U26->U26_DATA)
+			jJsonManutencao["contrato"]				:= AllTrim(U26->U26_CONTRA)
+			jJsonManutencao["indice"]				:= AllTrim(U26->U26_TPINDI)
+			jJsonManutencao["percentual_indice"]	:= AllTrim(U26->U26_INDICE)
+			jJsonManutencao["valor_anterior"]		:= AllTrim(U26->U26_TXBRU)
+			jJsonManutencao["valor_desconto"]		:= AllTrim(U26->U26_VLDESC)
+			jJsonManutencao["valor_reajuste"]		:= AllTrim(U26->U26_VLADIC)
+			jJsonManutencao["valor_atual"]			:= AllTrim(U26->U26_TAXA)
+			jJsonManutencao["proxima_manutencao"]	:= AllTrim(U26->U26_PROMAN)
+			jJsonManutencao["importado"]			:= AllTrim(U26->U26_IMPORT)
+			jJsonManutencao["regra_manutencao"]		:= AllTrim(U26->U26_REGRA) + "-" + AllTrim(U79->U79_DESCRI)
+			jJsonManutencao["status"]				:= AllTrim(U26->U26_STATUS)
+			jJsonManutencao["forma_pagamento"]		:= AllTrim(U26->U26_FORPG)
+			jJsonManutencao["como_gera"]			:= AllTrim(U26->U26_CGERA)
+
+			Aadd(aRetorno, jJsonManutencao)
+
+			TRBMAN->(DbSkip())
+		EndDo
+	Else
+		jJsonManutencao := oModVirtusContratoCemiterio:ModManutencao()
+
+		Aadd(aRetorno, jJsonManutencao)
+	EndIf
+
+	RestArea(aAreaU79)
+	RestArea(aAreaU26)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method RetReajustes(cCodigoContrato As Character, oModVirtusContratoCemiterio As Object) Class VirtusConsulta
+
+	Local aArea 			As Array
+	Local aAreaU20			As Array
+	Local aRetorno			As Array
+	Local cQuery			As Character
+	Local jJsonReajustes	As Json
+
+	Default cCodigoContrato		:= ""
+
+	// atribui valor as variaiveis
+	aArea 					:= GetArea()
+	aAreaU20 				:= U20->(GetArea())
+	aRetorno				:= {}
+	jJsonTransfCessionario	:= JsonObject():New()
+
+	cQuery := "SELECT U20.R_E_C_N_O_ RECU20"
+	cQuery += " FROM "+RetSqlName("U20")+" U20"
+	cQuery += " WHERE U20.D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND U20.U20_FILIAL 	= '" + xFilial("U20") + "'"
+	cQuery += " AND U20.U20_CONTRA 	= '" + AllTRim(cCodigoContrato) + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBREA")
+
+	If TRBREA->(!Eof())
+		While TRBREA->(!Eof())
+
+			U20->(DBGoTo(TRBREA->RECU20))
+
+			jJsonReajustes := oModVirtusContratoCemiterio:ModReajustes()
+			jJsonReajustes["codigo"]			:= ""
+			jJsonReajustes["data"]				:= ""
+			jJsonReajustes["conrato"]			:= ""
+			jJsonReajustes["indice"]			:= ""
+			jJsonReajustes["percentual_indice"]	:= ""
+			jJsonReajustes["parcela_inicial"]	:= ""
+			jJsonReajustes["parcela_final"]		:= ""
+			jJsonReajustes["proximo_reajsute"]	:= ""
+			jJsonReajustes["importado"]			:= ""
+
+			Aadd(aRetorno, jJsonTransfCessionario)
+
+			TRBREA->(DbSkip())
+		EndDo
+	Else
+		jJsonReajustes := oModVirtusContratoCemiterio:ModTransfCessionario()
+
+		Aadd(aRetorno, jJsonReajustes)
+	EndIf
+
+	RestArea(aAreaU20)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+Method ConsultaSepultados(cCodigoContrato As Character, jResponse As Json) Class VirtusConsulta
+
+	Local aArea 				As Array
+	Local aAreaU04 				As Array
+	Local aDadosSepultados		As Array
+	Local cQuery				As Character
+	Local oModVirtusSepultados	As Object
+
+	Default cCodigoContrato	:= ""
+
+	aArea 				:= GetArea()
+	aAreaU04			:= U04->(GetArea())
+	aDadosSepultados	:= {}
+
+	cQuery := " SELECT U04.R_E_C_N_O_ RECU04 FROM " + RetSqlName("U04") + " U04 "
+	cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+	cQuery += " AND U04.U04_CODIGO = '" + AllTRim(cCodigoContrato) + "' "
+	cQuery += " AND U04.U04_QUEMUT <> ' ' "
+	cQuery += " ORDER BY U04.U04_ITEM ASC "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBSEP")
+
+	If TRBSEP->(!Eof())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Sepultados encontrados com sucesso!"
+		jResponse["dados"]  	:= {}
+
+		While TRBSEP->(!Eof())
+
+			If TRBSEP->RECU04 > 0
+
+				U04->(DBGoTo(TRBSEP->RECU04))
+
+				oModVirtusSepultados := ModVirtusSepultados():New()
+				oModVirtusSepultados:item                := AllTrim(U04->U04_ITEM)
+				oModVirtusSepultados:sepultado           := AllTrim(U04->U04_QUEMUT)
+
+				//verifico se possui endereco de jazigo
+				if Alltrim(U04->U04_TIPO) == "J"
+					oModVirtusSepultados:endereco   := "QD:" + Alltrim(U04->U04_QUADRA) + " | MD:" +  Alltrim(U04->U04_MODULO) + " | JAZ:" +  Alltrim(U04->U04_JAZIGO) + " | GAV:" +  Alltrim(U04->U04_GAVETA)
+				elseif Alltrim(U04->U04_TIPO) == "O"
+					oModVirtusSepultados:endereco   := "OSSARIO:" + Alltrim(U04->U04_OSSARI) + " | NICHO:" + Alltrim(U04->U04_NICHOO)
+				else
+					oModVirtusSepultados:endereco   := "CREMAT:" + Alltrim(U04->U04_CREMAT) + " | NICHO:" + Alltrim(U04->U04_NICHOC)
+				EndIf
+
+				oModVirtusSepultados:tipo                := Alltrim(U04->U04_TIPO)
+				oModVirtusSepultados:quadra              := Alltrim(U04->U04_QUADRA)
+				oModVirtusSepultados:modulo              := Alltrim(U04->U04_MODULO)
+				oModVirtusSepultados:jazigo              := Alltrim(U04->U04_JAZIGO)
+				oModVirtusSepultados:gaveta              := Alltrim(U04->U04_GAVETA)
+
+				if Alltrim(U04->U04_TIPO) == "C"
+					oModVirtusSepultados:situacao      		 := "Cremado"
+				ElseIf Alltrim(U04->U04_TIPO) == "J" .And. Alltrim(U04->U04_OCUPAG) == "S"
+					oModVirtusSepultados:situacao      		 := "Sepultado"
+				Else
+					oModVirtusSepultados:situacao      		 := "Ossada"
+				EndIf
+
+				oModVirtusSepultados:lacre               := AllTrim(U04->U04_LACOSS)
+				oModVirtusSepultados:ossuario            := Alltrim(U04->U04_OSSARI)
+				oModVirtusSepultados:nicho_ossuario      := Alltrim(U04->U04_NICHOO)
+				oModVirtusSepultados:crematorio          := Alltrim(U04->U04_CREMAT)
+				oModVirtusSepultados:nicho_columbario    := Alltrim(U04->U04_NICHOC)
+				oModVirtusSepultados:data_servico        := U_TrataDataPOUI(U04->U04_DATA)
+				oModVirtusSepultados:data_utilizacao     := U_TrataDataPOUI(U04->U04_DTUTIL)
+				oModVirtusSepultados:prazo_exumacao      := U_TrataDataPOUI(U04->U04_PRZEXU)
+
+				Aadd(aDadosSepultados, oModVirtusSepultados:ToJsonObject())
+
+				FreeObj(oModVirtusSepultados)
+				oModVirtusSepultados := Nil
+
+			EndIf
+
+			TRBSEP->(DbSkip())
+		EndDo
+
+		If Len(aDadosSepultados) > 0
+			jResponse["dados"]  	:= aDadosSepultados
+		EndIf
+
+	else
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Requisicao nao retornou dados."
+		jResponse["dados"]  	:= {}
+	EndIf
+
+	RestArea(aAreaU04)
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function RetEstadoCivil(cEstadoCivil As Character)
+
+	Local cRetorno As Character
+
+	Default cEstadoCivil := ""
+
+	if !Empty(cEstadoCivil)
+
+		If AllTRim(cEstadoCivil) == "S"
+			cRetorno := "Solteiro"
+		ElseIf AllTRim(cEstadoCivil) == "C"
+			cRetorno := "Casado"
+		ElseIf AllTRim(cEstadoCivil) == "V"
+			cRetorno := "Viuvo"
+		ElseIf AllTRim(cEstadoCivil) == "J"
+			cRetorno := "Junto"
+		ElseIf AllTRim(cEstadoCivil) == "U"
+			cRetorno := "Uniao Estavel"
+		Else
+			cRetorno := "Outros"
+		EndIf
+
+	else
+		cRetorno := ""
+	endif
+
+Return(cRetorno)
+
+Static Function RetServApontamentos(cCodApontamento, oModVirtusContratoCemiterio)
+
+	Local aArea 					As Array
+	Local aAreaUJV					As Array
+	Local aAreaUJX					As Array
+	Local aRetorno					As Array
+	Local cQuery					As Character
+	Local jJsonServicosApontamento	As Json
+	Local nPrecoVenda				As Numeric
+	Local nDesconto					As Numeric
+	Local nSalDesco					As Numeric
+
+	Default cCodApontamento		:= ""
+
+	// atribui valor as variaiveis
+	aArea 						:= GetArea()
+	aAreaUJV 					:= UJV->(GetArea())
+	aAreaUJX 					:= UJX->(GetArea())
+	aRetorno					:= {}
+	jJsonServicosApontamento	:= JsonObject():New()
+	nPrecoVenda					:= 0
+	nDesconto					:= 0
+	nSalDesco					:= 0
+
+	UJV->(DbSetOrder(1))
+	If UJV->(MsSeek(xFilial("UJV")+cCodApontamento))
+
+		// pego as informacoes do servico principal
+		jJsonServicosApontamento := oModVirtusContratoCemiterio:ModServicosApontamento()
+		jJsonServicosApontamento["item"]  			:= "CAB"
+		jJsonServicosApontamento["codigo_servico"] 	:= UJV->UJV_SERVIC
+		jJsonServicosApontamento["servico"]  		:= RETFIELD("SB1",1,XFILIAL("SB1")+UJV->UJV_SERVIC,"B1_DESC")
+
+		// preco de veenda do servico
+		nPrecoVenda := U_RetPrecoVenda(UJV->UJV_TABPRC, UJV->UJV_SERVIC)
+
+		jJsonServicosApontamento["preco_unitario"] 	:= nPrecoVenda
+		jJsonServicosApontamento["quantidade"]  	:= 1
+		jJsonServicosApontamento["valor_total"]  	:= nPrecoVenda
+
+		// preencho o retorno
+		Aadd(aRetorno, jJsonServicosApontamento)
+
+		// faco a query dos servicos adicionais
+		cQuery := "SELECT UJX.R_E_C_N_O_ RECUJX"
+		cQuery += " FROM "+RetSqlName("UJX")+" UJX"
+		cQuery += " WHERE UJX.D_E_L_E_T_ 	<> '*'"
+		cQuery += " AND UJX.UJX_FILIAL 	= '" + xFilial("UJX") + "'"
+		cQuery += " AND UJX.UJX_CODIGO 	= '" + AllTRim(cCodApontamento) + "'"
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBAPT")
+
+		While TRBAPT->(!Eof())
+
+			jJsonServicosApontamento := oModVirtusContratoCemiterio:ModServicosApontamento()
+			jJsonServicosApontamento["item"]  			:= UJX->UJX_ITEM
+			jJsonServicosApontamento["codigo_servico"] 	:= UJX->UJX_SERVIC
+			jJsonServicosApontamento["servico"]  		:= RETFIELD("SB1",1,XFILIAL("SB1")+UJX->UJX_SERVIC,"B1_DESC")
+			jJsonServicosApontamento["preco_unitario"] 	:= UJX->UJX_VLUNIT
+			jJsonServicosApontamento["quantidade"]  	:= UJX->UJX_QTDE
+			jJsonServicosApontamento["valor_total"]  	:= UJX->UJX_VALOR
+
+			// preencho o retorno
+			Aadd(aRetorno, jJsonServicosApontamento)
+
+			TRBAPT->(DbSkip())
+		EndDo
+
+	EndIf
+
+	RestArea(aAreaUJX)
+	RestArea(aAreaUJV)
+	RestArea(aArea)
+
+Return(aRetorno)

@@ -1,0 +1,728 @@
+#include "totvs.ch"
+
+User Function ModVirtusContratoCemiterio()
+Return(Nil)
+
+	Class ModVirtusContratoCemiterio
+
+		Public Data cessionario                 			As Array
+		Public Data responsavel_financeiro     				As Array
+		Public Data autorizados                 			As Array
+		Public Data enderecamento               			As Array
+		Public Data servicos               					As Array
+		Public Data financeiro               				As Array
+		Public Data transferencias_endereco     			As Array
+		Public Data reajustes             					As Array
+		Public Data manutencao             					As Array
+		Public Data historico_endereco						As Array
+		Public Data historico_transferencia_cessionario		As Array
+		Public Data retiradasCinzas							As Array
+		Public Data cnpjemp									As Character
+		Public Data id_integracao               			As Character
+		Public Data contrato                    			As Character
+		Public Data produto                     			As Character
+		Public Data vendedor                    			As Character
+		Public Data forma_aquisicao             			As Character
+		Public Data forma_pagamento             			As Character
+		Public Data forma_pagamento_manutencao  			As Character
+		Public Data tipo_reajuste              	 			As Character
+		Public Data indice_reajuste             			As Character
+		Public Data indice_manutencao           			As Character
+		Public Data regra_manutencao						As Character
+		Public Data regra_negociacao						As Character
+		Public Data item_regra_negociacao					As Character
+		Public Data parcela_inicial_regra_negociacao		As Character
+		Public Data parcela_final_regra_negociacao			As Character
+		Public Data taxa_juros_regra_negociacao				As Character
+		Public Data carencia_dias							As Character
+		Public Data carencia_financeira						As Character
+		Public Data codigo_cliente							As Character
+		Public Data loja_cliente							As Character
+		Public Data cgc_cliente								As Character
+		Public Data rg_cliente								As Character
+		Public Data nome_cliente                   			As Character
+		Public Data nome_reduzido                 	 		As Character
+		Public Data codigo_cessionario						As Character
+		Public Data loja_cessionario						As Character
+		Public Data cgce_cessionario						As Character
+		Public Data rg_cessionario							As Character
+		Public Data nome_cessionario                   		As Character
+		Public Data nome_reduzido_cessionario               As Character
+		Public Data tipo_pessoa                    			As Character
+		Public Data sexo                           			As Character
+		Public Data profissao                      			As Character
+		Public Data estado_civil                   			As Character
+		Public Data conjuge                        			As Character
+		Public Data email                          			As Character
+		Public Data ddd                   		   			As Character
+		Public Data telefone                       			As Character
+		Public Data ddd_celular                    			As Character
+		Public Data celular                        			As Character
+		Public Data celular2                       			As Character
+		Public Data estado                         			As Character
+		Public Data cod_municipio                  			As Character
+		Public Data municipio                      			As Character
+		Public Data cep                            			As Character
+		Public Data endereco                       			As Character
+		Public Data numero                         			As Character
+		Public Data bairro                        			As Character
+		Public Data complemento                    			As Character
+		Public Data ponto_referencia               			As Character
+		Public Data status_contrato                			As Character
+		Public Data situacao_financeira            			As Character
+		Public Data possui_jazigo            				As Character
+		Public Data enderecado            					As Character
+		Public Data data_cadastro               			As Date
+		Public Data data_nascimento             			As Date
+		Public Data data_entrada                			As Date
+		Public Data primeiro_vencimento         			As Date
+		Public Data quantidade_parcelas         			As Numeric
+		Public Data valor_total               				As Numeric
+		Public Data valor_liquido              				As Numeric
+		Public Data valor_entrada               			As Numeric
+		Public Data valor_desconto              			As Numeric
+		Public Data valor_taxa_manutencao       			As Numeric
+		Public Data taxa_juros       						As Numeric
+
+		Public Method New() Constructor
+		Public Method FromJson()
+		Public Method ToJsonObject()
+		Public Method FormatData()
+		Public Method ModCessionario()
+		Public Method ModResponsavelFinanceiro()
+		Public Method ModAutorizados()
+		Public Method ModEnderecamento()
+		Public Method ModFinanceiro()
+		Public Method ModManutencao()
+		Public Method ModReajustes()
+		Public Method ModRetiradaCinzas()
+		Public Method ModServicos()
+		Public Method ModTransfCessionario()
+		Public Method ModHistoricoEndereco()
+		Public Method ModTransferencias()
+		Public Method ModServicosApontamento()
+
+	EndClass
+
+Method New() Class ModVirtusContratoCemiterio
+
+	Self:cnpjemp								:= ""
+	Self:cessionario 							:= Self:ModCessionario()
+	Self:responsavel_financeiro					:= Self:ModResponsavelFinanceiro()
+	Self:autorizados                    		:= Self:ModAutorizados()
+	Self:financeiro								:= Self:ModFinanceiro()
+	Self:enderecamento 							:= Self:ModEnderecamento()
+	Self:servicos 								:= Self:ModServicos()
+	Self:transferencias_endereco				:= Self:ModTransferencias()
+	Self:reajustes								:= Self:ModReajustes()
+	Self:manutencao								:= Self:ModManutencao()
+	Self:historico_transferencia_cessionario	:= Self:ModTransfCessionario()
+	Self:historico_endereco						:= Self:ModHistoricoEndereco()
+	Self:retiradasCinzas						:= Self:ModRetiradaCinzas()
+	Self:id_integracao                  		:= ""
+	Self:codigo_cliente                			:= ""
+	Self:loja_cliente                   		:= ""
+	Self:contrato                       		:= ""
+	Self:cgc_cliente                    		:= ""
+	Self:rg_cliente                     		:= ""
+	Self:nome_cliente                   		:= ""
+	Self:nome_reduzido                  		:= ""
+	Self:tipo_pessoa                    		:= ""
+	Self:sexo                           		:= ""
+	Self:profissao                      		:= ""
+	Self:estado_civil                   		:= ""
+	Self:conjuge                        		:= ""
+	Self:email                          		:= ""
+	Self:ddd                   					:= ""
+	Self:telefone                       		:= ""
+	Self:ddd_celular                    		:= ""
+	Self:celular                        		:= ""
+	Self:celular2                       		:= ""
+	Self:estado                         		:= ""
+	Self:cod_municipio                  		:= ""
+	Self:municipio                      		:= ""
+	Self:cep                            		:= ""
+	Self:endereco                       		:= ""
+	Self:numero                         		:= ""
+	Self:bairro                         		:= ""
+	Self:complemento                    		:= ""
+	Self:ponto_referencia               		:= ""
+	Self:produto                        		:= ""
+	Self:vendedor                       		:= ""
+	Self:forma_aquisicao                		:= ""
+	Self:forma_pagamento                		:= ""
+	Self:forma_pagamento_manutencao     		:= ""
+	Self:tipo_reajuste                  		:= ""
+	Self:indice_reajuste                		:= ""
+	Self:indice_manutencao              		:= ""
+	Self:status_contrato                		:= ""
+	Self:situacao_financeira            		:= ""
+	Self:possui_jazigo            				:= ""
+	Self:enderecado            					:= ""
+	Self:data_cadastro                  		:= U_TrataDataPOUI(StoD(""))
+	Self:data_nascimento                		:= U_TrataDataPOUI(StoD(""))
+	Self:data_entrada                   		:= U_TrataDataPOUI(StoD(""))
+	Self:primeiro_vencimento            		:= U_TrataDataPOUI(StoD(""))
+	Self:quantidade_parcelas            		:= 0
+	Self:valor_total            				:= 0
+	Self:valor_liquido                  		:= 0
+	Self:valor_entrada                  		:= 0
+	Self:valor_desconto                 		:= 0
+	Self:valor_taxa_manutencao          		:= 0
+
+Return(Self)
+
+Method ToJsonObject() Class ModVirtusContratoCemiterio
+
+	Local jJsonRetorno As Json
+
+	jJsonRetorno := JsonObject():New()
+
+	jJsonRetorno["cnpjemp"] := Self:cnpjemp
+	jJsonRetorno["contrato"] := Self:contrato
+	jJsonRetorno["status_contrato"] := Self:status_contrato
+	jJsonRetorno["situacao_financeira"] := Self:situacao_financeira
+	jJsonRetorno["possui_jazigo"] := Self:possui_jazigo
+	jJsonRetorno["enderecado"] := Self:enderecado
+	jJsonRetorno["produto"] := Self:produto
+	jJsonRetorno["vendedor"] := Self:vendedor
+	jJsonRetorno["forma_aquisicao"] := Self:forma_aquisicao
+	jJsonRetorno["forma_pagamento"] := Self:forma_pagamento
+	jJsonRetorno["forma_pagamento_manutencao"] := Self:forma_pagamento_manutencao
+	jJsonRetorno["tipo_reajuste"] := Self:tipo_reajuste
+	jJsonRetorno["indice_reajuste"] := Self:indice_reajuste
+	jJsonRetorno["indice_manutencao"] := Self:indice_manutencao
+	jJsonRetorno["data_cadastro"] := Self:data_cadastro
+	jJsonRetorno["data_entrada"] := Self:data_entrada
+	jJsonRetorno["primeiro_vencimento"] := Self:primeiro_vencimento
+	jJsonRetorno["quantidade_parcelas"] := Self:quantidade_parcelas
+	jJsonRetorno["valor_entrada"] := Self:valor_entrada
+	jJsonRetorno["valor_desconto"] := Self:valor_desconto
+	jJsonRetorno["valor_taxa_manutencao"] := Self:valor_taxa_manutencao
+	jJsonRetorno["valor_total"] := Self:valor_total
+	jJsonRetorno["valor_liquido"] := Self:valor_liquido
+	jJsonRetorno["cessionario"] := Self:cessionario
+	jJsonRetorno["responsavel_financeiro"] := Self:responsavel_financeiro
+	jJsonRetorno["autorizados"] := Self:autorizados
+	jJsonRetorno["financeiro"] := Self:financeiro
+	jJsonRetorno["enderecamento"] := Self:enderecamento
+	jJsonRetorno["servicos"] := Self:servicos
+	jJsonRetorno["transferencias_endereco"] := Self:transferencias_endereco
+	jJsonRetorno["reajustes"] := Self:reajustes
+	jJsonRetorno["manutencao"] := Self:manutencao
+	jJsonRetorno["historico_transferencia_cessionario"] := Self:historico_transferencia_cessionario
+	jJsonRetorno["historico_endereco"] := Self:historico_endereco
+	jJsonRetorno["retiradasCinzas"] := Self:retiradasCinzas
+
+Return(jJsonRetorno)
+
+Method FromJson(cJson As Character, cErro As Character) Class ModVirtusContratoCemiterio
+
+	Local aDataAux      As Array
+	Local lRetorno      As Logical
+	Local lHoraVerao    As Logical
+	Local nHoraVerao    As Numeric
+	Local oJson         As Object
+	Local xRet          As Object
+
+	Default cJson   := ""
+
+	// atribui valor as variavies
+	aDataAux    := {}
+	lRetorno    := .T.
+	lHoraVerao  := SuperGetMV("MV_HVERAO",.F.,.T.)
+	nHoraVerao  := Iif(lHoraVerao, 1, 0)
+	oJson       := JsonObject():New()
+	xRet        := Nil
+
+	// valido os dados do json
+	xRet        := oJson:fromJson(cJson)
+	lRetorno    := ValType(xRet) == "U"
+
+	// verifico se esta tudo certo
+	If lRetorno
+
+		Self:cnpjemp                	:= iif(oJson["cnpjemp"] <> Nil, oJson["cnpjemp"], Self:cnpjemp)
+		Self:autorizados                := iif(oJson["autorizados"] <> Nil, oJson["autorizados"], Self:autorizados)
+		Self:id_integracao              := iif(oJson["id_integracao"] <> Nil, oJson["id_integracao"], Self:id_integracao)
+		Self:contrato                   := ""
+		Self:cgc_cliente                := iif(oJson["cgc_cliente"] <> Nil, oJson["cgc_cliente"], Self:cgc_cliente)
+		Self:rg_cliente                 := iif(oJson["rg_cliente"] <> Nil, U_SpecialNoChar(oJson["rg_cliente"]), Self:rg_cliente)
+		Self:nome_cliente               := iif(oJson["nome_cliente"] <> Nil, U_SpecialNoChar(oJson["nome_cliente"]), Self:nome_cliente)
+		Self:nome_reduzido              := iif(oJson["nome_reduzido"] <> Nil, U_SpecialNoChar(oJson["nome_reduzido"]), Self:nome_reduzido)
+		Self:tipo_pessoa                := iif(oJson["tipo_pessoa"] <> Nil, oJson["tipo_pessoa"], Self:tipo_pessoa)
+		Self:sexo                       := iif(oJson["sexo"] <> Nil, oJson["sexo"], Self:sexo)
+		Self:profissao                  := iif(oJson["profissao"] <> Nil, U_SpecialNoChar(oJson["profissao"]), Self:profissao)
+		Self:estado_civil               := iif(oJson["estado_civil"] <> Nil, U_SpecialNoChar(oJson["estado_civil"]), Self:estado_civil)
+		Self:conjuge                    := iif(oJson["conjuge"] <> Nil, U_SpecialNoChar(oJson["conjuge"]), Self:conjuge)
+		Self:email                      := iif(oJson["email"] <> Nil, oJson["email"], Self:email)
+		Self:ddd               			:= iif(oJson["ddd"] <> Nil, oJson["ddd"], Self:ddd)
+		Self:telefone                   := iif(oJson["telefone"] <> Nil, oJson["telefone"], Self:telefone)
+		Self:ddd_celular                := iif(oJson["ddd_celular"] <> Nil, oJson["ddd_celular"], Self:ddd_celular)
+		Self:celular                    := iif(oJson["celular"] <> Nil, oJson["celular"], Self:celular)
+		Self:celular2                   := iif(oJson["celular2"] <> Nil, oJson["celular2"], Self:celular2)
+		Self:estado                     := iif(oJson["estado"] <> Nil, oJson["estado"], Self:estado)
+		Self:cod_municipio              := iif(oJson["cod_municipio"]  <> Nil, oJson["cod_municipio"], Self:cod_municipio)
+		Self:municipio                  := iif(oJson["municipio"]  <> Nil, U_SpecialNoChar(oJson["municipio"]), Self:municipio)
+		Self:cep                        := iif(oJson["cep"]  <> Nil, oJson["cep"], Self:cep)
+		Self:endereco                   := iif(oJson["endereco"]  <> Nil, U_SpecialNoChar(oJson["endereco"]), Self:endereco)
+		Self:numero                     := iif(oJson["numero"] <> Nil, oJson["numero"], Self:numero)
+		Self:bairro                     := iif(oJson["bairro"] <> Nil, oJson["bairro"], Self:bairro)
+		Self:complemento                := iif(oJson["complemento"] <> Nil, U_SpecialNoChar(oJson["complemento"]), Self:complemento)
+		Self:ponto_referencia           := iif(oJson["ponto_referencia"] <> Nil, U_SpecialNoChar(oJson["ponto_referencia"]), Self:ponto_referencia)
+		Self:produto                    := iif(oJson["produto"] <> Nil, oJson["produto"], Self:produto)
+		Self:vendedor                   := iif(oJson["vendedor"] <> Nil, oJson["vendedor"], Self:vendedor)
+		Self:forma_aquisicao            := iif(oJson["forma_aquisicao"] <> Nil, oJson["forma_aquisicao"], Self:forma_aquisicao)
+		Self:forma_pagamento            := iif(oJson["forma_pagamento"] <> Nil, oJson["forma_pagamento"], Self:forma_pagamento)
+		Self:forma_pagamento_manutencao := iif(oJson["forma_pagamento_manutencao"] <> Nil, oJson["forma_pagamento_manutencao"], Self:forma_pagamento_manutencao)
+		Self:tipo_reajuste              := iif(oJson["tipo_reajuste"] <> Nil, oJson["tipo_reajuste"], Self:tipo_reajuste)
+		Self:indice_reajuste            := iif(oJson["indice_reajuste"] <> Nil, oJson["indice_reajuste"], Self:indice_reajuste)
+		Self:indice_manutencao          := iif(oJson["indice_manutencao"] <> Nil, oJson["indice_manutencao"], Self:indice_manutencao)
+		Self:valor_desconto				:= iif(oJson["valor_desconto"] <> Nil, oJson["valor_desconto"], Self:valor_desconto)
+		Self:valor_entrada				:= iif(oJson["valor_entrada"] <> Nil, oJson["valor_entrada"], Self:valor_entrada)
+		Self:quantidade_parcelas		:= iif(oJson["quantidade_parcelas"] <> Nil, oJson["quantidade_parcelas"], Self:quantidade_parcelas)
+		Self:valor_taxa_manutencao		:= iif(oJson["valor_taxa_manutencao"] <> Nil, oJson["valor_taxa_manutencao"], Self:valor_taxa_manutencao)
+
+		// caso a data de cadastro esteja preenchida
+		If oJson["data_cadastro"] <> Nil
+
+			// alimento o array auxiliar de data
+			aDataAux := FwDateTimeToLocal(oJson["data_cadastro"], nHoraVerao)
+
+			// verifico se as datas auxiliares
+			If Len(aDataAux) > 0
+				Self:data_cadastro              := aDataAux[1]
+			EndIf
+
+		EndIf
+
+		// caso a data de nascimento esteja preenchida
+		If oJson["data_nascimento"] <> Nil
+
+			// alimento o array auxiliar de data
+			aDataAux := FwDateTimeToLocal(oJson["data_nascimento"], nHoraVerao)
+
+			// verifico se as datas auxiliares
+			If Len(aDataAux) > 0
+				Self:data_nascimento              := aDataAux[1]
+			EndIf
+
+		EndIf
+
+		// caso a data de entrada esteja preenchida
+		If oJson["data_entrada"] <> Nil
+
+			// alimento o array auxiliar de data
+			aDataAux := FwDateTimeToLocal(oJson["data_entrada"], nHoraVerao)
+
+			// verifico se as datas auxiliares
+			If Len(aDataAux) > 0
+				Self:data_entrada              := aDataAux[1]
+			EndIf
+
+		EndIf
+
+		// caso a data de nascimento esteja preenchida
+		If oJson["primeiro_vencimento"] <> Nil
+
+			// alimento o array auxiliar de data
+			aDataAux := FwDateTimeToLocal(oJson["primeiro_vencimento"], nHoraVerao)
+
+			// verifico se as datas auxiliares
+			If Len(aDataAux) > 0
+				Self:primeiro_vencimento              := aDataAux[1]
+			EndIf
+
+		EndIf
+
+		//-- Formata dados do modelo --//
+		Self:FormatData()
+
+	else
+		cErro := xRet
+
+	EndIf
+
+Return(lRetorno)
+
+Method FormatData() Class ModVirtusContratoCemiterio
+
+	If !Empty(Self:produto)
+		Self:produto := PadL(Self:produto, TamSX3("U00_PLANO")[1], "0")
+	EndIf
+
+	If !Empty(Self:cod_municipio)
+		Self:cod_municipio := PadL(AllTrim(Self:cod_municipio), TamSx3("A1_COD_MUN")[1], "0")
+	EndIf
+
+	If !Empty(Self:estado_civil)
+		Self:estado_civil := Upper( AllTrim(Self:estado_civil) )
+	EndIf
+
+	If !Empty(Self:endereco) .And. !Empty(Self:numero)
+		Self:endereco := SubStr(AllTrim(Self:endereco) + " Nr " + AllTrim(Self:numero), 1, TamSX3("A1_END")[1])
+	EndIf
+
+Return(Nil)
+
+Method ModCessionario() Class ModVirtusContratoCemiterio
+
+	Local jJsonCessionario      As Json
+
+	jJsonCessionario    := JsonObject():New()
+
+	jJsonCessionario["codigo_cliente"] 			:= ""
+	jJsonCessionario["loja_cliente"] 			:= ""
+	jJsonCessionario["nome_cliente"] 			:= ""
+	jJsonCessionario["nome_reduzido"] 			:= ""
+	jJsonCessionario["cgc_cliente"] 			:= ""
+	jJsonCessionario["rg_cliente"] 				:= ""
+	jJsonCessionario["tipo_pessoa"] 			:= ""
+	jJsonCessionario["sexo"] 					:= ""
+	jJsonCessionario["profissao"] 				:= ""
+	jJsonCessionario["estado_nascimento"]		:= ""
+	jJsonCessionario["codmun_nascimento"]		:= ""
+	jJsonCessionario["municipio_nascimento"]	:= ""
+	jJsonCessionario["estado_civil"] 			:= ""
+	jJsonCessionario["conjuge"] 				:= ""
+	jJsonCessionario["email"] 					:= ""
+	jJsonCessionario["email2"] 					:= ""
+	jJsonCessionario["ddd"] 					:= ""
+	jJsonCessionario["telefone"] 				:= ""
+	jJsonCessionario["ddd_celular"] 			:= ""
+	jJsonCessionario["celular"] 				:= ""
+	jJsonCessionario["celular2"] 				:= ""
+	jJsonCessionario["estado"] 				:= ""
+	jJsonCessionario["cod_municipio"] 		:= ""
+	jJsonCessionario["municipio"] 			:= ""
+	jJsonCessionario["cep"] 				:= ""
+	jJsonCessionario["endereco"] 			:= ""
+	jJsonCessionario["numero"] 				:= ""
+	jJsonCessionario["bairro"] 				:= ""
+	jJsonCessionario["cep_cobranca"] 		:= ""
+	jJsonCessionario["endereco_cobranca"] 	:= ""
+	jJsonCessionario["numero_cobranca"] 	:= ""
+	jJsonCessionario["bairro_cobranca"] 	:= ""
+	jJsonCessionario["complemento"] 		:= ""
+	jJsonCessionario["complemento_cobranca"] 		:= ""
+	jJsonCessionario["ponto_referencia"] 	:= ""
+	jJsonCessionario["data_nascimento"] 	:= ""
+
+Return(jJsonCessionario)
+
+Method ModResponsavelFinanceiro() Class ModVirtusContratoCemiterio
+
+	Local jJsonResponsavelFinanceiro      As Json
+
+	jJsonResponsavelFinanceiro    := JsonObject():New()
+
+	jJsonResponsavelFinanceiro["codigo_cliente"] 		:= ""
+	jJsonResponsavelFinanceiro["loja_cliente"] 		:= ""
+	jJsonResponsavelFinanceiro["nome_cliente"] 		:= ""
+	jJsonResponsavelFinanceiro["nome_reduzido"] 		:= ""
+	jJsonResponsavelFinanceiro["cgc_cliente"] 		:= ""
+	jJsonResponsavelFinanceiro["rg_cliente"] 			:= ""
+	jJsonResponsavelFinanceiro["tipo_pessoa"] 		:= ""
+	jJsonResponsavelFinanceiro["estado_nascimento"]		:= ""
+	jJsonResponsavelFinanceiro["codmun_nascimento"]		:= ""
+	jJsonResponsavelFinanceiro["municipio_nascimento"]	:= ""
+	jJsonResponsavelFinanceiro["sexo"] 				:= ""
+	jJsonResponsavelFinanceiro["profissao"] 			:= ""
+	jJsonResponsavelFinanceiro["estado_civil"] 		:= ""
+	jJsonResponsavelFinanceiro["conjuge"] 			:= ""
+	jJsonResponsavelFinanceiro["email"] 				:= ""
+	jJsonResponsavelFinanceiro["email2"] 				:= ""
+	jJsonResponsavelFinanceiro["ddd"] 				:= ""
+	jJsonResponsavelFinanceiro["telefone"] 			:= ""
+	jJsonResponsavelFinanceiro["ddd_celular"] 		:= ""
+	jJsonResponsavelFinanceiro["celular"] 			:= ""
+	jJsonResponsavelFinanceiro["celular2"] 			:= ""
+	jJsonResponsavelFinanceiro["estado"] 				:= ""
+	jJsonResponsavelFinanceiro["cod_municipio"] 		:= ""
+	jJsonResponsavelFinanceiro["municipio"] 			:= ""
+	jJsonResponsavelFinanceiro["cep"] 				:= ""
+	jJsonResponsavelFinanceiro["endereco"] 			:= ""
+	jJsonResponsavelFinanceiro["numero"] 				:= ""
+	jJsonResponsavelFinanceiro["bairro"] 				:= ""
+	jJsonResponsavelFinanceiro["cep_cobranca"] 		:= ""
+	jJsonResponsavelFinanceiro["endereco_cobranca"] 	:= ""
+	jJsonResponsavelFinanceiro["numero_cobranca"] 	:= ""
+	jJsonResponsavelFinanceiro["bairro_cobranca"] 	:= ""
+	jJsonResponsavelFinanceiro["complemento"] 		:= ""
+	jJsonResponsavelFinanceiro["complemento_cobranca"] 		:= ""
+	jJsonResponsavelFinanceiro["ponto_referencia"] 	:= ""
+	jJsonResponsavelFinanceiro["ponto_referencia_cobranca"] 	:= ""
+	jJsonResponsavelFinanceiro["data_nascimento"] 	:= ""
+
+Return(jJsonResponsavelFinanceiro)
+
+Method ModAutorizados() Class ModVirtusContratoCemiterio
+
+	Local jJsonAutorizados      As Json
+
+	jJsonAutorizados    := JsonObject():New()
+
+	jJsonAutorizados["item"]       			:= ""
+	jJsonAutorizados["id_integracao"]       := ""
+	jJsonAutorizados["cgc"]                 := ""
+	jJsonAutorizados["nome"]                := ""
+	jJsonAutorizados["grau_parentesco"]     := ""
+	jJsonAutorizados["rg"]                  := ""
+	jJsonAutorizados["orgao_expedidor"]     := ""
+	jJsonAutorizados["sexo"]                := ""
+	jJsonAutorizados["naturlidade"]         := ""
+	jJsonAutorizados["estado_civil"]        := ""
+	jJsonAutorizados["endereco"]            := ""
+	jJsonAutorizados["complemento"]         := ""
+	jJsonAutorizados["bairro"]              := ""
+	jJsonAutorizados["cep"]                 := ""
+	jJsonAutorizados["estado"]              := ""
+	jJsonAutorizados["codigo_municipio"]    := ""
+	jJsonAutorizados["municipio"]           := ""
+	jJsonAutorizados["ddd"]                 := ""
+	jJsonAutorizados["telefone"]            := ""
+	jJsonAutorizados["ddd_celular"]         := ""
+	jJsonAutorizados["celular"]             := ""
+	jJsonAutorizados["email"]               := ""
+	jJsonAutorizados["data_nascimento"]     := U_TrataDataPOUI(StoD(""))
+
+Return(jJsonAutorizados)
+
+Method ModFinanceiro() Class ModVirtusContratoCemiterio
+
+	Local jJsonFinanceiro	As Json
+
+	jJsonFinanceiro    := JsonObject():New()
+
+	jJsonFinanceiro["contrato"] 		:= ""
+	jJsonFinanceiro["clienteloja"]  	:= ""
+	jJsonFinanceiro["nome"]  			:= ""
+	jJsonFinanceiro["prefixo"]    		:= ""
+	jJsonFinanceiro["titulo"]       	:= ""
+	jJsonFinanceiro["parcela"]         	:= ""
+	jJsonFinanceiro["tipo"]             := ""
+	jJsonFinanceiro["emissao"]          := U_TrataDataPOUI(SToD(""))
+	jJsonFinanceiro["vencimento"]       := U_TrataDataPOUI(SToD(""))
+	jJsonFinanceiro["vencimento_real"]  := U_TrataDataPOUI(SToD(""))
+	jJsonFinanceiro["data_baixa"]       := U_TrataDataPOUI(SToD(""))
+	jJsonFinanceiro["valor"]            := 0
+	jJsonFinanceiro["valor_titulo"]    	:= 0
+	jJsonFinanceiro["saldo"]            := 0
+	jJsonFinanceiro["juros"]            := 0
+	jJsonFinanceiro["multa"]            := 0
+	jJsonFinanceiro["acrescimo"]        := 0
+	jJsonFinanceiro["decrescimo"]		:= 0
+	jJsonFinanceiro["valor_pago"]		:= 0
+	jJsonFinanceiro["forma_pagamento"]  := ""
+	jJsonFinanceiro["tipo_cobranca"]  	:= ""
+
+Return(jJsonFinanceiro)
+
+Method ModEnderecamento() Class ModVirtusContratoCemiterio
+
+	Local jJsonEnderecamento	As Json
+
+	jJsonEnderecamento    := JsonObject():New()
+
+	jJsonEnderecamento["contrato"] 			:= ""
+	jJsonEnderecamento["tipo"]  			:= ""
+	jJsonEnderecamento["item"]  			:= ""
+	jJsonEnderecamento["endereco"] 			:= ""
+	jJsonEnderecamento["quadra"]  			:= ""
+	jJsonEnderecamento["modulo"]    		:= ""
+	jJsonEnderecamento["jazigo"]       		:= ""
+	jJsonEnderecamento["gaveta"]         	:= ""
+	jJsonEnderecamento["ossario"]           := ""
+	jJsonEnderecamento["nicho_ossario"]     := ""
+	jJsonEnderecamento["columbario"]       	:= ""
+	jJsonEnderecamento["nicho_columbario"]  := ""
+	jJsonEnderecamento["data_utilizacao"]   := U_TrataDataPOUI(SToD(""))
+	jJsonEnderecamento["data_exumacao"]     := U_TrataDataPOUI(SToD(""))
+	jJsonEnderecamento["falecido"]          := ""
+	jJsonEnderecamento["previo"]  			:= ""
+	jJsonEnderecamento["ocupa_gaveta"]  	:= ""
+	jJsonEnderecamento["apontamento"]  		:= ""
+	jJsonEnderecamento["servico_utilizado"]	:= ""
+
+Return(jJsonEnderecamento)
+
+Method ModServicos() Class ModVirtusContratoCemiterio
+
+	Local jJsonServicos	As Json
+
+	jJsonServicos    := JsonObject():New()
+
+	jJsonServicos["contrato"] 						:= ""
+	jJsonServicos["apontamento"]  					:= ""
+	jJsonServicos["data"]  							:= ""
+	jJsonServicos["hora"]  							:= ""
+	jJsonServicos["atendente"]  					:= ""
+	jJsonServicos["situacao"]  						:= ""
+	jJsonServicos["observacao"]  					:= ""
+	jJsonServicos["tabela_preco"]  					:= ""
+	jJsonServicos["autorizado"]     				:= ""
+	jJsonServicos["aut_grau_parentesco"]    	 	:= ""
+	jJsonServicos["desconto"]  						:= ""
+	jJsonServicos["data_obito"]   					:= U_TrataDataPOUI(SToD(""))
+	jJsonServicos["data_servico"]      				:= U_TrataDataPOUI(SToD(""))
+	jJsonServicos["data_certidao"]     				:= U_TrataDataPOUI(SToD(""))
+	jJsonServicos["hora_servico"]     				:= ""
+	jJsonServicos["local_falecimento"]     			:= ""
+	jJsonServicos["causa_morte"]     				:= ""
+	jJsonServicos["falecido"]          				:= ""
+	jJsonServicos["cpf_falecido"]         	 		:= ""
+	jJsonServicos["rg_falecido"]          			:= ""
+	jJsonServicos["data_nascimento_falecido"]       := ""
+	jJsonServicos["sexo_falecido"]          		:= ""
+	jJsonServicos["estado_civil_falecido"]          := ""
+	jJsonServicos["nacionalidade_falecido"]         := ""
+	jJsonServicos["estado_falecido"]          		:= ""
+	jJsonServicos["naturalidade_falecido"]          := ""
+	jJsonServicos["nome_mae_falecido"]     			:= ""
+	jJsonServicos["endereco_falecido"]     			:= ""
+	jJsonServicos["funeraria"]     					:= ""
+	jJsonServicos["complemento_endereco_falecido"]  := ""
+	jJsonServicos["tipo_endereco"]  				:= ""
+	jJsonServicos["quadra"]    						:= ""
+	jJsonServicos["modulo"]    						:= ""
+	jJsonServicos["jazigo"]       					:= ""
+	jJsonServicos["gaveta"]         				:= ""
+	jJsonServicos["ossario"]           				:= ""
+	jJsonServicos["nicho_ossario"]     				:= ""
+	jJsonServicos["lacre_ossario"]     				:= ""
+	jJsonServicos["columbario"]       				:= ""
+	jJsonServicos["nicho_columbario"]  				:= ""
+	jJsonServicos["status_endereco"] 	 			:= ""
+	jJsonServicos["pedido_venda"]  					:= ""
+	jJsonServicos["cliente_faturamento"]  			:= ""
+	jJsonServicos["sala_velorio"]  					:= ""
+	jJsonServicos["data_velorio"]  					:= U_TrataDataPOUI(SToD(""))
+	jJsonServicos["hora_inicio"]  					:= ""
+	jJsonServicos["hora_fim"]  						:= ""
+	jJsonServicos["servicos"]  						:= Self:ModServicosApontamento()
+
+Return(jJsonServicos)
+
+Method ModServicosApontamento() Class ModVirtusContratoCemiterio
+
+	Local jJsonServicosApontamento	As Json
+
+	jJsonServicosApontamento    := JsonObject():New()
+
+	jJsonServicosApontamento["item"]  			:= ""
+	jJsonServicosApontamento["codigo_servico"] := ""
+	jJsonServicosApontamento["servico"]  		:= ""
+	jJsonServicosApontamento["preco_unitario"] := 0
+	jJsonServicosApontamento["quantidade"]  	:= 0
+	jJsonServicosApontamento["valor_total"]  	:= 0
+
+Return(jJsonServicosApontamento)
+
+Method ModTransferencias() Class ModVirtusContratoCemiterio
+
+	Local jJsonTransferencia	As Json
+
+	jJsonTransferencia    := JsonObject():New()
+
+	jJsonTransferencia["codigo"]  				:= ""
+	jJsonTransferencia["autorizado"]			:= ""
+	jJsonTransferencia["utilizacao"]  			:= ""
+	jJsonTransferencia["transferencia"]			:= ""
+	jJsonTransferencia["falecido"]				:= ""
+	jJsonTransferencia["tipo_transferencia"]	:= ""
+	jJsonTransferencia["contrato_origem"]		:= ""
+	jJsonTransferencia["endereco_origem"]		:= ""
+	jJsonTransferencia["contrato_destino"]		:= ""
+	jJsonTransferencia["endereco_destino"]		:= ""
+	jJsonTransferencia["lacre_origem"]			:= ""
+	jJsonTransferencia["lacre_ossiario"]		:= ""
+
+Return(jJsonTransferencia)
+
+Method ModReajustes() Class ModVirtusContratoCemiterio
+
+	Local jJsonReajustes	As Json
+
+	jJsonReajustes    := JsonObject():New()
+	jJsonReajustes["codigo"]			:= ""
+	jJsonReajustes["data"]				:= ""
+	jJsonReajustes["conrato"]			:= ""
+	jJsonReajustes["indice"]			:= ""
+	jJsonReajustes["percentual_indice"]	:= ""
+	jJsonReajustes["parcela_inicial"]	:= ""
+	jJsonReajustes["parcela_final"]		:= ""
+	jJsonReajustes["proximo_reajsute"]	:= ""
+	jJsonReajustes["importado"]			:= ""
+
+Return(jJsonReajustes)
+
+Method ModManutencao() Class ModVirtusContratoCemiterio
+
+	Local jJsonManutencao	As Json
+
+	jJsonManutencao    := JsonObject():New()
+	jJsonManutencao["codigo"]				:= ""
+	jJsonManutencao["data_manutencao"]		:= ""
+	jJsonManutencao["contrato"]				:= ""
+	jJsonManutencao["indice"]				:= ""
+	jJsonManutencao["percentual_indice"]	:= ""
+	jJsonManutencao["valor_anterior"]		:= ""
+	jJsonManutencao["valor_desconto"]		:= ""
+	jJsonManutencao["valor_reajuste"]		:= ""
+	jJsonManutencao["valor_atual"]			:= ""
+	jJsonManutencao["proxima_manutencao"]	:= ""
+	jJsonManutencao["importado"]			:= ""
+	jJsonManutencao["regra_manutencao"]		:= ""
+	jJsonManutencao["status"]				:= ""
+	jJsonManutencao["forma_pagamento"]		:= ""
+	jJsonManutencao["como_gera"]			:= ""
+
+Return(jJsonManutencao)
+
+Method ModTransfCessionario() Class ModVirtusContratoCemiterio
+
+	Local jJsonTransfCessionario	As Json
+
+	jJsonTransfCessionario    := JsonObject():New()
+
+	jJsonTransfCessionario["cliente_antigo"]  		:= ""
+	jJsonTransfCessionario["cliente_novo"]  		:= ""
+	jJsonTransfCessionario["data_transferencia"]  	:= ""
+	jJsonTransfCessionario["motivo"]  				:= ""
+
+Return(jJsonTransfCessionario)
+
+Method ModHistoricoEndereco() Class ModVirtusContratoCemiterio
+
+	Local jJsonHistoricoEndereco	As Json
+
+	jJsonHistoricoEndereco    := JsonObject():New()
+
+	jJsonHistoricoEndereco["data_historico"]  		:= ""
+	jJsonHistoricoEndereco["item"]  				:= ""
+	jJsonHistoricoEndereco["endereco"]  			:= ""
+	jJsonHistoricoEndereco["quadra"]  				:= ""
+	jJsonHistoricoEndereco["modulo"]    			:= ""
+	jJsonHistoricoEndereco["jazigo"]       			:= ""
+	jJsonHistoricoEndereco["gaveta"]         		:= ""
+	jJsonHistoricoEndereco["ossario"]           	:= ""
+	jJsonHistoricoEndereco["nicho_ossario"]     	:= ""
+	jJsonHistoricoEndereco["columbario"]       		:= ""
+	jJsonHistoricoEndereco["nicho_columbario"]  	:= ""
+	jJsonHistoricoEndereco["utilizacao"]  			:= ""
+	jJsonHistoricoEndereco["falecido"]  			:= ""
+	jJsonHistoricoEndereco["transferencia"]			:= ""
+	jJsonHistoricoEndereco["lacre_ossiario"]		:= ""
+	jJsonHistoricoEndereco["apontamento"]			:= ""
+	jJsonHistoricoEndereco["rotina_origem"]			:= ""
+	jJsonHistoricoEndereco["codigo_origem"]			:= ""
+
+Return(jJsonHistoricoEndereco)
+
+Method ModRetiradaCinzas() Class ModVirtusContratoCemiterio
+
+	Local jJsonRetiradaCinzas	As Json
+
+	jJsonRetiradaCinzas    := JsonObject():New()
+
+Return(jJsonRetiradaCinzas)

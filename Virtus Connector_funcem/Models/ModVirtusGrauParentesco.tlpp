@@ -1,0 +1,31 @@
+#include "totvs.ch"
+
+User Function ModVirtusGrauParentesco()
+Return(Nil)
+
+	Class ModVirtusGrauParentesco
+
+		Public Data codigo                  As Character
+		Public Data descricao               As Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusGrauParentesco
+
+	Self:codigo     := ""
+	Self:descricao  := ""
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusGrauParentesco
+
+	Local oJson := JsonObject():New()
+
+	oJson["codigo"]     := Self:codigo
+	oJson["descricao"]  := Self:descricao
+
+Return(oJson)
+

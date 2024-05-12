@@ -1,0 +1,79 @@
+#include "totvs.ch"
+
+User Function ModVirtusPrecoVendaProdutoCemiterio()
+Return(Nil)
+
+	Class ModVirtusPrecoVendaProdutoCemiterio
+
+		Public Data item_regra                  As Character
+		Public Data cod_regra                   As Character
+		Public Data nome_regra                  As Character
+		Public Data tipo_entrada                As Character
+		Public Data tipo_carencia_financeiro    As Character
+		Public Data tipo_desconto_vendedor      As Character
+		Public Data preco_venda_jazigo          As Numeric
+		Public Data valor_parcela				As Numeric
+		Public Data valor_entrada              	As Numeric
+		Public Data valor_desconto 				As Numeric
+		Public Data entrada_minima              As Numeric
+		Public Data carencia_financeira         As Numeric
+		Public Data carencia_dias               As Numeric
+		Public Data parcela_inicial             As Numeric
+		Public Data parcela_final               As Numeric
+		Public Data taxa_juros                  As Numeric
+		Public Data limite_desconto             As Numeric
+		Public Data limite_desconto_superior    As Numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusPrecoVendaProdutoCemiterio
+
+	Self:item_regra := ""
+	Self:cod_regra := ""
+	Self:nome_regra := ""
+	Self:tipo_entrada := ""
+	Self:tipo_carencia_financeiro := ""
+	Self:tipo_desconto_vendedor := ""
+	Self:valor_desconto	:= 0
+	Self:preco_venda_jazigo := 0
+	Self:valor_parcela := 0
+	Self:valor_entrada	:= 0
+	Self:entrada_minima := 0
+	Self:carencia_financeira := 0
+	Self:carencia_dias := 0
+	Self:parcela_inicial := 0
+	Self:parcela_final := 0
+	Self:taxa_juros := 0
+	Self:limite_desconto := 0
+	Self:limite_desconto_superior := 0
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusPrecoVendaProdutoCemiterio
+
+	Local oJson := JsonObject():New()
+
+	oJson["item_regra"] := Self:item_regra
+	oJson["cod_regra"] := Self:cod_regra
+	oJson["nome_regra"] := Self:nome_regra
+	oJson["tipo_entrada"] := Self:tipo_entrada
+	oJson["tipo_carencia_financeiro"] := Self:tipo_carencia_financeiro
+	oJson["tipo_desconto_vendedor"] := Self:tipo_desconto_vendedor
+	oJson["preco_venda_jazigo"] := Self:preco_venda_jazigo
+	oJson["valor_parcela"] := Self:valor_parcela
+	oJson["valor_entrada"] := Self:valor_entrada
+	oJson["valor_desconto"] := Self:valor_desconto
+	oJson["entrada_minima"] := Self:entrada_minima
+	oJson["carencia_financeira"] := Self:carencia_financeira
+	oJson["carencia_dias"] := Self:carencia_dias
+	oJson["parcela_inicial"] := Self:parcela_inicial
+	oJson["parcela_final"] := Self:parcela_final
+	oJson["taxa_juros"] := Self:taxa_juros
+	oJson["limite_desconto"] := Self:limite_desconto
+	oJson["limite_desconto_superior"] := Self:limite_desconto_superior
+
+Return(oJson)
+

@@ -1,0 +1,671 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RCPGE075
+Programa para Classe de integracao com a API Cemiterio
+Jazigos
+@type function
+@version 1.0
+@author g.sampaio
+@since 11/09/2023
+/*/
+User Function RUTILE71()
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos
+Classe para integracao com a API Cemiterio
+Jazigos
+@type class
+@version 1.0 
+@author g.sampaio
+@since 11/09/2023
+/*/
+	Class CemiterioJazigos
+
+		Public Method New() Constructor
+		Public Method TotalJazigos()
+		Public Method Consulta()
+		Public Method Reserva()
+		Public Method EncerraReserva()
+		Public Method JazigoContrato()
+
+	EndClass
+
+Method New() Class CemiterioJazigos
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos::TotalJazigos
+Metodo para retornar a quantidade de jazigos
+@type method
+@version 1.0
+@author g.sampaio
+@since 28/08/2023
+@param cQuadra, character, codigo da quadra
+@param cModulo, character, codigo do modulo
+@param cLocacao, character, indica o status da locacao do jazigo
+@param oResponse, object, objeto de retorno da integracao
+/*/
+	Method TotalJazigos(cQuadra As Character,;
+		cModulo As Character,;
+		cLocacao As Character,;
+		oResponse As Json) Class CemiterioJazigos
+
+	Local cQuery    		As Character
+
+	Default cQuadra     := ""
+	Default cModulo     := ""
+	Default cLocacao    := ""
+	Default oResponse   := JsonObject():New()
+
+	Conout("")
+	Conout("")
+	Conout("[CemiterioJazigos - RCPGE075 - TotalJazigos]")
+
+	// define os valores das variaveis
+	cQuery				:= ""
+
+	cQuery := " SELECT "
+	cQuery += " 	COUNT(*) TOTAL_JAZIGOS "
+	cQuery += " FROM " + RetSQLName("U10") + " U10 "
+	cQuery += " INNER JOIN " + RetSQLName("U09") + " U09 ON U09.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U09.U09_FILIAL = '" + xFilial("U09") + "' "
+	cQuery += " 	AND U09.U09_QUADRA = U10.U10_QUADRA "
+	cQuery += " 	AND U09.U09_CODIGO = U10.U10_MODULO "
+	cQuery += " INNER JOIN " + RetSQLName("U08") + " U08 ON U08.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U08.U08_FILIAL = '" + xFilial("U08") + "' "
+	cQuery += " 	AND U08.U08_CODIGO = U10.U10_QUADRA "
+	cQuery += " WHERE U10.D_E_L_E_T_ = ' '"
+	cQuery += " 	AND U10.U10_FILIAL = '"+ xFilial("U10") + "'"
+	cQuery += " 	AND U10.U10_STATUS = 'S'"
+
+	If !Empty(cQuadra)
+		cQuery += " 	AND U10.U10_QUADRA = '" +  cQuadra + "'"
+	EndIf
+
+	If !Empty(cModulo)
+		cQuery += " 	AND U10.U10_MODULO = '" +  cModulo + "'"
+	EndIf
+
+	//caso seja locacao visualiza jazigos disponiveis
+	//Valida se for locacao permite mostrar jazigo ocupado
+	//que ainda tenha gavetas livres
+	If cLocacao == "S"
+
+		cQuery += " AND (U10.U10_CODIGO IN "
+		cQuery += "		(SELECT U04.U04_JAZIGO "
+		cQuery += "    	FROM " + RetSQLName("U04") + " U04 "
+		cQuery += "    	WHERE U04.D_E_L_E_T_ = ' ' "
+		cQuery += "          AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += "          AND U04.U04_TIPO = 'J'
+		cQuery += "          AND U04.U04_QUADRA = U10.U10_QUADRA "
+		cQuery += "          AND U04.U04_MODULO = U10.U10_MODULO "
+		cQuery += "          AND U04.U04_LOCACA = 'S' "
+		cQuery += "          AND U04.U04_OCUPAG = 'S' "
+		cQuery += "        GROUP BY U04.U04_JAZIGO) "
+		cQuery += " 	OR U10.U10_CODIGO NOT IN ( SELECT "
+		cQuery += " 								U04.U04_JAZIGO "
+		cQuery += " 							FROM " + RetSQLName("U04") + " U04 "
+		cQuery += " 							WHERE U04.D_E_L_E_T_ =' '"
+		cQuery += " 								AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += " 								AND U04.U04_TIPO = 'J' "
+		cQuery += "                           		AND U04.U04_QUADRA  = U10.U10_QUADRA "
+		cQuery += "                           		AND U04.U04_MODULO  = U10.U10_MODULO "
+		cQuery += " 							AND ( U04.U04_QUEMUT <> ' ' OR U04.U04_PREVIO = 'S' )  "
+		cQuery += " 							GROUP BY U04.U04_JAZIGO )) "
+
+	Else
+
+		cQuery += " AND U10.U10_CODIGO NOT IN ( SELECT "
+		cQuery += " 								U04.U04_JAZIGO "
+		cQuery += " 							FROM " + RetSQLName("U04") + " U04 "
+		cQuery += " 							WHERE U04.D_E_L_E_T_ =' '"
+		cQuery += " 								AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += " 								AND U04.U04_TIPO = 'J' "
+		cQuery += "                           		AND U04.U04_QUADRA  = U10.U10_QUADRA "
+		cQuery += "                           		AND U04.U04_MODULO  = U10.U10_MODULO "
+		cQuery += " 							AND ( U04.U04_QUEMUT <> ' ' OR U04.U04_PREVIO = 'S' )  "
+		cQuery += " 							GROUP BY U04.U04_JAZIGO ) "
+
+	EndIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRBJAZ' )
+
+	If TRBJAZ->(!Eof())
+
+		oResponse["status"]     	:= 200
+		oResponse["total_jazigos"]  := TRBJAZ->TOTAL_JAZIGOS
+
+	Else
+
+		oResponse["status"] 		:= 422
+		oResponse["total_jazigos"]  := 0
+		oResponse["mensagem"]		:= "Nao foram encontrados jazigos para a consulta especificada."
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos::Consulta
+Consulta de jazigos
+@type method
+@version 1.0
+@author g.sampaio
+@since 27/08/2023
+@param cQuadra, character, codigo da quadra
+@param cModulo, character, codigo do modulo
+@param cLocacao, character, status de locacao
+@param oResponse, object, objeto de retorno da api
+/*/
+	Method Consulta(cQuadra As Character,;
+		cModulo As Character,;
+		cLocacao As Character,;
+		nSkip As Numeric,;
+		nLimit As Numeric,;
+		oResponse As Json) Class CemiterioJazigos
+
+	Local cQuery    		As Character
+	Local nRankIni			As Numeric
+	Local nRankFim			As Numeric
+	Local oModVirtusJazigos	As Object
+
+	Default cQuadra     := ""
+	Default cModulo     := ""
+	Default cLocacao    := ""
+	Default nSkip		:= 0
+	Default nLimit		:= 9999
+	Default oResponse   := JsonObject():New()
+
+	Conout("")
+	Conout("")
+	Conout("[CemiterioJazigos - RCPGE075 - Consulta]")
+
+	// define os valores das variaveis
+	cQuery				:= ""
+	oModVirtusJazigos	:= Nil
+	nRankIni 			:= (nSkip + 1)
+	nRankFim 			:= (nSkip + nLimit)
+
+	cQuery := " SELECT * FROM ("
+	cQuery += "		SELECT DENSE_RANK() OVER ( ORDER BY U10_QUADRA, U10_MODULO, U10_CODIGO ) AS NUMRANK, "
+	cQuery += " 	U10.U10_QUADRA AS QUADRA, "
+	cQuery += " 	U10.U10_MODULO AS MODULO, "
+	cQuery += " 	U10.U10_CODIGO AS JAZIGO, "
+	cQuery += " 	U10.U10_DESC AS DESCRICAO, "
+	cQuery += "     U10.U10_QTDGAV AS QD_QTDGAV, "
+	cQuery += "     U09.U09_QTDGAV AS MD_QTDGAV, "
+	cQuery += "     U08.U08_QTDGAV AS JZ_QTDGAV"
+	cQuery += " FROM " + RetSQLName("U10") + " U10 "
+	cQuery += " INNER JOIN " + RetSQLName("U09") + " U09 ON U09.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U09.U09_FILIAL = '" + xFilial("U09") + "' "
+	cQuery += " 	AND U09.U09_QUADRA = U10.U10_QUADRA "
+	cQuery += " 	AND U09.U09_CODIGO = U10.U10_MODULO "
+	cQuery += " INNER JOIN " + RetSQLName("U08") + " U08 ON U08.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U08.U08_FILIAL = '" + xFilial("U08") + "' "
+	cQuery += " 	AND U08.U08_CODIGO = U10.U10_QUADRA "
+	cQuery += " WHERE U10.D_E_L_E_T_ = ' '"
+	cQuery += " 	AND U10.U10_FILIAL = '"+ xFilial("U10") + "'"
+	cQuery += " 	AND U10.U10_STATUS = 'S'"
+
+	If !Empty(cQuadra)
+		cQuery += " 	AND U10.U10_QUADRA = '" +  cQuadra + "'"
+	EndIf
+
+	If !Empty(cModulo)
+		cQuery += " 	AND U10.U10_MODULO = '" +  cModulo + "'"
+	EndIf
+
+	//caso seja locacao visualiza jazigos disponiveis
+	//Valida se for locacao permite mostrar jazigo ocupado
+	//que ainda tenha gavetas livres
+	If cLocacao == "S"
+
+		cQuery += " AND (U10.U10_CODIGO IN "
+		cQuery += "		(SELECT U04.U04_JAZIGO "
+		cQuery += "    	FROM " + RetSQLName("U04") + " U04 "
+		cQuery += "    	WHERE U04.D_E_L_E_T_ = ' ' "
+		cQuery += "          AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += "          AND U04.U04_TIPO = 'J'
+		cQuery += "          AND U04.U04_QUADRA = U10.U10_QUADRA "
+		cQuery += "          AND U04.U04_MODULO = U10.U10_MODULO "
+		cQuery += "          AND U04.U04_LOCACA = 'S' "
+		cQuery += "          AND U04.U04_OCUPAG = 'S' "
+		cQuery += "        GROUP BY U04.U04_JAZIGO) "
+		cQuery += " 	OR U10.U10_CODIGO NOT IN ( SELECT "
+		cQuery += " 								U04.U04_JAZIGO "
+		cQuery += " 							FROM " + RetSQLName("U04") + " U04 "
+		cQuery += " 							WHERE U04.D_E_L_E_T_ =' '"
+		cQuery += " 								AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += " 								AND U04.U04_TIPO = 'J' "
+		cQuery += "                           		AND U04.U04_QUADRA  = U10.U10_QUADRA "
+		cQuery += "                           		AND U04.U04_MODULO  = U10.U10_MODULO "
+		cQuery += " 							AND ( U04.U04_QUEMUT <> ' ' OR U04.U04_PREVIO = 'S' )  "
+		cQuery += " 							GROUP BY U04.U04_JAZIGO )) "
+		cQuery += " ) JAZIGOS "
+
+	Else
+
+		cQuery += " AND U10.U10_CODIGO NOT IN ( SELECT "
+		cQuery += " 								U04.U04_JAZIGO "
+		cQuery += " 							FROM " + RetSQLName("U04") + " U04 "
+		cQuery += " 							WHERE U04.D_E_L_E_T_ =' '"
+		cQuery += " 								AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+		cQuery += " 								AND U04.U04_TIPO = 'J' "
+		cQuery += "                           		AND U04.U04_QUADRA  = U10.U10_QUADRA "
+		cQuery += "                           		AND U04.U04_MODULO  = U10.U10_MODULO "
+		cQuery += " 							AND ( U04.U04_QUEMUT <> ' ' OR U04.U04_PREVIO = 'S' )  "
+		cQuery += " 							GROUP BY U04.U04_JAZIGO ) "
+		cQuery += " ) JAZIGOS "
+
+	EndIf
+
+	cQuery += " WHERE NUMRANK >= "+ cValToChar(nRankIni) +" AND NUMRANK <= " + cValToChar(nRankFim)
+	cQuery += " ORDER BY QUADRA, MODULO, JAZIGO "
+
+	//cQuery += " 	ORDER BY U10.U10_QUADRA, U10.U10_MODULO, U10.U10_CODIGO "
+
+	Conout("Query: " + cQuery)
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRBJAZ' )
+
+	If TRBJAZ->(!Eof())
+
+		oResponse["status"]     := 200
+		oResponse["jazigos"]  	:= {}
+
+		While TRBJAZ->(!EOF())
+
+			FreeObj(oModVirtusJazigos)
+			oModVirtusJazigos := ModVirtusJazigos():New()
+
+			oModVirtusJazigos:quadra := TRBJAZ->QUADRA
+			oModVirtusJazigos:modulo := TRBJAZ->MODULO
+			oModVirtusJazigos:jazigo := TRBJAZ->JAZIGO
+			oModVirtusJazigos:descricao_jazigo := TRBJAZ->DESCRICAO
+			oModVirtusJazigos:locado := Posicione("U04",1,xFilial("U04")+TRBJAZ->QUADRA+TRBJAZ->MODULO+TRBJAZ->JAZIGO,"U04_LOCACA")
+
+			If TRBJAZ->QD_QTDGAV > 0
+				oModVirtusJazigos:quantidade_gavetas := TRBJAZ->QD_QTDGAV
+			ElseIf TRBJAZ->MD_QTDGAV > 0
+				oModVirtusJazigos:quantidade_gavetas := TRBJAZ->MD_QTDGAV
+			ElseIf TRBJAZ->JZ_QTDGAV > 0
+				oModVirtusJazigos:quantidade_gavetas := TRBJAZ->JZ_QTDGAV
+			Else
+				oModVirtusJazigos:quantidade_gavetas := SuperGetMv("MV_XQTDGVJ",.F.,3)
+			EndIf
+
+			AADD(oResponse["jazigos"], oModVirtusJazigos:toJsonObject())
+
+			FreeObj(oModVirtusJazigos)
+
+			TRBJAZ->(DbSkip())
+		EndDo
+	Else
+
+		oResponse["status"] := 400
+		oResponse["msg"]	:= "Nao foram encontrados jazigos para a consulta especificada."
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos::Reserva
+metodo de reserva de jazigo
+@type method
+@version 1.0
+@author g.sampaio
+@since 27/08/2023
+@param cQuadra, character, codigo da quadra
+@param cModulo, character, codigo do modulo
+@param cJazigo, character, codigo do jazigo
+@param oResponse, object, objeto de retorno da api
+/*/
+	Method Reserva(	cQuadra As Character,;
+		cModulo As Character,;
+		cJazigo As Character,;
+		cIDIntegracao As Character,;
+		oResponse As Json) Class CemiterioJazigos
+
+	Local aArea         As Array
+	Local aAreaU04      As Array
+	Local cMsgReturn    As Character
+	Local cQuery 		As Character
+	Local lContinua     As Logical
+
+	Default cQuadra   		:= ""
+	Default cModulo   		:= ""
+	Default cJazigo   		:= ""
+	Default cIDIntegracao	:= ""
+	Default oResponse 		:= JsonObject():New()
+
+	// atribui valor as variavies
+	aArea		:= GetArea()
+	aAreaU04	:= U04->(GetArea())
+	cMsgReturn	:= ""
+	cQuery		:= ""
+	lContinua	:= .F.
+
+	Conout("")
+	Conout("")
+	Conout("[CemiterioJazigos - RCPGE075 - Reserva]")
+
+	If !Empty(cQuadra) .And. !Empty(cModulo) .And. !Empty(cJazigo)
+
+		cQuery := " SELECT U04.R_E_C_N_O_ RECU04 FROM " + RetSQLName("U04") + " U04 "
+		cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "'"
+		cQuery += " AND U04.U04_QUADRA = '" + AllTrim(cQuadra) + "' "
+		cQuery += " AND U04.U04_MODULO = '" + AllTrim(cModulo) + "' "
+		cQuery += " AND U04.U04_JAZIGO = '" + AllTrim(cJazigo) + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBU04")
+
+		If TRBU04->(Eof())
+
+			BEGIN TRANSACTION
+
+				If U04->(Reclock("U04", .T.))
+					U04->U04_FILIAL := xFilial("U04")
+					U04->U04_CODIGO := Replicate("X",TamSX3("U04_CODIGO")[1])
+					U04->U04_ITEM	:= "001"
+					U04->U04_TIPO	:= "J"
+					U04->U04_DTUTIL	:= Stod("")
+					U04->U04_QUADRA := cQuadra
+					U04->U04_MODULO	:= cModulo
+					U04->U04_JAZIGO	:= cJazigo
+					U04->U04_QUEMUT	:= "RESERVADO API CEMITERIO"
+					U04->U04_GAVETA	:= "01"
+					U04->U04_DATA	:= dDatabase
+					U04->U04_PREVIO	:= "R"
+					U04->U04_OCUPAG := "S"
+					U04->U04_IDINTE	:= cIDIntegracao
+					U04->(MsUnlock())
+					lContinua := .T.
+				Else
+					U04->(DisarmTransaction())
+				EndIf
+
+			END TRANSACTION
+
+		else
+			cMsgReturn	:= "Jazigo nao esta disponivel para reserva!"
+		EndIf
+
+	EndIf
+
+	if lContinua
+		oResponse["status"] 	:= 201 // created - O recurso informado foi criado com sucesso.
+		oResponse["reserva"]    := "verdadeiro"
+		oResponse["mensagem"]   := "Jazigo reservado com Sucesso!"
+	else
+		oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		oResponse["reserva"]  	:= "falso"
+		oResponse["mensagem"]	:= "Nao foi possivel realizar a reserva do Jazigo! " + cMsgReturn
+	endIf
+
+	RestArea(aAreaU04)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos::EncerraReserva
+metodo para encerrar a reserva de jazigo
+@type method
+@version 1.0
+@author g.sampaio
+@since 27/08/2023
+@param cQuadra, character, codigo da quadra
+@param cModulo, character, codigo do modulo
+@param cJazigo, character, codigo do jazigo
+@param cIDIntegracao, character, ID da Integracao
+@param oResponse, object, objeto de retorno da api
+/*/
+	Method EncerraReserva(cQuadra As Character,;
+		cModulo As Character,;
+		cJazigo As Character,;
+		cIDIntegracao As Character,;
+		oResponse As Json) Class CemiterioJazigos
+
+	Local aArea			As Array
+	Local aAreaU00		As Array
+	Local aAreaU04 		As Array
+	Local cQuery		As Character
+	Local cMsgReturn	As Character
+	Local lContinua		As Logical
+
+	Default cQuadra			:= ""
+	Default cModulo			:= ""
+	Default cJazigo			:= ""
+	Default cIDIntegracao	:= ""
+	Default oResponse		:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU00	:= U00->(GetArea())
+	aAreaU04	:= U04->(GetArea())
+	lContinua	:= .T.
+
+	// verifico se o id de integracao esta preenchido
+	If !Empty(cIDIntegracao)
+
+		cQuery := " SELECT CONTRATO.R_E_C_N_O_ RECU00 FROM " + RetSQLName("U00") + " CONTRATO "
+		cQuery += " WHERE CONTRATO.D_E_L_E_T_ = ' ' "
+		cQuery += " AND CONTRATO.U00_FILIAL = '" + xFilial("U00") + "' "
+		cQuery += " AND CONTRATO.U00_STATUS <> 'C' "
+		cQuery += " AND CONTRATO.U00_IDINTE = '" + cIDIntegracao + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		// executo a query e crio o alias temporario
+		MPSysOpenQuery( cQuery, 'TMPU00' )
+
+		If TMPU00->(!Eof()) .And. TMPU00->RECU00 > 0
+
+			// posiciono no registro do contrato
+			U00->(DBGoTo(TMPU00->RECU00))
+
+			cQuery := " SELECT ENDERECO.R_E_C_N_O_ RECU04 FROM " + RetSQLName("U00") + " ENDERECO "
+			cQuery += " WHERE ENDERECO.D_E_L_E_T_ = ' ' "
+			cQuery += " AND ENDERECO.U04_FILIAL = '" + xFilial("U04") + "' "
+			cQuery += " AND ENDERECO.U04_TIPO   = 'J' "
+			cQuery += " AND ENDERECO.U04_QUADRA = '" + cQuadra + "' "
+			cQuery += " AND ENDERECO.U04_MODULO = '" + cModulo + "' "
+			cQuery += " AND ENDERECO.U04_JAZIGO = '" + cJazigo + "' "
+			cQuery += " AND ENDERECO.U04_IDINTE = '" + cIDIntegracao + "' "
+			cQuery += " AND ENDERECO.U04_CODIGO = '" + Replicate("X",TamSX3("U04_CODIGO")[1]) + "' "
+			cQuery += " AND EDNERECO.U04_PREVIO = 'R' "
+
+			cQuery := ChangeQuery(cQuery)
+
+			// executo a query e crio o alias temporario
+			MPSysOpenQuery( cQuery, 'TMPU04' )
+
+			If TMPU04->(!Eof()) .And. TMPU04->RECU04 > 0
+
+				// posiciono no registro do jazigo reservado
+				U04->(DBGoTo(TMPU04->RECU04))
+
+				If U04->(Reclock("U04", .F.))
+
+					U04->U04_FILIAL := xFilial("U04")
+					U04->U04_CODIGO	:= U00->U00_CODIGO
+					U04->U04_ITEM	:= StrZero(1,3)
+					U04->U04_GAVETA	:= StrZero(1,2)
+					U04->U04_DTUTIL	:= CToD("")
+					U04->U04_QUEMUT	:= ""
+					U04->U04_PRZEXU	:= CToD("")
+					U04->U04_PREVIO	:= "S"
+					U04->U04_OCUPAG := "S"
+					U04->U04_LOCACA	:= "N"
+					U04->(MsUnlock())
+
+				Else
+					lContinua := .F.
+					cMsgReturn := "Nao foi possivel encerrar a reserva do jazigo!"
+					U04->(DisarmTransaction())
+				EndIf
+
+			Else
+
+				lContinua := .F.
+				cMsgReturn := "Nao foi encontrado nenhuma reserva de jazigo para os parametros informados!"
+
+			EndIf
+
+		Else
+
+			lContinua := .F.
+			cMsgReturn := "Nao foi encontrado nenhum contrato para os parametros informados!"
+
+		EndIf
+
+	Else
+
+		lContinua := .F.
+		cMsgReturn := "ID de Integracao nao informado!"
+
+	EndIf
+
+	if lContinua
+		oResponse["status"] 	:= 200 // ok
+		oResponse["reserva"]    := "verdadeiro"
+		oResponse["mensagem"]   := "Reserva do jazigo encerrada com Sucesso!"
+	else
+		oResponse["status"] 	:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		oResponse["reserva"]  	:= "falso"
+		oResponse["mensagem"]	:= "Nao foi possivel encerrar a reserva do Jazigo!" + cMsgReturn
+	endIf
+
+	RestArea(aAreaU04)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} CemiterioJazigos::JazigoContrato
+Metodo para disponibilizar a quantidade gavetas disponiveis
+@type method
+@version 1.0
+@author g.sampaio
+@since 06/01/2024
+@param cContrato, character, codigo do contrato de cemiterio
+@param jResponse, json, dados de retorno da API
+/*/
+Method JazigoContrato( cContrato As Character, jResponse As Json) Class CemiterioJazigos
+
+	Local aArea			As Array
+	Local aAreaU04		As Array
+	Local aDadosJazigo	As Array
+	Local cQuery		As Character
+	Local nGaveta		As Numeric
+	Local nQtdGaveta	As Numeric
+
+	Default cContrato	:= ""
+	Default jResponse	:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea			:= GetArea()
+	aAreaU04		:= U04->(GetArea())
+	aDadosJazigo	:= {}
+	nQtdGaveta 		:= SuperGetMv("MV_XQTDGVJ",.F.,3)
+
+	cQuery := "	SELECT
+	cQuery += " 	U10.U10_QUADRA AS QUADRA, "
+	cQuery += " 	U10.U10_MODULO AS MODULO, "
+	cQuery += " 	U10.U10_CODIGO AS JAZIGO, "
+	cQuery += " 	U10.U10_DESC AS DESCRICAO, "
+	cQuery += "     U10.U10_QTDGAV AS QD_QTDGAV, "
+	cQuery += "     U09.U09_QTDGAV AS MD_QTDGAV, "
+	cQuery += "     U08.U08_QTDGAV AS JZ_QTDGAV"
+	cQuery += " FROM " + RetSQLName("U10") + " U10 "
+	cQuery += " INNER JOIN " + RetSQLName("U09") + " U09 ON U09.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U09.U09_FILIAL = '" + xFilial("U09") + "' "
+	cQuery += " 	AND U09.U09_QUADRA = U10.U10_QUADRA "
+	cQuery += " 	AND U09.U09_CODIGO = U10.U10_MODULO "
+	cQuery += " INNER JOIN " + RetSQLName("U08") + " U08 ON U08.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U08.U08_FILIAL = '" + xFilial("U08") + "' "
+	cQuery += " 	AND U08.U08_CODIGO = U10.U10_QUADRA "
+	cQuery += " WHERE U10.D_E_L_E_T_ = ' '"
+	cQuery += " 	AND U10.U10_FILIAL = '"+ xFilial("U10") + "'"
+	cQuery += " 	AND U10.U10_STATUS = 'S'"
+	cQuery += " 	AND U10.U10_CODIGO IN ( SELECT "
+	cQuery += " 								U04.U04_JAZIGO "
+	cQuery += " 							FROM " + RetSQLName("U04") + " U04 "
+	cQuery += " 							WHERE U04.D_E_L_E_T_ =' '"
+	cQuery += " 								AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+	cQuery += " 								AND U04.U04_TIPO = 'J' "
+	cQuery += "                           		AND U04.U04_QUADRA  = U10.U10_QUADRA "
+	cQuery += "                           		AND U04.U04_MODULO  = U10.U10_MODULO "
+	cQuery += " 								AND U04.U04_CODIGO = '" + cContrato + "' "
+	cQuery += " 							GROUP BY U04.U04_JAZIGO ) "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPEND' )
+
+	If TMPEND->(!Eof())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Jazigo encontrado com sucesso!"
+		jResponse["dados"]  	:= {}
+
+		While TMPEND->(!Eof())
+
+			If TMPEND->QD_QTDGAV > 0
+				nQtdGaveta := TMPEND->QD_QTDGAV
+			ElseIf TMPEND->MD_QTDGAV > 0
+				nQtdGaveta := TMPEND->MD_QTDGAV
+			ElseIf TMPEND->JZ_QTDGAV > 0
+				nQtdGaveta := TMPEND->JZ_QTDGAV
+			EndIf
+
+			For nGaveta := 1 To nQtdGaveta
+
+				U04->(DbSetOrder(2)) // U04_FILIAL + U04_QUADRA + U04_MODULO + U04_JAZIGO + U04_GAVETA
+				If !U04->(MsSeek(xFilial("U04")+TMPEND->QUADRA+TMPEND->MODULO+TMPEND->JAZIGO+StrZero(nGaveta, TamSX3("U04_GAVETA")[1])))
+
+					oModVirtusJazigoContrato := ModVirtusJazigoContrato():New()
+					oModVirtusJazigoContrato:tipo                := "J"
+
+					//verifico se possui endereco de jazigo
+					oModVirtusJazigoContrato:endereco   := "QD:" + Alltrim(TMPEND->QUADRA) + " | MD:" +  Alltrim(TMPEND->MODULO) + " | JAZ:" +  Alltrim(TMPEND->JAZIGO) + " | GAV:" + StrZero(nGaveta, TamSX3("U04_GAVETA")[1])
+
+					oModVirtusJazigoContrato:quadra              := Alltrim(TMPEND->QUADRA)
+					oModVirtusJazigoContrato:modulo              := Alltrim(TMPEND->MODULO)
+					oModVirtusJazigoContrato:jazigo              := Alltrim(TMPEND->JAZIGO)
+					oModVirtusJazigoContrato:gaveta              := StrZero(nGaveta, TamSX3("U04_GAVETA")[1])
+					oModVirtusJazigoContrato:descricao           := AllTrim(TMPEND->DESCRICAO)
+
+					Aadd(aDadosJazigo, oModVirtusJazigoContrato:ToJsonObject())
+
+					FreeObj(oModVirtusJazigoContrato)
+					oModVirtusJazigoContrato := Nil
+
+				EndIf
+
+			Next nGaveta
+
+			TMPEND->(DbSkip())
+		EndDo
+
+		If Len(aDadosJazigo) > 0
+			jResponse["dados"]  	:= aDadosJazigo
+		EndIf
+
+	else
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Requisicao nao retornou dados."
+		jResponse["dados"]  	:= {}
+	EndIf
+
+	RestArea(aAreaU04)
+	RestArea(aArea)
+
+Return(Nil)

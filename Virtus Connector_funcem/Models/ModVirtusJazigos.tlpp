@@ -1,0 +1,41 @@
+#include "totvs.ch"
+
+User Function ModVirtusJazigos()
+Return(Nil)
+
+	Class ModVirtusJazigos
+
+		Public Data quadra                  As Character
+		Public Data modulo                  As Character
+		Public Data jazigo                  As Character
+		Public Data descricao_jazigo      	As Character
+		Public Data locado                	As Character
+		Public Data quantidade_gavetas      As Numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusJazigos
+
+	Self:quadra := ""
+	Self:modulo := ""
+	Self:jazigo := ""
+	Self:locado := ""
+	Self:quantidade_gavetas := 0
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusJazigos
+
+	Local oJson := JsonObject():New()
+
+	oJson["quadra"] := Self:quadra
+	oJson["modulo"] := Self:modulo
+	oJson["jazigo"] := Self:jazigo
+	oJson["locado"] := Self:locado
+	oJson["quantidade_gavetas"] := Self:quantidade_gavetas 
+
+Return(oJson)
+

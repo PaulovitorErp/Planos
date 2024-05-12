@@ -1,0 +1,59 @@
+#include "totvs.ch"
+
+User Function ModVirtusPrecoServicosFuneraria()
+Return(Nil)
+
+	Class ModVirtusPrecoServicosFuneraria
+
+        Public Data tabela                  As Character
+		Public Data item                    As Character
+		Public Data produto                 As Character
+		Public Data descricao               As Character
+		Public Data carencia              	As Character
+		Public Data estoque                 As Character
+		Public Data tipo_servico            As Character
+		Public Data preco_tabela            As Numeric
+		Public Data percentual_cobertura   	As Numeric
+		Public Data valor_desconto          As Numeric
+		Public Data preco_venda             As Numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusPrecoServicosFuneraria
+
+    Self:tabela                 := ""
+	Self:item                   := ""
+	Self:produto                := ""
+	Self:descricao              := ""
+    Self:carencia               := ""
+	Self:estoque                := ""
+	Self:tipo_servico           := ""
+	Self:preco_tabela           := 0
+	Self:percentual_cobertura    := 0
+	Self:valor_desconto         := 0
+	Self:preco_venda            := 0
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusPrecoServicosFuneraria
+
+	Local jJsonRet      As Json
+
+	jJsonRet := JsonObject():New()
+
+    jJsonRet["tabela"]                  := Self:tabela
+	jJsonRet["item"]                    := Self:item
+	jJsonRet["produto"]                 := Self:produto
+	jJsonRet["descricao"]               := Self:descricao
+	jJsonRet["carencia"]                := Self:carencia
+	jJsonRet["estoque"]                 := Self:estoque
+	jJsonRet["tipo_servico"]          	:= Self:tipo_servico
+	jJsonRet["preco_tabela"]            := Self:preco_tabela
+	jJsonRet["percentual_cobertura"]    := Self:percentual_cobertura
+	jJsonRet["valor_desconto"]          := Self:valor_desconto
+	jJsonRet["preco_venda"]             := Self:preco_venda
+
+Return(jJsonRet)

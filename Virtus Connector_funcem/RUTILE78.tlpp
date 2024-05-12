@@ -1,0 +1,652 @@
+#include "totvs.ch"
+
+User Function RUTILE78()
+Return(Nil)
+
+	#include "totvs.ch"
+
+	Class VirtusSolicitacao
+
+		Public Data cMensagemRetorno    As Character
+		Public Data cSolicitacaoSinc    As Character
+		Public Data oVirtusSolicitacao	As Object
+
+		Public Method New() Constructor
+		Public Method Incluir()
+		Public Method Consulta()
+		Public Method Total()
+		Public Method TipoSolicitacao()
+		Public Method ValidaDadosSolicitacao()
+		Public Method ProcessaSolicitacao()
+
+	EndClass
+
+/*/{Protheus.doc} VirtusSolicitacao::New
+Metodo construtor
+@type method
+@version 1.0
+@author g.sampaio
+@since 14/01/2024
+/*/
+Method New() Class VirtusSolicitacao
+
+	Self:cSolicitacaoSinc   := ""
+	Self:cMensagemRetorno   := ""
+	Self:oVirtusSolicitacao	:= Nil
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusSolicitacao::Incluir
+Metodo para incluir solicitacoes
+@type method
+@version 1.0
+@author g.sampaio
+@since 14/01/2024
+/*/
+Method Incluir(cBodyJson As Character, cIdIntegracao As Character, jResponse As Json) Class VirtusSolicitacao
+
+	Local aArea 			As Array
+	Local aAreaU94 			As Array
+	Local lContinua			As Logical
+	Local lAtualiza			As Logical
+
+	Default cBodyJson		:= ""
+	Default cIdIntegracao	:= ""
+	Default jResponse		:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaU94			:= U94->(GetArea())
+	lContinua			:= .T.
+	lAtualiza			:= .F.
+
+	// faco uma pre validacao dos dados do json
+	lContinua	:= Self:ValidaDadosSolicitacao(cBodyJson)
+
+	If lContinua
+
+		If !Empty(cIdIntegracao)
+
+			//-- Verifica se o contrato ja existe --//
+			U94->(DbSetOrder(2))
+			lAtualiza := U94->(MsSeek(xFilial("U94") + cIdIntegracao))
+			Self:cSolicitacaoSinc	:= U94->U94_CODIGO
+
+		EndIf
+
+		BEGIN TRANSACTION
+
+			If !lAtualiza
+
+				// crio o codigo sequencial
+				Self:cSolicitacaoSinc	:= GetSxeNum("U94","U94_CODIGO")
+
+				U94->(DbSetOrder(1))
+				While U94->(MsSeek(xFilial("U94") + Self:cSolicitacaoSinc))
+					U94->(ConfirmSX8())
+					Self:cSolicitacaoSinc := GetSxeNum("U94","U94_CODIGO")
+				EndDo
+
+				// verifico se o codigo esta em uso
+				FreeUsedCode()
+				While !MayIUseCode( "U94"+xFilial("U94")+Self:cSolicitacaoSinc )
+					// gero uma nova fatura
+					Self:cSolicitacaoSinc := Soma1( Alltrim(Self:cSolicitacaoSinc) )
+				EndDo
+
+			else
+
+				// por seguranca, valido se o contrato ja foi concluido no sistema
+				If U94->U94_STSAPI == "C"
+					lContinua := .F.
+				EndIf
+
+			EndIf
+
+			If lContinua
+
+				If U94->(Reclock("U94", Iif(lAtualiza, .F., .T.)))
+
+					If !lAtualiza
+						U94->U94_FILIAL	:= xFilial("U94")
+						U94->U94_CODIGO	:= Self:cSolicitacaoSinc
+					EndIf
+
+					U94->U94_STATUS := "P"
+					U94->U94_DATA	:= dDatabase
+					U94->U94_HORA	:= Time()
+					U94->U94_STSAPI	:= "P" // P=Pendente; C=Concluido; E=Erro
+					U94->U94_MSG	:= Upper("Solicitacao sincronizado com o ERP, aguardando processamento!")
+					U94->U94_JSON	:= cBodyJson
+					U94->U94_IDAPI 	:= cIdIntegracao
+					U94->U94_ORIGEM := "2"
+					U94->U94_CODUSR	:= RetCodUsr()
+
+					If !lAtualiza
+						U94->(ConfirmSX8())
+					EndIf
+
+					U94->(MsUnlock())
+
+				Else
+					lContinua := .F.
+					U94->(DisarmTransaction())
+				EndIf
+
+			EndIf
+
+		END TRANSACTION
+
+	EndIf
+
+	if lContinua
+
+		If lAtualiza
+			jResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+			jResponse["mensagem"]   		:= "Solicitcao sincronizada e atualizado no ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Solicitacao enviado para ERP",;
+				"mensagem": "Solicitacao sincronizada e atualizado no ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		else
+			jResponse["status"] 			:= 201 // created - O recurso informado foi criado com sucesso.
+			jResponse["mensagem"]  			:= "Solicitcao sincronizada com o ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Solicitacao enviado para ERP",;
+				"mensagem": "Solicitacao sincronizada com o ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		EndIf
+
+		jResponse["Solicitacao"]   := "enviado"
+
+		// processo o Solicitacao
+		Self:ProcessaSolicitacao( U94->(Recno()), @jResponse)
+
+	else
+
+		jResponse["status"] 			:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		jResponse["Solicitacao"]  		:= "erro"
+		jResponse["mensagem"] 			:= "Erro ao sincronizar Solicitacao: " + Self:cMensagemRetorno
+		jResponse["processamento_erp"] 	:= { "status": "erro",;
+			"titulo": "Solicitacao foi recebido, mas nao processado no ERP!",;
+			"mensagem": "Nao foi possivel processar o Solicitacao, inconsistencias: " + Self:cMensagemRetorno ,;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	endIf
+
+	// limpo a mensagemde de retorno
+	Self:cMensagemRetorno 	:= ""
+
+	RestArea(aAreaU94)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method Consulta(cContrato As Character, jResponse As Json) Class VirtusSolicitacao
+
+	Local aSolicitacao             	As Array
+	Local aDadosSX5					As Array
+	Local cQuery					As Character
+	Local cGrauParentesco			As Character
+	Local lRetorno					As Logical
+	Local oModVirtusSolicitacoes	As Object
+	Local oUGetSxFile				As Object
+
+	Default cContrato	:= ""
+
+	// atribui valor as variaveis
+	aSolicitacao  		:= {}
+	lRetorno			:= .T.
+	oUGetSxFile 		:= UGetSxFile():New()
+
+	cQuery := " SELECT "
+	cQuery += " U94_TIPO, "
+	cQuery += " U94_DATA, "
+	cQuery += " U94_HORA, "
+	cQuery += " U94_SOLICI, "
+	cQuery += " U94_TELEFO, "
+	cQuery += " U94_EMAIL, "
+	cQuery += " U94_GRAUPA,"
+	cQuery += " ISNULL(CAST(CAST(U94_OBSRVA AS VARBINARY(8000)) AS VARCHAR(8000)),'') AS OBSERVACAO "
+	cQuery += " FROM " + RetSQLName("U94") + " U94 "
+	cQuery += " WHERE U94.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U94.U94_FILIAL = '" + xFilial("U94") + "' "
+
+	If !Empty(cContrato)
+		cQuery += " AND U94.U94_CONTRA = '" + cContrato + "' "
+	EndIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRBSOL' )
+
+	If TRBSOL->(!Eof())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Ok! Solicitacoes de Manutencao encontradas!"
+		jResponse["dados"]  	:= {}
+
+		While TRBSOL->(!Eof())
+
+			oModVirtusSolicitacoes := ModVirtusSolicitacoes():New()
+
+			// retorno o grau de parentesco
+			aDadosSX5	:= oUGetSxFile:GetInfoSX5("ZG", TRBSOL->U94_GRAUPA)
+
+			// verifico se retornou dados
+			If Len(aDadosSX5) > 0
+				cGrauParentesco := aDadosSX5[1, 2]:cDescricao
+			EndIf
+
+			oModVirtusSolicitacoes:tipo_servico			:= Capital(AllTrim(U_SpecialNoChar(Posicione("U93",1,xFilial("U93")+TRBSOL->U94_TIPO,"U93_DESCRI"))))
+			oModVirtusSolicitacoes:data_solicitacao		:= U_TrataDataPOUI(StoD(TRBSOL->U94_DATA))
+			oModVirtusSolicitacoes:hora_solicitacao		:= AllTrim(TRBSOL->U94_HORA)
+			oModVirtusSolicitacoes:solicitante			:= AllTrim(TRBSOL->U94_SOLICI)
+			oModVirtusSolicitacoes:telefone				:= AllTrim(TRBSOL->U94_TELEFO)
+			oModVirtusSolicitacoes:email				:= AllTrim(TRBSOL->U94_EMAIL)
+			oModVirtusSolicitacoes:grau_parentesco		:= Capital(AllTrim(U_SpecialNoChar(cGrauParentesco)))
+			oModVirtusSolicitacoes:observacao			:= AllTrim(TRBSOL->OBSERVACAO)
+
+			// adiciono os tipos de solicitcao
+			Aadd(aSolicitacao, oModVirtusSolicitacoes:ToJsonObject())
+
+			FreeObj(oModVirtusSolicitacoes)
+			oModVirtusSolicitacoes := Nil
+
+			TRBSOL->(DBSkip())
+		EndDo
+
+		jResponse["dados"]  	:= aSolicitacao
+
+	Else
+
+		oModVirtusSolicitacoes := ModVirtusSolicitacoes():New()
+
+		// adiciono os tipos de solicitcao
+		Aadd(aSolicitacao, oModVirtusSolicitacoes:ToJsonObject())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Consulta nao retornou dados!"
+		jResponse["dados"]  	:= aSolicitacao
+
+	EndIf
+
+Return(lRetorno)
+
+Method Total(cDataIni As Character, cDataFim As Character, jResponse As Json) Class VirtusSolicitacao
+
+	Local aAuxTipo				As Array
+	Local aAuxStatus			As Array
+	Local aAuxSolicitcao		As Array
+	Local aSolicitacao			As Array
+	Local aStatusSolicitacao	As Array
+	Local aTipoSolicitacao		As Array
+	Local cQuery 				As Character
+	Local cTipoSolicitacao		As Character
+	Local cSolicitacao 			As Character
+	Local jSolicitacao			As Json
+	Local jStatusSolicitacao	As Json
+	Local nTipo 				As Numeric
+	Local nStatus				As Numeric
+	Local nSolicitacao			As Numeric
+	Local nTotalSolicitacao		As Numeric
+	Local nTotalTipos			As Numeric
+	Local nTotalStatus			As Numeric
+	Local nTotalTSolicitacao	As Numeric
+
+	Default cDataIni	:= DtoS(FirstDate(dDatabase))
+	Default cDataFim	:= DtoS(LastDate(dDatabase))
+
+	// atribui valor as variaveis
+	aAuxTipo				:= {}
+	aAuxStatus				:= {}
+	aAuxSolicitcao			:= {}
+	aSolicitacao			:= {}
+	aStatusSolicitacao		:= {}
+	aTipoSolicitacao		:= {}
+	nTotalTipos				:= 0
+	nTotalStatus			:= 0
+	nTotalSolicitacao		:= 0
+	nTotalTSolicitacao		:= 0
+	Self:oVirtusSolicitacao	:= ModVirtusSolicitacoes():New()
+
+	cQuery := " SELECT TIPOS_SOLICITACAO.U93_TIPO TIPO_SOL, SOLICITACAO.U94_TIPO SOLICITACAO, SOLICITACAO.U94_STATUS STATUS, COUNT(*) CONTA_SOLIC "
+	cQuery += " FROM " + RetSQLName("U94") + " SOLICITACAO  "
+	cQuery += " INNER JOIN " + RetSQLName("U93") + " TIPOS_SOLICITACAO ON TIPOS_SOLICITACAO.D_E_L_E_T_ = ' ' "
+	cQuery += " AND TIPOS_SOLICITACAO.U93_CODIGO = SOLICITACAO.U94_TIPO "
+	cQuery += " WHERE SOLICITACAO.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SOLICITACAO.U94_DATA BETWEEN '" + cDataIni + "' AND '"+ cDataFim +"' "
+	cQuery += " GROUP BY TIPOS_SOLICITACAO.U93_TIPO, SOLICITACAO.U94_TIPO, SOLICITACAO.U94_STATUS "
+	cQuery += " ORDER BY TIPOS_SOLICITACAO.U93_TIPO, SOLICITACAO.U94_TIPO "
+
+	ConOut( "RUTILE78 - Metodo Total " + cQuery )
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBSOL" )
+
+	If TRBSOL->(!Eof())
+
+		jResponse["status"]     		:= 200
+		jResponse["mensagem"]			:= "Ok! Tipos de solicitacao encontradao!"
+		jResponse["total_solicitacao"] 	:= 0
+		jResponse["dados"]  			:= {}
+
+		// pego todas as solicitacoes
+		While TRBSOL->(!Eof())
+
+			Aadd(aAuxSolicitcao, {TRBSOL->TIPO_SOL, TRBSOL->SOLICITACAO, TRBSOL->STATUS, TRBSOL->CONTA_SOLIC})
+
+			TRBSOL->(DbSkip())
+		EndDo
+
+		For nSolicitacao := 1 To Len(aAuxSolicitcao)
+
+			If Empty(cTipoSolicitacao)
+				cTipoSolicitacao := aAuxSolicitcao[nSolicitacao, 1]
+			EndIf
+
+			Aadd(aAuxTipo, {aAuxSolicitcao[nSolicitacao, 2], aAuxSolicitcao[nSolicitacao, 3], aAuxSolicitcao[nSolicitacao, 4]})
+			nTotalSolicitacao += aAuxSolicitcao[nSolicitacao, 4]
+
+			// caso seja o ulitmo registro ou o proximo seja de um tipo diferente
+			If Len(aAuxSolicitcao) == nSolicitacao .Or. AllTrim(cTipoSolicitacao) <> AllTrim(aAuxSolicitcao[nSolicitacao + 1, 1])
+
+				For nTipo := 1 To Len(aAuxTipo)
+
+					If Empty(cSolicitacao)
+						cSolicitacao := aAuxTipo[nTipo, 1]
+					EndIf
+
+					Aadd(aAuxStatus, {aAuxTipo[nTipo, 2], aAuxTipo[nTipo, 3]})
+					nTotalTipos += aAuxTipo[nTipo, 3]
+
+					// caso seja o ulitmo registro ou o proximo seja de uma solicitacao diferente
+					If Len(aAuxTipo) == nTipo .Or. AllTrim(cSolicitacao) <> AllTrim(aAuxTipo[nTipo + 1, 1])
+
+						For nStatus := 1 To Len(aAuxStatus)
+							jStatusSolicitacao := Self:oVirtusSolicitacao:ModStatusSolicitacao()
+
+							If aAuxStatus[nStatus, 1] == "P" // pendente
+								jStatusSolicitacao["status"] 	:= "Pendente"
+							ElseIf aAuxStatus[nStatus, 1] == "E" // em execucao
+								jStatusSolicitacao["status"] 	:= "Em Execucao"
+							ElseIf aAuxStatus[nStatus, 1] == "C" // concluido
+								jStatusSolicitacao["status"] 	:= "Concluido"
+							EndIf
+
+							jStatusSolicitacao["quantidade"] 		:= aAuxStatus[nStatus, 2]
+
+							Aadd(aStatusSolicitacao, jStatusSolicitacao)
+							nTotalTSolicitacao += aAuxStatus[nStatus, 2]
+
+						Next nStatus
+
+						jSolicitacao := Self:oVirtusSolicitacao:ModTotalSolicitacao()
+
+						// tipos de agendamento
+						jSolicitacao["tipo"] 	:= Capital(AllTrim(U_SpecialNoChar(Posicione("U93",1,xFilial("U93")+cSolicitacao,"U93_DESCRI"))))
+						jSolicitacao["total"] 	:= nTotalTSolicitacao
+						jSolicitacao["status"] 	:= aStatusSolicitacao
+
+						Aadd(aSolicitacao, jSolicitacao)
+
+						// reinicio as variaveis
+						aStatusSolicitacao 	:= {}
+						aAuxStatus 			:= {}
+						nTotalTSolicitacao	:= 0
+						cSolicitacao		:= ""
+
+					EndIf
+
+				Next nTipo
+
+				jTiposSolicitacao := Self:oVirtusSolicitacao:ModTotal()
+
+				// 1=Lapide;2=Floreira;3=Lote;4=Ossuario;5=Columbario
+				If cTipoSolicitacao == "1"
+					jTiposSolicitacao["tipo"] 	:= "Lapide"
+				ElseIf cTipoSolicitacao == "2"
+					jTiposSolicitacao["tipo"] 	:= "Floreira"
+				ElseIf cTipoSolicitacao == "3"
+					jTiposSolicitacao["tipo"] 	:= "Lote"
+				ElseIf cTipoSolicitacao == "4"
+					jTiposSolicitacao["tipo"] 	:= "Ossuario"
+				ElseIf cTipoSolicitacao == "5"
+					jTiposSolicitacao["tipo"] 	:= "Columbario"
+				EndIf
+				jTiposSolicitacao["total"] 			:= nTotalTipos
+				jTiposSolicitacao["solicitacao"] 	:= aSolicitacao
+
+				Aadd(aTipoSolicitacao, jTiposSolicitacao)
+
+				aSolicitacao 		:= {}
+				nTotalTipos			:= 0
+				cTipoSolicitacao	:= ""
+
+			EndIf
+
+		Next nSolicitacao
+
+		jResponse["total_solicitacao"]	:= nTotalSolicitacao
+		jResponse["dados"] 				:= aTipoSolicitacao
+
+	Else
+
+		jTiposSolicitacao := Self:oVirtusSolicitacao:ModTotal()
+
+		// adiciono os tipos de solicitcao
+		Aadd(aTipoSolicitacao, jTiposSolicitacao)
+
+		jResponse["status"]    	 		:= 200
+		jResponse["mensagem"]			:= "Consulta nao retornou dados!"
+		jResponse["total_solicitacao"] 	:= 0
+		jResponse["dados"]  			:= aTipoSolicitacao
+
+	EndIf
+
+	If Select("TRBSOL") > 0
+		TRBSOL->(DbCloseArea())
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusSolicitacao::ProcessaSolicitacao
+Metodo de Processamento de Solicitacao
+@type method
+@version 1.0 
+@author g.sampaio
+@since 06/01/2024
+@param nRecnoU94, numeric, numero do registro da tabela U94
+@param jResponse, json, retorno da API
+/*/
+Method ProcessaSolicitacao(nRecnoU94 As Numeric, jResponse As Json) Class VirtusSolicitacao
+
+	Local aArea 	As Array
+	Local aAreaU94	As Array
+	Local aAreaU00	As Array
+	Local aAreaU04	As Array
+
+	Default nRecnoU94	:= 0
+	Default jResponse	:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU94	:= U94->(GetArea())
+	aAreaU00	:= U00->(GetArea())
+	aAreaU04	:= U04->(GetArea())
+
+	If nRecnoU94 > 0
+
+		U94->(DBGoTo(nRecnoU94))
+
+		BEGIN TRANSACTION
+
+			If U94->(Reclock("U94", .F.))
+
+				U94->U94_STSAPI	:= "C" // P=Pendente; C=Concluido; E=Erro
+				U94->U94_JSONPR	:= Self:oVirtusSolicitacao:ToJsonObject()
+				U94->U94_MSG	:= Upper("Solicitacao processado com sucesso!")
+				U94->U94_CONTRA	:= Self:oVirtusSolicitacao:contrato
+				U94->U94_TIPO	:= Self:oVirtusSolicitacao:tipo_servico
+				U94->U94_DATA	:= Self:oVirtusSolicitacao:data_Solicitacao
+				U94->U94_HORA	:= Self:oVirtusSolicitacao:hora_Solicitacao
+				U94->U94_AUTORI := Self:oVirtusSolicitacao:autorizado
+				U94->U94_SOLICI := Self:oVirtusSolicitacao:solicitante
+				U94->U94_EMAIL 	:= Self:oVirtusSolicitacao:email
+				U94->U94_TELEFO	:= Self:oVirtusSolicitacao:telefone
+				U94->U94_DESCRI := Self:oVirtusSolicitacao:observacao
+				U94->U94_OBSRVA	:= Self:oVirtusSolicitacao:observacao
+
+				If !Empty(Self:oVirtusSolicitacao:item)
+					U94->U94_ITEM := Self:oVirtusSolicitacao:item
+					U04->(DbSetOrder(1))
+					If U04->(MsSeek(xFilial("U04")+Self:oVirtusSolicitacao:contrato+Self:oVirtusSolicitacao:item))
+						If U04->U04_TIPO == "J"
+							U94->U94_QUADRA	:= U04->U04_QUADRA
+							U94->U94_MODULO	:= U04->U04_MODULO
+							U94->U94_JAZIGO	:= U04->U04_JAZIGO
+						ElseIf U04->U04_TIPO == "O"
+							U94->U94_OSSARI	:= U04->U04_OSSARI
+							U94->U94_NICHOO	:= U04->U04_NICHOO
+						ElseIf U04->U04_TIPO == "C"
+							U94->U94_CREMAT	:= U04->U04_CREMAT
+							U94->U94_NICHOC	:= U04->U04_NICHOC
+						EndIf
+					EndIf
+				EndIf
+
+				U94->(MsUnlock())
+
+				// retorno do processamento
+				jResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+				jResponse["Solicitacao"] 		:= U94->U94_CODIGO
+				jResponse["mensagem"]   		:= "Solicitacao criado no ERP. Solicitacao: " + U94->U94_CODIGO
+				jResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Solicitacao enviado para ERP",;
+					"mensagem": "Solicitacao processado no ERP!",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			else
+				U94->(DisarmTransaction())
+			EndIf
+
+		END TRANSACTION
+
+	EndIf
+
+	RestArea(aAreaU04)
+	RestArea(aAreaU00)
+	RestArea(aAreaU94)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method ValidaDadosSolicitacao(cBodyJson As Character) Class VirtusSolicitacao
+
+	Local cMsgErro			As Character
+	Local lRetorno			As Logical
+
+	Default cBodyJson	:= ""
+
+	// atribui valor as variaveis
+	cMsgErro	:= ""
+	lRetorno	:= .T.
+
+	// atribui valor as variaveis
+	Self:oVirtusSolicitacao	:= ModVirtusSolicitacoes():New()
+
+	If !Empty(cBodyJson)
+		lRetorno := Self:oVirtusSolicitacao:FromJson(cBodyJson)
+	Else
+		lRetorno := .F.
+	EndIf
+
+	If lRetorno
+
+		If Empty(Self:oVirtusSolicitacao:tipo_servico)
+			lRetorno				:= .F.
+			Self:cMensagemRetorno	:= "[tipo_servico] Tipo do Solicitacao nao preeenchido, "
+		EndIf
+
+		If Empty(Self:oVirtusSolicitacao:contrato)
+			lRetorno				:= .F.
+			Self:cMensagemRetorno	:= "[contrato] Contrato nao preeenchido, "
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
+
+Method TipoSolicitacao(jResponse As Json) Class VirtusSolicitacao
+
+	Local aTiposSolicitacao             As Array
+	Local cTipo                         As Character
+	Local cQuery					    As Character
+	Local jTiposSolicitacao             As Json
+	Local oModVirtusSolicitacoes	    As Object
+
+	// atribui valor as variaveis
+	aTiposSolicitacao       := {}
+	oModVirtusSolicitacoes := ModVirtusSolicitacoes():New()
+
+	cQuery := " SELECT * FROM " + RetSQLName("U93") + " U93 "
+	cQuery += " WHERE U93.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U93.U93_FILIAL = '" + xFilial("U93") + "' "
+	cQuery += " AND U93.U93_MSBLQL <> '1' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRPTPS' )
+
+	If TRPTPS->(!Eof())
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Ok! Tipos de solicitacao encontradao!"
+		jResponse["dados"]  	:= {}
+
+		While TRPTPS->(!Eof())
+
+			// pego tipo de solicitacao
+			cTipo := GetTipo(TRPTPS->U93_TIPO)
+
+			jTiposSolicitacao := oModVirtusSolicitacoes:ModTiposSolicitacao()
+			jTiposSolicitacao["codigo"]    := AllTrim(TRPTPS->U93_CODIGO)
+			jTiposSolicitacao["tipo"]      := AllTrim(cTipo)
+			jTiposSolicitacao["descricao"] := AllTrim(cTipo) + "-" + Capital(AllTrim(U_SpecialNoChar(TRPTPS->U93_DESCRI)))
+
+			// adiciono os tipos de solicitcao
+			Aadd(aTiposSolicitacao, jTiposSolicitacao)
+
+			TRPTPS->(DBSkip())
+		EndDo
+
+		jResponse["dados"]  	:= aTiposSolicitacao
+
+	Else
+
+		jTiposSolicitacao := oModVirtusSolicitacoes:ModTiposSolicitacao()
+
+		// adiciono os tipos de solicitcao
+		Aadd(aTiposSolicitacao, jTiposSolicitacao)
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Consulta nao retornou dados!"
+		jResponse["dados"]  	:= aTiposSolicitacao
+
+	EndIf
+
+Return(Nil)
+
+Static Function GetTipo(cTipo As Character)
+
+	Local cRetorno  As Character
+
+	Default cTipo := ""
+
+	// 1=Lapide;2=Floreira;3=Lote;4=Ossuario;5=Columbario
+	cRetorno := Capital(U_USX3CBOX("U93_TIPO", cTipo))
+
+Return(cRetorno)

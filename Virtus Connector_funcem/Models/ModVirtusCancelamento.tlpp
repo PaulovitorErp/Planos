@@ -1,0 +1,46 @@
+#include "totvs.ch"
+
+User Function ModVirtusCancelamento()
+Return(Nil)
+
+	Class ModVirtusCancelamento
+		
+		Public Data cnpjemp                     As Character
+		Public Data id_integracao               As Character
+		Public Data codigoerp                   As Character
+		Public Data dataCancelamento            As Character
+		Public Data motivoCancelamento          As Character
+        Public Data moduloerp                   As Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+		Public Method FormatData()
+		Public Method ModAutorizados()
+
+	EndClass
+
+Method New() Class ModVirtusCancelamento
+
+	Self:moduloerp          := ""
+	Self:cnpjemp            := ""
+	Self:id_integracao      := ""
+	Self:codigoerp          := ""
+	Self:dataCancelamento   := ""
+	Self:motivoCancelamento := ""
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusCancelamento
+
+	Local jJsonRet  As Json
+
+	jJsonRet := JsonObject():New()
+	
+	jJsonRet["cnpjemp"]             := Self:cnpjemp
+    jJsonRet["moduloerp"]           := Self:modulo
+	jJsonRet["id_integracao"]       := Self:id_integracao
+	jJsonRet["codigoerp"]           := Self:codigoerp
+	jJsonRet["dataCancelamento"]    := Self:dataCancelamento
+	jJsonRet["motivoCancelamento"]  := Self:motivoCancelamento
+
+Return(jJsonRet)

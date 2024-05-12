@@ -1,0 +1,49 @@
+#include "totvs.ch"
+
+User Function ModVirtusJazigoContrato()
+Return(Nil)
+
+#include "totvs.ch"
+
+	Class ModVirtusJazigoContrato
+		
+        Public Data tipo                As Character
+		Public Data endereco            As Character		
+		Public Data quadra              As Character
+		Public Data modulo              As Character
+		Public Data jazigo              As Character
+		Public Data gaveta              As Character
+        Public Data descricao           As Character
+        
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusJazigoContrato
+
+	Self:tipo       := ""
+	Self:endereco   := ""
+	Self:quadra     := ""
+	Self:modulo     := ""
+	Self:jazigo   	:= ""
+	Self:gaveta 	:= ""
+	Self:descricao 	:= ""
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusJazigoContrato
+
+	Local jJsonRet  As Json
+
+	jJsonRet := JsonObject():New()
+	
+	jJsonRet["tipo"]        := Self:tipo
+    jJsonRet["endereco"]    := Self:endereco
+	jJsonRet["quadra"]      := Self:quadra
+	jJsonRet["modulo"]      := Self:modulo
+	jJsonRet["jazigo"]    	:= Self:jazigo
+	jJsonRet["gaveta"]  	:= Self:gaveta
+	jJsonRet["descricao"]  	:= Self:descricao
+
+Return(jJsonRet)

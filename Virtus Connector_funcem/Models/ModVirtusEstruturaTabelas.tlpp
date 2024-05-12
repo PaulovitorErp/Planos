@@ -1,0 +1,200 @@
+#include "totvs.ch"
+
+User Function ModVirtusEstruturaTabelas()
+Return(Nil)
+
+	Class ModVirtusEstruturaTabelas
+
+		Public Data aEstruApontamento 	As Array
+		Public Data ordem 				As Character
+		Public Data campo 				As Character
+		Public Data campo_api 			As Character
+		Public Data descricao 			As Character
+		Public Data tipo 				As Character
+		Public Data tamanho				As Numeric
+		Public Data decimal				As Numeric
+		Public Data obrigatorio			As Character
+
+		Public Method New() Constructor
+		Public Method GetEstrutura()
+		Public Method toJsonSX3Object()
+		Public Method ModelSX3()
+		Public Method ValidCampo()		
+
+	EndClass
+
+Method New() Class ModVirtusEstruturaTabelas
+
+	Self:aEstruApontamento	:= {}
+	Self:ordem 				:= ""
+	Self:campo 				:= ""
+	Self:campo_api 			:= ""
+	Self:descricao 			:= ""
+	Self:tipo 				:= ""
+	Self:tamanho			:= 0
+	Self:decimal			:= 0
+	Self:obrigatorio		:= ""
+
+Return(Self)
+
+Method GetEstrutura( cTabela As Character, lContrato As Logical) Class ModVirtusEstruturaTabelas
+
+	Default cTabela		:= ""
+	Default lContrato 	:= .F.
+
+	// monto a estrutura do apontamento
+	Aadd(Self:aEstruApontamento, {cTabela, Self:ModelSX3(cTabela, lContrato)})
+
+Return(Self:aEstruApontamento)
+
+Method toJsonSX3Object() Class ModVirtusEstruturaTabelas
+
+	Local jJsonRet      As Json
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["ordem"]         	:= Self:ordem
+	jJsonRet["campo"]          	:= U_SpecialNoChar(Self:campo)
+	jJsonRet["campo_api"]   	:= Self:campo_api
+	jJsonRet["descricao"]   	:= U_SpecialNoChar(Self:descricao)
+	jJsonRet["tipo"]   			:= Self:tipo
+	jJsonRet["tamanho"]   		:= Self:tamanho
+	jJsonRet["decimal"]   		:= Self:decimal
+	jJsonRet["obrigatorio"]     := Self:obrigatorio
+
+Return(jJsonRet)
+
+Method ModelSX3( cTabela As Character, lContrato As Logical) Class ModVirtusEstruturaTabelas
+
+	Local aDadosSX3		As Array
+	Local aRetorno		As Array
+	Local nLinha		As Numeric
+	Local oStruCampo	As Object
+	Local oUGetSxFile   As Object
+
+	Default lContrato	:= .F.
+
+	aRetorno	:= {}
+	oUGetSxFile := UGetSxFile():New()
+	aDadosSX3	:= oUGetSxFile:GetInfoSX3(cTabela, Nil, .T.)
+
+	For nLinha := 1 To Len(aDadosSX3)
+
+		// limpo as variaveis da classe
+		Self:ordem 			:= ""
+		Self:campo 			:= ""
+		Self:campo_api 		:= ""
+		Self:descricao 		:= ""
+		Self:tipo 			:= ""
+		Self:tamanho		:= 0
+		Self:decimal		:= 0
+		Self:obrigatorio	:= ""
+
+		oStruCampo := aDadosSX3[nLinha, 2]
+
+		If Self:ValidCampo(cTabela, AllTrim(oStruCampo:cCampo))
+
+			// monto uma estrutura apenas com campos reais
+			If AllTrim(oStruCampo:cContext) <> "V"
+
+				Self:ordem 			:= StrZero(nLinha,3)
+				Self:campo 			:= AllTrim(oStruCampo:cTitulo)
+				Self:campo_api 		:= AllTrim(oStruCampo:cCampo)
+				Self:descricao 		:= AllTrim(oStruCampo:cDescri)
+
+				If oStruCampo:cTipo == "C"
+					Self:tipo 			:= "Caracter"
+				ElseIf oStruCampo:cTipo == "N"
+					Self:tipo 			:= "Numerico"
+				ElseIf oStruCampo:cTipo == "M"
+					Self:tipo 			:= "Memo"
+				ElseIf oStruCampo:cTipo == "D"
+					Self:tipo 			:= "Data"
+				EndIf
+
+				Self:tamanho		:= oStruCampo:nTamanho
+				Self:decimal		:= oStruCampo:nDecimal
+				Self:obrigatorio	:= ObrigatorioSX3(cTabela, AllTrim(oStruCampo:cCampo), lContrato)
+
+				Aadd(aRetorno, Self:toJsonSX3Object())
+
+			EndIf
+
+		EndIf
+
+	Next nLinha
+
+	// limpo as variaveis da classe
+	Self:ordem 			:= ""
+	Self:campo 			:= ""
+	Self:campo_api 		:= ""
+	Self:descricao 		:= ""
+	Self:tipo 			:= ""
+	Self:tamanho		:= 0
+	Self:decimal		:= 0
+	Self:obrigatorio	:= ""
+
+Return(aRetorno)
+
+Method ValidCampo(cTabela As Character, cCampoApi As Character) Class ModVirtusEstruturaTabelas
+
+	Local cExcessaoCampos 	As Character
+	Local lRetorno			As Logical
+
+	lRetorno := .T.
+
+	If cTabela == "UJ0"
+
+		cExcessaoCampos := "UJ0_FILIAL|UJ0_MSFIL|UJ0_MSEXP|UJ0_CODIGO|UJ0_CONTRA|UJ0_CARENC|UJ0_PLANOC"
+		cExcessaoCampos += "|UJ0_DESCPC|UJ0_REGRA|UJ0_DESCRG|UJ0_PERCDE|UJ0_CLIINT|UJ0_LOJINT|UJ0_NUMSOR
+		cExcessaoCampos += "|UJ0_US0|UJ0_IDAPI"
+
+		If AllTrim(cCampoApi) $ cExcessaoCampos
+			lRetorno := .F.
+		EndIf
+	ElseIf cTabela == "UJ2"
+		If AllTrim(cCampoApi) $ "UJ2_FILIAL|UJ2_CODIGO|UJ2_ITEM|UJ2_OK|UJ2_CARENC|UJ2_ESTOQU|UJ2_PV|UJ2_OS|UJ2_USOSRV|UJ2_FILINT|UJ2_CTRINT|UJ2_APTINT|UJ2_CODFOR|UJ2_LOJFOR|UJ2_PEDCOM"
+			lRetorno := .F.
+		EndIf
+	EndIf
+
+Return(lRetorno)
+
+Static Function ObrigatorioSX3(cTabela As Character, cCampoApto As Character, lContrato As Logical)
+
+	Local aCamposObrigatorio	As Array
+	Local cRetorno				As Character
+	Local nPosUJ0				As Numeric
+
+	Default cTabela		:= ""
+	Default cCampoApto	:= ""
+	Default lContrato	:= .F.
+
+	aCamposObrigatorio := {}
+
+	// campos necessarios para o apontamento
+	If cTabela == "UJ0"
+		Aadd( aCamposObrigatorio, "UJ0_TPSERV")
+		Aadd( aCamposObrigatorio, "UJ0_FILSER")
+		Aadd( aCamposObrigatorio, "UJ0_NOMEFA")
+
+		If lContrato
+			Aadd( aCamposObrigatorio, "UJ0_CODBEN")
+			Aadd( aCamposObrigatorio, "UJ0_DTFALE")
+		EndIf
+	EndIf
+
+	// verifico se o campo esta dentro dos campos necessarios
+	nPosUJ0 := aScan( aCamposObrigatorio, { |x| AllTrim( x ) == cCampoApto } )
+
+	If nPosUJ0 > 0
+		cRetorno := "Sim"
+	Else
+		If X3Obrigat(cCampoApto)
+			cRetorno := "Sim"
+		Else
+			cRetorno := "Nao"
+		EndIf
+	EndIf
+
+Return(cRetorno)

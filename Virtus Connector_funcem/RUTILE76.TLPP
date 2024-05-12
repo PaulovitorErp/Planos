@@ -1,0 +1,52 @@
+#include "totvs.ch"
+
+User Function RUTILE76()
+Return(Nil)
+
+	Class ModelVirtusConnector
+
+		Public Method New() Constructor
+		Public Method GetModel()		
+
+	EndClass
+
+Method New() Class ModelVirtusConnector
+Return(Nil)
+
+Method GetModel( cTabAlias As Character, cUsaContrato As Character, jResponse As Json) Class ModelVirtusConnector
+
+	Local aTabelas 		                As Array
+	Local lContrato					    As Logical
+	Local nPosTabelas	                As Numeric
+	Local oModVirtusEstruturaTabelas	As Object
+
+	Default cTabAlias       := ""
+	Default cUsaContrato    := ""
+
+	lContrato := .F.
+	aTabelas	:= {"UJ0","UJ2"}
+
+	// verifico se o campo esta dentro dos campos necessarios
+	nPosTabelas := aScan( aTabelas, { |x| AllTrim( x ) == AllTrim(cTabAlias) } )
+
+	If cUsaContrato == "1"
+		lContrato	:= .T.
+	EndIf
+
+	If nPosTabelas > 0
+
+		oModVirtusEstruturaTabelas := ModVirtusEstruturaTabelas():New()
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Ok! Estrutura de dados encontradas!"
+		jResponse["dados"]  	:= oModVirtusEstruturaTabelas:GetEstrutura(cTabAlias, lContrato)
+
+	Else
+
+		jResponse["status"]     := 200
+		jResponse["mensagem"]	:= "Alias informado ("+AllTrim(cTabAlias)+") nao esta homologado no Virtus Connector!"
+		jResponse["dados"]  	:= {}
+
+	EndIf
+
+Return(Nil)

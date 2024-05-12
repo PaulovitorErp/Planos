@@ -1,0 +1,41 @@
+#include "totvs.ch"
+
+User Function ModVirtusConsultaContratos()
+Return(Nil)
+
+	Class ModVirtusConsultaContratos
+
+		Public Data contrato            As Character
+		Public Data status_financeiro   As Character
+		Public Data status_contrato     As Character
+		Public Data modulo              As Character
+		Public Data filial              As Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusConsultaContratos
+
+	Self:contrato               := ""
+	Self:status_financeiro      := ""
+	Self:status_contrato        := ""
+	Self:modulo                 := ""
+	Self:filial                 := ""
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusConsultaContratos
+
+	Local jJsonRet  As Json
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["contrato"]            := Self:contrato
+	jJsonRet["status_financeiro"]   := Self:status_financeiro
+	jJsonRet["status_contrato"]     := Self:status_contrato
+	jJsonRet["modulo"]              := Self:modulo
+	jJsonRet["filial"]              := Self:filial
+
+Return(jJsonRet)

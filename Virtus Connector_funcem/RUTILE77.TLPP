@@ -1,0 +1,568 @@
+#include "totvs.ch"
+
+User Function RUTILE77()
+Return(Nil)
+
+	Class VirtusAgendamento
+
+		Public Data cAgendamentoSinc	As Character
+		Public Data cMensagemRetorno	As Character
+		Public Data cTipoAgendamento	As Character
+		Public Data oVirtusAgendamento	As Object
+
+		Public Method New() Constructor
+		Public Method Incluir()
+		Public Method Consulta()
+		Public Method Total()
+		Public Method ValidaDadosAgendamento()
+		Public Method ProcessaAgendamento()
+
+	EndClass
+
+Method New() Class VirtusAgendamento
+
+	Self:cAgendamentoSinc	:= ""
+	Self:cMensagemRetorno	:= ""
+	Self:cTipoAgendamento	:= ""
+	Self:oVirtusAgendamento	:= Nil
+
+Return(Nil)
+
+Method Incluir(cBodyJson As Character, cIdIntegracao As Character, jResponse As Json) Class VirtusAgendamento
+
+	Local aArea 			As Array
+	Local aAreaU92 			As Array
+	Local lContinua			As Logical
+	Local lAtualiza			As Logical
+
+	Default cBodyJson		:= ""
+	Default cIdIntegracao	:= ""
+	Default jResponse		:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea				:= GetArea()
+	aAreaU92			:= U92->(GetArea())
+	lContinua			:= .T.
+	lAtualiza			:= .F.
+
+	// faco uma pre validacao dos dados do json
+	lContinua	:= Self:ValidaDadosAgendamento(cBodyJson)
+
+	If lContinua
+
+		If !Empty(cIdIntegracao)
+
+			//-- Verifica se o contrato ja existe --//
+			U92->(DbSetOrder(2))
+			lAtualiza := U92->(MsSeek(xFilial("U92") + cIdIntegracao))
+			Self:cAgendamentoSinc	:= U92->U92_CODIGO
+
+		EndIf
+
+		BEGIN TRANSACTION
+
+			If !lAtualiza
+
+				// crio o codigo sequencial
+				Self:cAgendamentoSinc	:= GetSxeNum("U92","U92_CODIGO")
+
+				U92->(DbSetOrder(1))
+				While U92->(MsSeek(xFilial("U92") + Self:cAgendamentoSinc))
+					U92->(ConfirmSX8())
+					Self:cAgendamentoSinc := GetSxeNum("U92","U92_CODIGO")
+				EndDo
+
+				// verifico se o codigo esta em uso
+				FreeUsedCode()
+				While !MayIUseCode( "U92"+xFilial("U92")+Self:cAgendamentoSinc )
+					// gero uma nova fatura
+					Self:cAgendamentoSinc := Soma1( Alltrim(Self:cAgendamentoSinc) )
+				EndDo
+
+			else
+
+				// por seguranca, valido se o contrato ja foi concluido no sistema
+				If U92->U92_STSAPI == "C"
+					lContinua := .F.
+				EndIf
+
+			EndIf
+
+			If lContinua
+
+				If U92->(Reclock("U92", Iif(lAtualiza, .F., .T.)))
+
+					If !lAtualiza
+						U92->U92_FILIAL	:= xFilial("U92")
+						U92->U92_CODIGO	:= Self:cAgendamentoSinc
+					EndIf
+
+					U92->U92_TIPO 	:= Self:cTipoAgendamento
+					U92->U92_DATA	:= dDatabase
+					U92->U92_HORA	:= Time()
+					U92->U92_STSAPI	:= "P" // P=Pendente; C=Concluido; E=Erro
+					U92->U92_MSG	:= Upper("Agendamento sincronizado com o ERP, aguardando processamento!")
+					U92->U92_JSON	:= cBodyJson
+					U92->U92_IDAPI 	:= cIdIntegracao
+					U92->U92_MODULO	:= "C"
+					U92->U92_ORIGEM := "2"
+					U92->U92_STATUS	:= "P"
+					U92->U92_CODUSR	:= RetCodUsr()
+
+					If !lAtualiza
+						U92->(ConfirmSX8())
+					EndIf
+
+					U92->(MsUnlock())
+
+				Else
+					lContinua := .F.
+					U92->(DisarmTransaction())
+				EndIf
+
+			EndIf
+
+		END TRANSACTION
+
+	EndIf
+
+	if lContinua
+
+		If lAtualiza
+			jResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+			jResponse["mensagem"]   		:= "Agendamento sincronizado e atualizado no ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Agendamento enviado para ERP",;
+				"mensagem": "Agendamento sincronizado e atualizado no ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		else
+			jResponse["status"] 			:= 201 // created - O recurso informado foi criado com sucesso.
+			jResponse["mensagem"]  			:= "Agendamento sincronizado com o ERP, aguardando processamento!"
+			jResponse["processamento_erp"] 	:= { "status": "enviado",;
+				"titulo": "Agendamento enviado para ERP",;
+				"mensagem": "Agendamento sincronizado com o ERP, aguardando processamento...",;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+		EndIf
+
+		jResponse["agendamento"]   := "enviado"
+
+		// processo o agendamento
+		Self:ProcessaAgendamento( U92->(Recno()), @jResponse)
+
+	else
+
+		jResponse["status"] 			:= 422 // Unprocessable Entity - A requisição foi recebida com sucesso, porém contém parâmetros inválidos. Para mais detalhes, verifique o atributo errors no corpo da resposta.
+		jResponse["agendamento"]  		:= "erro"
+		jResponse["mensagem"] 			:= "Erro ao sincronizar Agendamento: " + Self:cMensagemRetorno
+		jResponse["processamento_erp"] 	:= { "status": "erro",;
+			"titulo": "Agendamento foi recebido, mas nao processado no ERP!",;
+			"mensagem": "Nao foi possivel processar o Agendamento, inconsistencias: " + Self:cMensagemRetorno ,;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	endIf
+
+	// limpo a mensagemde de retorno
+	Self:cMensagemRetorno 	:= ""
+
+	RestArea(aAreaU92)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAgendamento::ProcessaAgendamento
+Metodo de Processamento de Agendamento
+@type method
+@version 1.0 
+@author g.sampaio
+@since 06/01/2024
+@param nRecnoU92, numeric, numero do registro da tabela U92
+@param jResponse, json, retorno da API
+/*/
+Method ProcessaAgendamento(nRecnoU92 As Numeric, jResponse As Json) Class VirtusAgendamento
+
+	Local aArea 	As Array
+	Local aAreaU92	As Array
+	Local aAreaU04	As Array
+	Local aAreaU00	As Array
+
+	Default nRecnoU92	:= 0
+	Default jResponse	:= JsonObject():New()
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU92	:= U92->(GetArea())
+	aAreaU04	:= U04->(GetArea())
+	aAreaU00	:= U00->(GetArea())
+
+	If nRecnoU92 > 0
+
+		U92->(DBGoTo(nRecnoU92))
+
+		BEGIN TRANSACTION
+
+			If U92->(Reclock("U92", .F.))
+
+				If !Empty(Self:cTipoAgendamento)
+
+					U92->U92_JSONPR	:= Self:oVirtusAgendamento:ToJsonObject()
+					U92->U92_MSG	:= Upper("Agendamento processado com sucesso!")
+
+					U92->U92_CONTRA	:= Self:oVirtusAgendamento:contrato
+					U92->U92_DTAGEN	:= Self:oVirtusAgendamento:data_agendamento
+					U92->U92_HRAGEN	:= Self:oVirtusAgendamento:hora_agendamento
+					U92->U92_AUTORI := Self:oVirtusAgendamento:autorizado
+					U92->U92_SOLICI := Self:oVirtusAgendamento:solicitante
+					U92->U92_EMAIL 	:= Self:oVirtusAgendamento:email
+					U92->U92_TELEFO	:= Self:oVirtusAgendamento:telefone
+
+					If Self:cTipoAgendamento == "1" // sepultamento
+
+						U92->U92_DESCRI := "AGENDAMENTO DE SEPULTAMENTO"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+							U92->U92_NOME 	:= Self:oVirtusAgendamento:agendamento[1]:falecido
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+							U92->U92_QUADRA	:= Self:oVirtusAgendamento:agendamento[1]:quadra
+							U92->U92_MODULO	:= Self:oVirtusAgendamento:agendamento[1]:modulo
+							U92->U92_JAZIGO	:= Self:oVirtusAgendamento:agendamento[1]:jazigo
+							U92->U92_GAVETA	:= Self:oVirtusAgendamento:agendamento[1]:gaveta
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "2" // exumacao
+
+						U92->U92_DESCRI := "AGENDAMENTO DE EXUMACAO"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+							U92->U92_ITEM 	:= Self:oVirtusAgendamento:agendamento[1]:item
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+
+							U04->(DbSetOrder(1))// U04_FILIAL+U04_CODIGO+U04_ITEM
+							If U04->(MsSeek(xFilial("U04")+Self:oVirtusAgendamento:contrato+Self:oVirtusAgendamento:agendamento[1]:item))
+								U92->U92_NOME 	:= U04->U04_QUEMUT
+								U92->U92_QUADRA	:= U04->U04_QUADRA
+								U92->U92_MODULO	:= U04->U04_MODULO
+								U92->U92_JAZIGO	:= U04->U04_JAZIGO
+								U92->U92_GAVETA	:= U04->U04_GAVETA
+								U92->U92_DTSERV	:= U04->U04_DATA
+								U92->U92_DTUTIL	:= U04->U04_DTUTIL
+								U92->U92_PRZEXU := U04->U04_PRZEXU
+							EndIf
+
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "3" .Or. Self:cTipoAgendamento == "8"// Transf.Titularidade
+
+						If Self:cTipoAgendamento == "8"
+							U92->U92_DESCRI := "AGENDAMENTO DE TRANSFERENCIA DE RESPONSAVEL FINANCEIRO"
+						Else
+							U92->U92_DESCRI := "AGENDAMENTO DE TRANSFERENCIA DE CESSIONARIO"
+						EndIf
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+
+							U00->(DbSetOrder(1))
+							If U00->(MsSeek(xFilial("U00")+Self:oVirtusAgendamento:contrato))
+
+								U92->U92_CLIATU	:= U00->U00_CLIENT
+								U92->U92_LOJATU	:= U00->U00_LOJA
+								U92->U92_NMCLIN	:= Self:oVirtusAgendamento:agendamento[1]:nome_novo_cliente
+								U92->U92_MOTIVO	:= Self:oVirtusAgendamento:agendamento[1]:motivo
+								U92->U92_CLINOV	:= Self:oVirtusAgendamento:agendamento[1]:codigo_novo_cliente
+								U92->U92_LOJNOV	:= Self:oVirtusAgendamento:agendamento[1]:loja_novo_cliente
+								U92->U92_TAXA 	:= Self:oVirtusAgendamento:agendamento[1]:valor_taxa
+
+							EndIf
+
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "4" // Saida de Restos Mortais
+
+						U92->U92_DESCRI := "AGENDAMENTO DE SAIDA DE RESTOS MORTAIS"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+
+							U04->(DbSetOrder(1))// U04_FILIAL+U04_CODIGO+U04_ITEM
+							If U04->(MsSeek(xFilial("U04")+Self:oVirtusAgendamento:contrato+Self:oVirtusAgendamento:agendamento[1]:item))
+								U92->U92_NOME 	:= U04->U04_QUEMUT
+								U92->U92_QUADRA	:= U04->U04_QUADRA
+								U92->U92_MODULO	:= U04->U04_MODULO
+								U92->U92_JAZIGO	:= U04->U04_JAZIGO
+								U92->U92_GAVETA	:= U04->U04_GAVETA
+								U92->U92_OSSUAR	:= U04->U04_OSSARI
+								U92->U92_NICHOO	:= U04->U04_NICHOO
+								U92->U92_DTSERV	:= U04->U04_DATA
+								U92->U92_DTUTIL	:= U04->U04_DTUTIL
+								U92->U92_PRZEXU := U04->U04_PRZEXU
+							EndIf
+
+							U92->U92_LOCDES	:= Self:oVirtusAgendamento:agendamento[1]:local_destino
+
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "5" // Entrada de Restos Mortais
+
+						U92->U92_DESCRI := "AGENDAMENTO DE ENTRADA DE RESTOS MORTAIS"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+							U92->U92_NOME 	:= Self:oVirtusAgendamento:agendamento[1]:falecido
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+							U92->U92_LOCORI	:= Self:oVirtusAgendamento:agendamento[1]:local_origem
+							U92->U92_QUADRA	:= Self:oVirtusAgendamento:agendamento[1]:quadra
+							U92->U92_MODULO	:= Self:oVirtusAgendamento:agendamento[1]:modulo
+							U92->U92_JAZIGO	:= Self:oVirtusAgendamento:agendamento[1]:jazigo
+							U92->U92_GAVETA	:= Self:oVirtusAgendamento:agendamento[1]:gaveta
+							U92->U92_OSSUAR	:= Self:oVirtusAgendamento:agendamento[1]:ossario
+							U92->U92_NICHOO	:= Self:oVirtusAgendamento:agendamento[1]:nicho
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "6" // cremacao
+
+						U92->U92_DESCRI := "AGENDAMENTO DE CREMACAO"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+							U92->U92_NOME 	:= Self:oVirtusAgendamento:agendamento[1]:falecido
+							U92->U92_TURNO	:= Self:oVirtusAgendamento:agendamento[1]:turno
+							U92->U92_CREMAT	:= Self:oVirtusAgendamento:agendamento[1]:crematorio
+							U92->U92_NICHOC	:= Self:oVirtusAgendamento:agendamento[1]:nicho
+						EndIf
+
+					ElseIf Self:cTipoAgendamento == "7" // retirada de cinza
+
+						U92->U92_DESCRI := "AGENDAMENTO DE RETIRADA DE CINZAS"
+
+						If Len(Self:oVirtusAgendamento:agendamento[1]) > 0
+							U04->(DbSetOrder(1))// U04_FILIAL+U04_CODIGO+U04_ITEM
+							If U04->(MsSeek(xFilial("U04")+Self:oVirtusAgendamento:contrato+Self:oVirtusAgendamento:agendamento[1]:item))
+								U92->U92_NOME 	:= U04->U04_QUEMUT
+								U92->U92_QUADRA	:= U04->U04_QUADRA
+								U92->U92_MODULO	:= U04->U04_MODULO
+								U92->U92_JAZIGO	:= U04->U04_JAZIGO
+								U92->U92_GAVETA	:= U04->U04_GAVETA
+								U92->U92_OSSUAR	:= U04->U04_OSSARI
+								U92->U92_NICHOO	:= U04->U04_NICHOO
+								U92->U92_DTSERV	:= U04->U04_DATA
+								U92->U92_DTUTIL	:= U04->U04_DTUTIL
+								U92->U92_PRZEXU := U04->U04_PRZEXU
+							EndIf
+						EndIf
+
+						U92->U92_STSAPI	:= "C" // P=Pendente; C=Concluido; E=Erro
+
+					Else
+
+						U92->U92_STSAPI	:= "E" // P=Pendente; C=Concluido; E=Erro
+
+					EndIf
+
+				EndIf
+
+				U92->(MsUnlock())
+
+				// retorno do processamento
+				jResponse["status"] 			:= 200 // ok - a requisicao foi atendida
+				jResponse["agendamento"] 		:= U92->U92_CODIGO
+				jResponse["mensagem"]   		:= "Agendamento criado no ERP. Agendamento: " + U92->U92_CODIGO
+				jResponse["processamento_erp"] 	:= { "status": "enviado",;
+					"titulo": "Agendamento enviado para ERP",;
+					"mensagem": "Agendamento processado no ERP!",;
+					"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			else
+				U92->(DisarmTransaction())
+			EndIf
+
+		END TRANSACTION
+
+	EndIf
+
+	RestArea(aAreaU00)
+	RestArea(aAreaU04)
+	RestArea(aAreaU92)
+	RestArea(aArea)
+
+Return(Nil)
+
+Method Consulta() Class VirtusAgendamento
+
+Return(Nil)
+
+Method Total(cDataIni As Character, cDataFim As Character, jResponse As Json) Class VirtusAgendamento
+
+	Local aAuxTipo				As Array
+	Local aAuxStatus			As Array
+	Local aAgendamntos			As Array
+	Local aStatusAgendamentos	As Array
+	Local cQuery 				As Character
+	Local cTipoAgendamento		As Character
+	Local jAgendamentos			As Json
+	Local jStatusAgendamento	As Json
+	Local nTipo 				As Numeric
+	Local nStatus				As Numeric
+	Local nTotalAgendamentos 	As Numeric
+	Local nTotalTipos			As Numeric
+
+	Default cDataIni	:= DtoS(FirstDate(dDatabase))
+	Default cDataFim	:= DtoS(LastDate(dDatabase))
+
+	// atribui valor as variaveis
+	aAuxTipo				:= {}
+	aAuxStatus				:= {}
+	aAgendamntos			:= {}
+	aStatusAgendamentos		:= {}
+	nTotalTipos				:= 0
+	Self:oVirtusAgendamento	:= ModVirtusAgendamento():New()
+
+	cQuery := " SELECT AGENDAMENTO.U92_TIPO TIPO, AGENDAMENTO.U92_STATUS STATUS, COUNT(*) CONTA_AGEND "
+	cQuery += " FROM " + RetSQLName("U92") + " AGENDAMENTO  "
+	cQuery += " WHERE AGENDAMENTO.D_E_L_E_T_ = ' ' "
+	cQuery += " AND AGENDAMENTO.U92_DATA BETWEEN '" + cDataIni + "' AND '"+ cDataFim +"' "
+	cQuery += " GROUP BY AGENDAMENTO.U92_TIPO, AGENDAMENTO.U92_STATUS  "
+	cQuery += " ORDER BY AGENDAMENTO.U92_TIPO "
+
+	ConOut( "RUTILE77 - Metodo Total " + cQuery )
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBAGE" )
+
+	If TRBAGE->(!Eof())
+
+		jResponse["status"]     		:= 200
+		jResponse["mensagem"]			:= "Ok! Agendamentos encontrados!"
+		jResponse["total_agendamentos"] := 0
+		jResponse["dados"]  			:= {}
+
+		While TRBAGE->(!Eof())
+
+			Aadd(aAuxTipo, {TRBAGE->TIPO, TRBAGE->STATUS, TRBAGE->CONTA_AGEND})
+
+			TRBAGE->(DbSkip())
+		EndDo
+
+		For nTipo := 1 To Len(aAuxTipo)
+
+			If Empty(cTipoAgendamento)
+				cTipoAgendamento := aAuxTipo[nTipo, 1]
+			EndIf
+
+			Aadd(aAuxStatus, {aAuxTipo[nTipo, 2], aAuxTipo[nTipo, 3]})
+			nTotalTipos += aAuxTipo[nTipo, 3]
+
+			If Len(aAuxTipo) == nTipo .Or. AllTrim(cTipoAgendamento) <> AllTrim(aAuxTipo[nTipo + 1, 1])
+
+				For nStatus := 1 To Len(aAuxStatus)
+					jStatusAgendamento := Self:oVirtusAgendamento:ModStatusAgendamentos()
+
+					If aAuxStatus[nStatus, 1] == "P" // pendente
+						jStatusAgendamento["status"] 	:= "Pendente"
+					ElseIf aAuxStatus[nStatus, 1] == "E" // em execucao
+						jStatusAgendamento["status"] 	:= "Em Execucao"
+					ElseIf aAuxStatus[nStatus, 1] == "C" // concluido
+						jStatusAgendamento["status"] 	:= "Concluido"
+					EndIf
+					jStatusAgendamento["quantidade"] 		:= aAuxStatus[nStatus, 2]
+
+					Aadd(aStatusAgendamentos, jStatusAgendamento)
+				Next nStatus
+
+				jAgendamentos := Self:oVirtusAgendamento:ModTotal()
+
+				// tipos de agendamento
+				If cTipoAgendamento == "1"
+					jAgendamentos["tipo"] 	:= "Sepultamento"
+				ElseIf cTipoAgendamento == "2"
+					jAgendamentos["tipo"] 	:= "Exumacao"
+				ElseIf cTipoAgendamento == "3"
+					jAgendamentos["tipo"] 	:= "Transf.Titularidade"
+				ElseIf cTipoAgendamento == "4"
+					jAgendamentos["tipo"] 	:= "Saida de Restos Mortais"
+				ElseIf cTipoAgendamento == "5"
+					jAgendamentos["tipo"] 	:= "Entrada de Restos Mortais"
+				ElseIf cTipoAgendamento == "6"
+					jAgendamentos["tipo"] 	:= "Cremacao"
+				ElseIf cTipoAgendamento == "7"
+					jAgendamentos["tipo"] 	:= "Retirada de Cinzas"
+				EndIf
+
+				jAgendamentos["total"] 	:= nTotalTipos
+				jAgendamentos["status"] := aStatusAgendamentos
+
+				Aadd(aAgendamntos, jAgendamentos)
+
+				// reinicio as variaveis
+				aStatusAgendamentos := {}
+				aAuxStatus 			:= {}
+				cTipoAgendamento	:= ""
+				nTotalTipos 		:= 0
+
+			EndIf
+
+			// somo o total de agendamentos
+			nTotalAgendamentos += aAuxTipo[nTipo, 3]
+
+		Next nTipo
+
+		jResponse["total_agendamentos"] := nTotalAgendamentos
+		jResponse["dados"] 				:= aAgendamntos
+
+	Else
+
+		jAgendamentos := Self:oVirtusAgendamento:ModTotal()
+
+		// adiciono os tipos de solicitcao
+		Aadd(aAgendamntos, jAgendamentos)
+
+		jResponse["status"]    	 		:= 200
+		jResponse["mensagem"]			:= "Consulta nao retornou dados!"
+		jResponse["total_agendamentos"] := 0
+		jResponse["dados"]  			:= aAgendamntos
+
+	EndIf
+
+	If Select("TRBAGE") > 0
+		TRBAGE->(DbCloseArea())
+	EndIf
+
+Return(Nil)
+
+Method ValidaDadosAgendamento(cBodyJson As Character) Class VirtusAgendamento
+
+	Local cMsgErro			As Character
+	Local lRetorno			As Logical
+
+	Default cBodyJson	:= ""
+
+	// atribui valor as variaveis
+	cMsgErro	:= ""
+	lRetorno	:= .T.
+
+	// atribui valor as variaveis
+	Self:oVirtusAgendamento	:= ModVirtusAgendamento():New()
+
+	If !Empty(cBodyJson)
+		lRetorno := Self:oVirtusAgendamento:FromJson(cBodyJson)
+	Else
+		lRetorno := .F.
+	EndIf
+
+	If lRetorno
+
+		If Empty(Self:oVirtusAgendamento:tipo)
+			lRetorno				:= .F.
+			Self:cMensagemRetorno	:= "[tipo] Tipo do Agendamento nao preeenchido, "
+		Else
+			Self:cTipoAgendamento	:= Self:oVirtusAgendamento:tipo
+		EndIf
+
+		If Empty(Self:oVirtusAgendamento:contrato)
+			lRetorno				:= .F.
+			Self:cMensagemRetorno	:= "[contrato] Contrato nao preeenchido, "
+		EndIf
+
+	EndIf
+
+Return(lRetorno)
