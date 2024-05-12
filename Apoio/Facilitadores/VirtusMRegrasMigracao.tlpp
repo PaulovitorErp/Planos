@@ -1,0 +1,1114 @@
+#Include 'totvs.ch'
+#Include "topconn.ch"
+#Include "FWBrowse.ch"
+
+/*/{Protheus.doc} VirtusRegrasMigracao
+Funcao para migracao de regras
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+/*/
+User Function VirtusMRegrasMigracao()
+
+	Local oDlg          := NIL
+	Local oPanelBkg     := NIL
+	Local oStepWiz      := NIL
+	Local oPnlPlano     := NIL
+	Local oBrwPlano     := NIL
+	Local oPnlPrd       := NIL
+	Local oBrwPrd       := NIL
+	Local cRelProc      := ""
+
+	Private nHdlLog       := 0
+
+	//crio dialog que ira receber o Wizard
+	DEFINE DIALOG oDlg TITLE 'Assistente de Replicação de Regras - Plataforma Virtus' PIXEL STYLE nOR(  WS_VISIBLE ,  WS_POPUP )
+
+	oDlg:nWidth := 800
+	oDlg:nHeight := 620
+
+	//crio panel do wizard
+	oPanelBkg:= TPanel():New(0,0,"",oDlg,,,,,,300,300)
+
+	oPanelBkg:Align := CONTROL_ALIGN_ALLCLIENT
+
+	//instacio o objeto do wizard
+	oStepWiz:= FWWizardControl():New(oPanelBkg)//Instancia a classe FWWizard
+	oStepWiz:ActiveUISteps()
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 1 do wizard - Instrucoes Iniciais
+	///////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("1")
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Instrucoes Iniciais")
+
+	//Defino o bloco de construção
+	oNewPag:SetConstruction({|Panel|Pag1Intrucoes(Panel)})
+
+	//Defino o bloco ao clicar no botão Próxim
+	oNewPag:SetNextAction({||.T.})
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 2 do wizard - Planos Cadastrados
+	///////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("2")
+	oNewPag:SetStepDescription("Regras")
+	oNewPag:SetConstruction({|oPnlPlano| FwReplica(oPnlPlano,@oBrwPlano,"QUJ5")})
+	oNewPag:SetNextAction({|| lRet := ValProxTela("QUJ5",oBrwPrd) })
+	oNewPag:SetCancelAction({||lRet := .F.,oDlg:End()})
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 3 do wizard - Servicos do Plano
+	///////////////////////////////////////////////////////
+	oNewPag := oStepWiz:AddStep("3")
+	oNewPag:SetStepDescription("Filial de Destino")
+	oNewPag:SetConstruction({|oPnlPrd| FwReplica(oPnlPrd,@oBrwPrd,"QFIL")})
+	oNewPag:SetNextAction({|| lRet := ValProxTela("QFIL",oBrwPrd) })
+	oNewPag:SetCancelAction({||lRet := .F.,oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 5 do wizard - Relatorio do Processamento
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("4", {|Panel|RelImport(Panel,@cRelProc)})
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Log do Processo")
+
+	oNewPag:SetNextAction({|| VldArqRel(@nHdlLog,cRelProc) })
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 6 do wizard - Processamento da Atualizacao
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("5", {|Panel| TelaResult(Panel,nHdlLog,cRelProc) })
+
+	//Altero a descrição do step
+	oNewPag:SetStepDescription("Resultado")
+
+	oNewPag:SetNextAction({||oDlg:End(),.T.})
+
+	//Defino o bloco ao clicar no botão Cancelar
+	oNewPag:SetCancelAction({||.F.})
+
+	oNewPag:SetCancelWhen({||.F.})
+
+	oNewPag:SetPrevAction({||.F.})
+
+	oStepWiz:Activate()
+
+	ACTIVATE DIALOG oDlg CENTER
+
+	oStepWiz:Destroy()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaPartSup
+Cria parte superior do panel do
+wizard com a logo e texto explicativo
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param oPanel, object, objeto do poinel da tela
+/*/
+Static Function CriaPartSup(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oSay3 		:= NIL
+	Local oLgTotvs		:= NIL
+	Local oGroup1		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+
+//carrego a imagem do repositorio 
+	@ 003, 003 REPOSITORY oLgTotvs SIZE 90, 90 OF oPanel PIXEL NOBORDER
+	oLgTotvs:LoadBmp("APLOGO.JPG")
+
+	@ 005 , 055 SAY oSay1 PROMPT "Atenção!" SIZE 060, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 020 , 055 SAY oSay2 PROMPT "Siga atentamente os passos da rotina." SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 030 , 055 SAY oSay3 PROMPT "Replica de Regrass - Plataforma Virtus" SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 040 , 020 GROUP oGroup1 TO 042 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} Pag1Intrucoes
+Instrucoes Iniciais do Wizard de Atualizacao
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param oPanel, object, objeto do painel da tela
+/*/
+Static Function Pag1Intrucoes(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local cPulaLinha	:= Chr(13) + Chr(10)
+	Local cTexto1		:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Bem Vindo..." SIZE 200, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 += "Esta rotina tem como objetivo ajuda-lo no processo de replica de Regras."                            + cPulaLinha
+	cTexto1 += "Essa atualização consiste em copiar a Regras de uma filial para outra."		+ cPulaLinha
+
+	@ 065 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} FwReplica
+Funcao para replica de tabela de preco
+@type function
+@version 1.0 
+@author Raphael Martins 
+@since 30/06/2020
+@param oPanel, object, Panel onde sera criado a grid
+@param oBrowse, object, Browse que sera criado
+@param cAlias, character, Alias que sera criado
+/*/
+Static Function FwReplica(oPanel,oBrowse,cAlias)
+
+	Local oBtnPanel := TPanel():New(0,0,"",oPanel,,,,,,40,40)
+
+	oBtnPanel:Align := CONTROL_ALIGN_ALLCLIENT
+
+	//Cria tabela temporaria que vai conter os dADOS
+	CriaTabTemp(cAlias)
+
+	// Define o Browse
+	oBrowse := FWBrowse():New(oBtnPanel)
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias(cAlias)
+	oBrowse:DisableReport()
+
+	//##################################################################
+	//					        DADOS DO LAYOUT
+	//##################################################################
+
+	if cAlias == "QUJ5"
+
+		// Cria uma coluna de marca/desmarca
+		oColumn := oBrowse:AddMarkColumns({||If( QUJ5->UJ5_OK == 'T','LBOK','LBNO')},{|oBrowse| MarkBrowse( oBrowse,cAlias,"UJ5_OK" ) },{|oBrowse|/* Função de HEADERCLICK*/})
+
+		ADD COLUMN oColumn DATA { || UJ5_CODIGO } TITLE Alltrim(GetSx3Cache("UJ5_CODIGO","X3_TITULO")) SIZE TamSx3("UJ5_CODIGO")[1]   OF oBrowse
+		ADD COLUMN oColumn DATA { || UJ5_DESCRI } TITLE Alltrim(GetSx3Cache("UJ5_DESCRI","X3_TITULO")) SIZE TamSx3("UJ5_DESCRI")[1]   OF oBrowse
+
+
+	elseif cAlias == "QFIL"
+
+		oColumn := oBrowse:AddMarkColumns({||If( QFIL->FIL_OK == 'T','LBOK','LBNO')},{|oBrowse| MarkBrowse( oBrowse,cAlias,"FIL_OK" ) },{|oBrowse|/* Função de HEADERCLICK*/})
+
+		ADD COLUMN oColumn DATA { || FIL_FILIAL } TITLE "Filial"    SIZE TamSx3("UJ5_FILIAL")[1]    OF oBrowse
+		ADD COLUMN oColumn DATA { || FIL_DESCRI } TITLE "Descrição" SIZE 60                         OF oBrowse
+
+	endif
+
+	oBrowse:SetSeek()
+	oBrowse:Activate()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaTabTemp
+Cria tabela temporaria com os planos
+@type function
+@version 1.0
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias que sera carregado
+/*/
+Static Function CriaTabTemp(cAlias)
+
+	Local oTable 	:= Nil
+	Local aCampos	:= {}
+	Local cIndice1	:= ""
+	Local cIndice2	:= ""
+	Local cIndice3  := ""
+
+	if cAlias == "QUJ5"
+
+		aCampos:= {	{"UJ5_OK"		,"C",001,0},;
+			{"UJ5_CODIGO"	,"C",TamSX3("UJ5_CODIGO")[1],0},;
+			{"UJ5_DESCRI" 	,"C",TamSX3("UJ5_DESCRI")[1],0} }
+
+		cIndice1 := "UJ5_CODIGO"
+		cIndice2 := "UJ5_OK"
+		cIndice3 := "UJ5_DESCRI"
+
+	elseif cAlias == "QFIL"
+
+		aCampos:= {	{"FIL_OK"		,"C",001,0},;
+			{"FIL_FILIAL"	,"C",TamSX3("UJ5_FILIAL")[1],0},;
+			{"FIL_DESCRI"	,"C",40,0}}
+
+		cIndice1 := "FIL_FILIAL"
+		cIndice2 := "FIL_OK"
+		cIndice3 := "FIL_DESCRI"
+
+	endif
+
+	//Valida se ja existe a tabela criada
+	if Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	endif
+
+	oTable:= FWTemporaryTable():New(cAlias)
+
+	//Inserindo campos no alias temporario
+	oTable:SetFields(aCampos)
+
+	//---------------------
+	//Criação dos índices
+	//---------------------
+	oTable:AddIndex("01", { cIndice1	} )
+	oTable:AddIndex("02", { cIndice2	} )
+
+	//---------------------------------------------------------------
+	//tabela criado no espaço temporário do DB
+	//---------------------------------------------------------------
+	oTable:Create()
+	//------------------------------------
+
+	//Carrega dados na tebela temporaria
+	GetTabTemp(cAlias)
+
+Return(Nil)
+
+/*/{Protheus.doc} GetTabTemp
+Monto a tabela temporaria
+@type function
+@version 1.0
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias que sera carregado
+/*/
+Static Function GetTabTemp(cAlias)
+
+	Local aFiliais	As Array
+	Local nFilial	As Numeric
+
+	//Pega dados do Plano
+	If cAlias == "QUJ5"
+
+		cQry := " SELECT "
+		cQry += " 	UJ5.UJ5_CODIGO CODIGO, "
+		cQry += " 	UJ5.UJ5_DESCRI DESCRICAO "
+		cQry += " FROM " + RetSQLName("UJ5") + " UJ5 "
+		cQry += " WHERE UJ5.D_E_L_E_T_ = ' ' "
+		cQry += " 	AND UJ5.UJ5_FILIAL = '"+ xFilial("UJ5") + "' "
+		cQry += " ORDER BY UJ5.UJ5_CODIGO "
+
+		cQry := ChangeQuery(cQry)
+
+		if Select("TRBUJ5") > 0
+			TRBUJ5->(DbCloseArea())
+		endif
+
+		MPSysOpenQuery(cQry, "TRBUJ5")
+
+		While TRBUJ5->(!EOF())
+
+			Reclock("QUJ5",.T.)
+
+			QUJ5->UJ5_OK 		:= " "
+			QUJ5->UJ5_CODIGO	:= TRBUJ5->CODIGO
+			QUJ5->UJ5_DESCRI	:= TRBUJ5->DESCRICAO
+
+			QUJ5->(MsUnLock())
+
+			TRBUJ5->(DbSkip())
+		EndDo
+
+	else
+
+		// pego os dados das filiais
+		aFiliais		:= FWLoadSM0()
+
+		For nFilial := 1 To Len(aFiliais)
+
+			// nao coloco a filial para ser selecionada
+			If AllTrim(aFiliais[nFilial, 2]) <> AllTrim(cFilAnt)
+
+				Reclock("QFIL",.T.)
+
+				QFIL->FIL_OK 		:= " "
+				QFIL->FIL_FILIAL	:= aFiliais[nFilial, 2]
+				QFIL->FIL_DESCRI	:= aFiliais[nFilial, 7]
+
+				QFIL->(MsUnLock())
+
+			EndIf
+
+		Next nFilial
+
+	endif
+
+Return(Nil)
+
+/*/{Protheus.doc} MarkBrowse
+Monto o markbrowse
+@type function
+@version 1.0
+@author Raphael Martins Garcia
+@since 30/06/2020
+@param oBrowse, object, Browse do objeto Grid
+@param cAlias, character, Alias que esta sendo marcado
+@param cCampo, character, Campo clicacdo
+@return logical, retorno logico da funcao
+/*/
+Static Function MarkBrowse(oBrowse,cAlias,cCampo)
+
+	Local lRet 	    := .T.
+	Local nPosAtu   := oBrowse:At()
+	Local aArea	    := (cAlias)->(GetArea())
+	Local cMark     := ""
+
+	(cAlias)->(DbSetOrder(2))
+
+	//Posiciona na linha que estava
+	oBrowse:GoTo(nPosAtu)
+
+	if cAlias == "QFIL"
+
+		//Valido se tem algum item ja marcado
+		if (cAlias)->(MsSeek("T"))
+
+			//Desmarco item
+			Reclock(cAlias,.F.)
+			(cAlias)->&(cCampo) := ' '
+			(cAlias)->(MsUnLock())
+
+		endif
+
+	endif
+
+	//Posiciona na linha que estava
+	oBrowse:GoTo(nPosAtu)
+
+	if (cAlias)->&(cCampo) == "T"
+		cMark := ""
+	else
+		cMark := "T"
+	endif
+
+	//Marca item
+	Reclock(cAlias,.F.)
+	(cAlias)->&(cCampo) := cMark
+	(cAlias)->(MsUnLock())
+	(cAlias)->(DbSetOrder(1))
+
+	oBrowse:Refresh()
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} ValProxTela
+Valida se vai para proxima tela
+@type function
+@version 1.0
+@author Raphael Martins
+@since 30/06/2020
+@param cAlias, character, Alias Selecionado
+@param oGrid, object, oGrid da Tela atual
+@return logical, retorno logico
+/*/
+Static Function ValProxTela(cAlias,oGrid)
+
+	Local lRet 	   := .T.
+	Local aArea	   := (cAlias)->(GetArea())
+
+	(cAlias)->(DbSetOrder(2))
+
+	//Valido se tem algum item ja marcado
+	if !(cAlias)->(MsSeek("T"))
+
+		Aviso("Atenção","É necessário marcar um item pra prosseguir!",{"Ok"})
+		lRet := .F.
+
+	endif
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} RelImport
+Funcao para montar panel de selecao
+do arquivo de log a ser gerado da atualizacao
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param oPanel, object, objeto do painel
+@param cRelProc, character, relatorio de processamento
+/*/
+Static Function RelImport(oPanel,cRelProc)
+
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oArqRel		:= NIL
+	Local oBtnRel		:= NIL
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cTexto1		:= ""
+	Local cImgArq		:= "icone_file.png"
+	Local cImgFileHover	:= "icone_file_foco.png"
+	Local cCSSBtnFile	:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe o local do relatório de Atualizacao" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := " Após o processamento o sistema irá gerar um relatório constando todas as regras replicadas.	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Relatório de Atualizacao:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 020 GROUP oGroup1 TO 109 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 115 , 020 SAY oSay3 PROMPT "Diretório:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 115 , 070 MSGET oArqRel VAR cRelProc  SIZE 200,010 PIXEL  Font oFnt16 OF oPanel PICTURE "@!"
+
+	oBtnRel	:= TButton():New(114,275,"" ,oPanel,{|| cRelProc := tFileDialog( '*.txt' , 'Selecione o local', , "c:\", .F., GETF_RETDIRECTORY) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnRel:SetCss(cCSSBtnFile)
+
+Return(Nil)
+
+/*/{Protheus.doc} VldArqRel
+Funcao para validar o arquivo digitado para
+geracao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param nHdlLog, numeric, variavel do arquivo de texto
+@param cRelProc, character, arquivo do relatorio
+@return logical, retorno logico
+/*/
+Static Function VldArqRel(nHdlLog,cRelProc)
+
+	Local lRet 		:= .T.
+
+	if !Empty(cRelProc)
+
+		// gero o nome do arquivo a ser gerado
+		cRelProc := cRelProc + Iif(GetRemoteType() == 2,"/","\") + "layout_replica_" + DToS(dDatabase) + StrTran(Time(),":","")
+
+	else // gero o arquivo de log na temp, caso nao for preenchhido
+
+		cRelProc := Iif( SubStr(GetTempPath() ,Len(GetTempPath() )) == Iif(GetRemoteType() == 2,"/","\"), GetTempPath() , GetTempPath() + Iif(GetRemoteType() == 2,"/","\") )
+		cRelProc += "layout_replica_" + DToS(dDatabase) + StrTran(Time(),":","")
+
+	endif
+
+	//crio arquivo de relatorio do processamento da atualizacao
+	nHdlLog := MsfCreate(cRelProc + ".log",0)
+
+	if nHdlLog < 0
+
+		lRet := .F.
+		Help(,,'Help',,"Não foi possivel criar o arquivo de relatorio do processamento, favor o diretorio selecionado!",1,0)
+
+	endif
+
+Return(lRet)
+
+/*/{Protheus.doc} TelaResult
+Funcao para montar tela de resultado final
+da atualizacao 
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param oPanel, object, objeto do painel
+@param nHdlLog, numeric, variavel do arquivo de texto
+@param cRelProc, character, relatorio de processamento
+/*/
+Static Function TelaResult(oPanel,nHdlLog,cRelProc)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oGroup1		:= NIL
+	Local oProcessados	:= NIL
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cTexto1		:= ""
+	Local nRowsProces	:= 0
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	FWMsgRun(,{|oSay| ProcAtualizacao(oSay,@nRowsProces,nHdlLog)},'Aguarde...','Processando a replicacao das regras...')
+
+	@ 045 , 020 SAY oSay4 PROMPT "Processo de Atualizacao finalizado" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := "Processo de Atualizacao finalizado, abaixo segue os dados processados!	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Resultado da Importação:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 107 , 020 SAY oSay3 PROMPT "Layous Processados:" SIZE 080, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 100 MSGET oProcessados VAR nRowsProces  SIZE 080,010 READONLY PIXEL  Font oFnt16 OF oPanel PICTURE "@E 9999999"
+
+	@ 140 , 020 BUTTON oBtnImp PROMPT "Visualizar Log" SIZE 070, 015 OF oPanel PIXEL ACTION (ShellExecute("Open", cRelProc + ".log", " ", "C:\", 1 ))
+
+Return(Nil)
+
+/*/{Protheus.doc} ProcAtualizacao
+Processa atualizacao
+@type function
+@version 1.0
+@author Raphael Martins
+@since 02/07/2020
+@param oSay, object, Objeto do FWMsgRun
+@param nProcessados, numeric, Contador de Contratos Atualizados
+@param nHdlLog, numeric, Arquivo de Log da Atualizacao
+/*/
+Static Function ProcAtualizacao(oSay,nProcessados,nHdlLog)
+
+	Local aArea         := GetArea()
+	Local aDadosTabela	:= {}
+	Local cPulaLinha    := Chr(13) + Chr(10)
+
+	//verifico se arquivo de log existe
+	if nHdlLog > 0
+
+		fWrite(nHdlLog , "######### REPLICANDO REGRAS DE CONTRATOS #############")
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Data Inicio: " + DTOC( Date() ) )
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Hora Inicio: " + Time() )
+		fWrite(nHdlLog , cPulaLinha )
+
+	endif
+
+	QUJ5->(DbGotop())
+	While QUJ5->(!Eof())
+
+		// layou selecionado
+		If !Empty(QUJ5->UJ5_OK)
+
+			if nHdlLog > 0
+
+				fWrite(nHdlLog , cPulaLinha )
+				fWrite(nHdlLog , "Copiando a regra: " + AllTrim(QUJ5->UJ5_CODIGO) + "-" + AllTrim(QUJ5->UJ5_DESCRI) + " ..." )
+				fWrite(nHdlLog , cPulaLinha )
+
+			endif
+
+			oSay:cCaption := ("Copiando a regra: " + AllTrim(QUJ5->UJ5_CODIGO) + "-" + AllTrim(QUJ5->UJ5_DESCRI) + " ...")
+			ProcessMessages()
+
+			// pego os dados do Layout para ser copiado
+			aDadosTabela := DadosTabela(QUJ5->UJ5_CODIGO)
+
+			QFIL->(DbGotop())
+			While QFIL->(!Eof())
+
+				//valido se o item esta marcado
+				if !Empty(QFIL->FIL_OK) .And. AllTrim(QFIL->FIL_FILIAL) <> AllTrim(cFilAnt)
+					lContinua := MigraTabela(QFIL->FIL_FILIAL, aDadosTabela)
+				endif
+
+				QFIL->(DbSkip())
+
+			EndDo
+
+			if nHdlLog > 0
+
+				fWrite(nHdlLog , cPulaLinha )
+				fWrite(nHdlLog , " >> Regra: " + QUJ5->UJ5_CODIGO + " processado com sucesso! " )
+				fWrite(nHdlLog , cPulaLinha )
+
+			endif
+
+			nProcessados++
+
+		EndIf
+
+		QUJ5->(DBSkip())
+	Enddo
+
+	//verifico se arquivo de log existe
+	if nHdlLog > 0
+		fClose(nHdlLog) // fecho o arquivo de log
+	endif
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} DadosTabela
+Pego os dados da tabela de preco
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param cCodigoTabela, character, codigo do layout
+@return array, dados das tabelas
+/*/
+Static Function DadosTabela(cCodigoTabela)
+
+	Local aAux 		As Array
+	Local aDados	As Array
+	Local aItem		As Array
+	Local aDadosUJ5	As Array
+	Local aRetorno	As Array
+	Local cQuery 	As Character
+
+	Default cCodigoTabela	:= ""
+
+	// atribui valor as variaveis
+	aAux		:= {}
+	aDados		:= {}
+	aItem		:= {}
+	aDadosUJ5	:= {}
+	aRetorno	:= {}
+
+	If !Empty(cCodigoTabela)
+
+		cQuery := " SELECT "
+		cQuery += " 	UJ5.UJ5_CODIGO CODIGO, "
+		cQuery += " 	UJ5.UJ5_DESCRI DESCRICAO "
+		cQuery += " FROM " + RetSQLName("UJ5") + " UJ5 "
+		cQuery += " WHERE UJ5.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND UJ5.UJ5_FILIAL = '"+ xFilial("UJ5") + "' "
+		cQuery += " 	AND UJ5.UJ5_CODIGO = '"+ cCodigoTabela + "' "
+		cQuery += " ORDER BY CODIGO "
+
+		cQuery := ChangeQuery(cQuery)
+
+		if Select("TRBUJ5") > 0
+			TRBUJ5->(DbCloseArea())
+		endif
+
+		MPSysOpenQuery(cQuery, "TRBUJ5")
+
+		If TRBUJ5->(!Eof())
+
+			aAux := {}
+			Aadd(aAux, CopiaDados(TRBUJ5->CODIGO, "UJ5"))
+			Aadd(aAux, CopiaDados(TRBUJ5->CODIGO, "UJ6"))
+			Aadd(aAux, CopiaDados(TRBUJ5->CODIGO, "UJ7"))
+			Aadd(aAux, CopiaDados(TRBUJ5->CODIGO, "UJ8"))
+			Aadd(aAux, CopiaDados(TRBUJ5->CODIGO, "UJZ"))
+
+			// pego os dados para retorno
+			Aadd(aRetorno, aAux)
+
+		EndIf
+
+	EndIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} CopiaDados
+Funcao para copiar dados
+@type function
+@version 1.0 
+@author g.sampaio
+@since 02/08/2023
+@param cTabelaOrigem, character, codigo da Regras de origem
+@param cTabela, character, alias da tabela
+@return array, dados de retorno
+/*/
+Static Function CopiaDados(cTabelaOrigem, cTabela, cItemUH9)
+
+	Local aArea 	:= GetArea()
+	Local aAux 		:= {}
+	Local aRetorno	:= {}
+	Local cQuery	:= ""
+
+	Default cTabelaOrigem	:= ""
+	Default cTabela			:= ""
+	Default cItemUH9		:= ""
+
+	If !Empty(cTabela)
+
+		cQuery  := " SELECT LAYOUT.R_E_C_N_O_ AS RECTAB FROM " + RetSqlName(cTabela) + " LAYOUT "
+		cQuery	+= " WHERE LAYOUT.D_E_L_E_T_ = ' ' "
+		cQuery  += " AND LAYOUT."+cTabela+"_FILIAL = '" + xFilial(cTabela) + "' "
+		cQuery	+= " AND LAYOUT."+cTabela+"_CODIGO = '" + cTabelaOrigem + "' "
+
+		cQuery	:= ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TABDADOS")
+
+		While TABDADOS->(!Eof())
+
+			(cTabela)->(DbGoTo(TABDADOS->RECTAB))
+
+			// verifico se encontro a estrutura da SX3
+			If EstruSX3(cTabela)
+				While TRB->(!Eof())
+
+					// verifico se o contexto do campo e real
+					If TRB->CONTEXT <> "V"
+
+						// alimento o array com a estrutura
+						aAdd(aAux, { TRB->CAMPO, &(""+cTabela+"->" + TRB->CAMPO + "" )  })
+
+					EndIf
+
+					TRB->(DbSkip())
+				EndDo
+			EndIf
+
+			aAdd(aRetorno, aAux)
+			aAux := {}
+
+			TABDADOS->(DbSkip())
+		EndDo
+
+	EndIf
+
+	RestArea(aArea)
+
+Return(aRetorno)
+
+/*/{Protheus.doc} EstruSX3
+Estrutura da SX3
+@type function
+@version 1.0	
+@author g.sampaio
+@since 02/08/2023
+@param cTabela, character, alias da tabela
+@return character, alias de dados da sx3
+/*/
+Static Function EstruSX3(cTabela)
+
+	Local cQry 			:= ""
+	Local cAliasTemp	:= "TRB"
+
+	Default cTabela 	:= ""
+
+	cQry += " SELECT "
+	cQry += " 	X3_CAMPO 	AS CAMPO, "
+	cQry += " 	X3_CONTEXT 	AS CONTEXT, "
+	cQry += " 	X3_TIPO 	AS TIPO "
+	cQry += " FROM " + RetSqlName("SX3") + " TBL "
+	cQry += " WHERE TBL.D_E_L_E_T_ = ' ' "
+
+	if !Empty(AllTrim(cTabela))
+		cQry += " AND X3_ARQUIVO = '"+AllTrim(cTabela)+"'"
+	endif
+
+	cQry += " ORDER BY X3_ORDEM "
+
+	if Select(cAliasTemp) > 0
+		(cAliasTemp)->(DbCloseArea())
+	endif
+
+	MPSysOpenQuery( cQry, cAliasTemp)
+
+	DbSelectArea(cAliasTemp)
+	(cAliasTemp)->(DbGoTop())
+
+Return((cAliasTemp)->(!Eof()))
+
+/*/{Protheus.doc} MigraTabela
+Funcao para migrar tabela
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@param cCodigoFilial, character, codigo da filial
+@param aDadosTabela, array, dados da Regras
+@return logical, retorno da funcao
+/*/
+Static Function MigraTabela(cCodigoFilial As Character, aDadosTabela As Array)
+
+	Local aArea			As Array
+	Local aAreaUJ5		As Array
+	Local aAreaUJ6		As Array
+	Local aAreaUJ7		As Array
+	Local aAreaUJ8		As Array
+	Local aAreaUJZ		As Array
+	Local aUJ5			As Array
+	Local aUJ6			As Array
+	Local aUJ7 			As Array
+	Local aUJ8 			As Array
+	Local aUJZ 			As Array
+	Local aCampos		As Array
+	Local cFilBkp		As Character
+	Local cCodigoTabela	As Character
+	Local cPulaLinha	As Character
+	Local lRetorno 		As Logical
+	Local nCampos		As Numeric
+	Local nUJ5			As Numeric
+	Local nUJ6 			As Numeric
+	Local nUJ7 			As Numeric
+	Local nUJ8 			As Numeric
+	Local nUJZ 			As Numeric
+
+	Default cCodigoFilial	:= ""
+	Default aDadosTabela	:= {}
+
+	// aitrbui valor as variaveis
+	aArea	 		:= GetArea()
+	aAreaUJ5		:= UJ5->(GetArea())
+	aAreaUJ6		:= UJ6->(GetArea())
+	aAreaUJ7		:= UJ7->(GetArea())
+	aAreaUJ8		:= UJ8->(GetArea())
+	aAreaUJZ		:= UJZ->(GetArea())
+	cFilBkp	 		:= cFilAnt
+	cCodigoTabela	:= ""
+	lRetorno 		:= .T.
+	cPulaLinha    	:= Chr(13) + Chr(10)
+
+	// entrou na filial que vai migrar
+	cFilAnt	:= cCodigoFilial
+
+	if nHdlLog > 0
+
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " Filial de destino " + cFilAnt + " ..." )
+		fWrite(nHdlLog , cPulaLinha )
+
+	endif
+
+	// pego o codigo do layout
+	cCodigoTabela := NextCodigo()
+
+	aUJ5 := aDadosTabela[1][1]
+	aUJ6 := aDadosTabela[1][2]
+	aUJ7 := aDadosTabela[1][3]
+	aUJ8 := aDadosTabela[1][4]
+	aUJZ := aDadosTabela[1][5]
+
+	BEGIN TRANSACTION
+
+		If UJ5->(Reclock("UJ5", .T.))
+
+			// UJ5 - copio o cabecalho da Regrass
+			For nUJ5 := 1 To Len(aUJ5)
+
+				aCampos := aUJ5[nUJ5]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UJ5_FILIAL"
+						UJ5->UJ5_FILIAL := xFilial("UJ5")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UJ5_CODIGO"
+						UJ5->UJ5_CODIGO := cCodigoTabela
+					Else
+						UJ5->&(aCampos[nCampos][1]) := aCampos[nCampos][2]
+					EndIf
+
+				Next nCampos
+
+			Next nUJ5
+
+			UJ5->(MsUnLock())
+
+		EndIf
+
+		// UJ6 - copio o cabecalho da tabela de precos
+		For nUJ6 := 1 To Len(aUJ6)
+
+			If UJ6->(Reclock("UJ6", .T.))
+
+				aCampos := aUJ6[nUJ6]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UJ6_FILIAL"
+						UJ6->UJ6_FILIAL := xFilial("UJ6")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UJ6_CODIGO"
+						UJ6->UJ6_CODIGO := cCodigoTabela
+					Else
+						UJ6->&(aCampos[nCampos][1]) := aCampos[nCampos][2]
+					EndIf
+
+				Next nCampos
+
+				UJ6->(MsUnLock())
+
+			EndIf
+
+		Next nUJ6
+
+		// UJ7 - copio o cabecalho da tabela de precos
+		For nUJ7 := 1 To Len(aUJ7)
+
+			If UJ7->(Reclock("UJ7", .T.))
+
+				aCampos := aUJ7[nUJ7]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UJ7_FILIAL"
+						UJ7->UJ7_FILIAL := xFilial("UJ7")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UJ7_CODIGO"
+						UJ7->UJ7_CODIGO := cCodigoTabela
+					Else
+						UJ7->&(aCampos[nCampos][1]) := aCampos[nCampos][2]
+					EndIf
+
+				Next nCampos
+
+				UJ7->(MsUnLock())
+
+			EndIf
+
+		Next nUJ7
+
+		// UJ8 - copio o cabecalho da tabela de precos
+		For nUJ8 := 1 To Len(aUJ8)
+
+			If UJ8->(Reclock("UJ8", .T.))
+
+				aCampos := aUJ8[nUJ8]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UJ8_FILIAL"
+						UJ8->UJ8_FILIAL := xFilial("UJ8")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UJ8_CODIGO"
+						UJ8->UJ8_CODIGO := cCodigoTabela
+					Else
+						UJ8->&(aCampos[nCampos][1]) := aCampos[nCampos][2]
+					EndIf
+
+				Next nCampos
+
+				UJ8->(MsUnLock())
+
+			EndIf
+
+		Next nUJ8
+
+		// UJZ - copio o cabecalho da tabela de precos
+		For nUJZ := 1 To Len(aUJZ)
+
+			If UJZ->(Reclock("UJZ", .T.))
+
+				aCampos := aUJZ[nUJZ]
+
+				For nCampos := 1 To Len(aCampos)
+
+					If AllTrim(aCampos[nCampos][1]) == "UJZ_FILIAL"
+						UJZ->UJZ_FILIAL := xFilial("UJZ")
+					ElseIf AllTrim(aCampos[nCampos][1]) == "UJZ_CODIGO"
+						UJZ->UJZ_CODIGO := cCodigoTabela
+					Else
+						UJZ->&(aCampos[nCampos][1]) := aCampos[nCampos][2]
+					EndIf
+
+				Next nCampos
+
+				UJZ->(MsUnLock())
+
+			EndIf
+
+		Next nUJZ
+
+	END TRANSACTION
+
+	// restauro o valor da filial
+	cFilAnt := cFilBkp
+
+	RestArea(aAreaUJZ)
+	RestArea(aAreaUJ8)
+	RestArea(aAreaUJ7)
+	RestArea(aAreaUJ6)
+	RestArea(aAreaUJ5)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} NextCodigo
+Rotina para gerar o proximo codigo 
+da tabela de precos
+@type function
+@version 1.0
+@author g.sampaio
+@since 14/03/2024
+@return character, proximo codigo da tabela de precos
+/*/
+Static Function NextCodigo()
+
+	Local aArea		As Array
+	Local aAreaUJ5	As Array
+	Local cQuery	As Character
+	Local cRetorno	As Character
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaUJ5	:= UJ5->(GetArea())
+
+	cQuery := " SELECT "
+	cQuery += " 	MAX(UJ5.UJ5_CODIGO) AS MAX_CODIGO "
+	cQuery += " FROM " + RetSQLName("UJ5") + " UJ5 "
+	cQuery += " WHERE UJ5.UJ5_FILIAL = '"+ xFilial("UJ5") + "' "
+
+	cQuery	:= ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBMAX")
+
+	If TRBMAX->(!Eof())
+		If !Empty(TRBMAX->MAX_CODIGO)
+			cRetorno := Soma1(TRBMAX->MAX_CODIGO)
+		Else
+			cRetorno := StrZero(1, TamSX3("UJ5_CODIGO")[1])
+		EndIf
+	Else
+		cRetorno := StrZero(1, TamSX3("UJ5_CODIGO")[1])
+	EndIf
+
+	UJ5->(DbSetOrder(1))
+	If UJ5->(MsSeek(xFilial("UJ5")+cRetorno))
+		While UJ5->(MsSeek(xFilial("UJ5")+cRetorno))
+			cRetorno := Soma1(Alltrim(cRetorno))
+		EndDo
+	EndIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode("UJ5"+xFilial("UJ5")+cRetorno)
+		// gero um novo nosso numero
+		cRetorno := Soma1(Alltrim(cRetorno))
+	EndDo
+
+	RestArea(aAreaUJ5)
+	RestArea(aArea)
+
+Return(cRetorno)

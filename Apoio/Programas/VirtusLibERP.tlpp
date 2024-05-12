@@ -1,0 +1,3200 @@
+#include "totvs.ch"
+#include "protheus.ch"
+#include "topconn.ch"
+#include "fileio.ch"
+
+/*/{Protheus.doc} UXFUNC
+Fonte responsavel pela criaÁ„o de funÁıes genericas do projeto	
+----------------------------------------------------------------------------
+			FunÁıes Contidas nesse arquivo
+----------------------------------------------------------------------------
+Funcao       DescriÁ„o				    Data                  Autor
+----------------------------------------------------------------------------
+ORDGRID       Funcao responsavel pela	   08/06/2016           Raphael Martins
+			  ordenacao de Grids da 
+			  classe MsNewGetDados
+
+LimpaAcolsMvc Funcao para Limpar Dados							Wellington GonÁalves
+			  da GRID em telas do Tipo								
+			  MVC 	
+
+CRIALOG       Funcao para Criar Arquivo  08/06/2016			 	Andre Barrero
+			  de Log no diretorio 
+			  desejado.
+
+RetModul	 Funcao para retornar o
+		     o modulo em que o usuario
+		     esta acessando.									Raphael Martins
+
+UXmlTag		  Funcao para montar uma tag						TOTVS
+		      XML de acordo com o nome
+
+RetInfSM0	  Funcao para retonar os dados da empresa logada	Wellington Goncalves
+
+RetPrecoVenda Funcao que retorna preco de tabela do item 		Raphael Martins
+
+UAgeCalculate Funcao para retornar a idade de acordo com as datas passadas em parametro - Raphael Martins
+
+GavetaValida - Funcao para Validar a disponibilidade de uma gaveta - Raphael Martins 		      
+
+VldCobranca	 - Funcao para validar se o contrato Funeraria possui titulo em cobranca - Raphael Martins 
+
+ExcBord - Remove tÌtulos de borderÙ - Nata Queiroz
+
+DadosJazigo - Consulta os Jazigos enderecados para um contrato e retorna o Jazigo Selecionado - Guilherme Sampaio
+
+@author TOTVS GOI¡S
+@since 08/06/2016
+@version P11
+@param Nao recebe parametros
+@return nulo
+@history 21/05/2020, g.sampaio, Adicionado a funÁ„o de usu·rio toString no fonte UXFUNC 
+/*/
+//----------------------------------------------------------------------------
+
+User Function VirtusLibERP()
+Return(Nil)
+
+/*/{Protheus.doc} ORDGRID
+Funcao responsavel pela
+ordenacao de Grids da 
+classe MsNewGetDados
+
+@author TOTVS
+@since 03/06/2016
+@version P12
+@param 
+	oObj   - Objeto MsNewGetDados para Ordenacao
+	nColum - Coluna que sera ordenada na Grid
+Atencao!
+Os fontes que executam a funcao abaixo dever„o ter 
+as seguintees variaveis 
+Private __XVEZ 		:= "0"
+Private __ASC       := .T.
+@return nulo
+/*/
+
+User Function OrdGrid(oObj,nColum) //U_OrdGrid(oNewGet,nColuna)
+
+	Local nX 		:= 1
+	Local nY		:= 1
+	Local aAux 		:= {}
+	Local nCont		:= 0
+
+	if __XVEZ == "0"
+		__XVEZ := "1"
+	else
+		if __XVEZ == "1"
+			__XVEZ := "2"
+		endif
+	endif
+
+	if __XVEZ == "2"
+
+		// reordeno o array do grid
+		if __ASC
+			if valtype(oObj) == "A"
+				ASORT(oObj,,,{|x, y| x[nColum] < y[nColum] }) //ordena?o crescente
+			else
+				ASORT(oObj:aCols,,,{|x, y| x[nColum] < y[nColum] }) //ordena?o crescente
+			endif
+			__ASC := .F.
+		else
+			if valtype(oObj) == "A"
+				ASORT(oObj,,,{|x, y| x[nColum] > y[nColum] }) //ordena?o decrescente
+			else
+				ASORT(oObj:aCols,,,{|x, y| x[nColum] > y[nColum] }) //ordena?o decrescente
+			endif
+			__ASC := .T.
+		endif
+
+		// fa? um refresh no grid
+		if valtype(oObj) == "O"
+			oObj:oBrowse:Refresh()
+		endif
+		__XVEZ := "0"
+
+	endif
+
+Return()
+
+
+/*/{Protheus.doc} LimpaAcolsMVC
+FunÁ„o que limpa o acols MVC colocando uma linha em branco
+@author TOTVS
+@since 03/06/2016
+@version P12
+@param 
+	oGrid   - Objeto MsNewGetDados para Ordenacao
+	oView   - Objeto View do MVC
+Atencao!
+@return nulo
+/*/
+
+User Function LimpaAcolsMVC(oGrid,oView)
+
+	Local aArea 	:= GetArea()
+	Local aFields	:= {}
+	Local aAux		:= {}
+	Local nX		:= 0
+	Local oSX3		:= UGetSxFile():New()
+	Local aSX3		:= {}
+
+	// deleto todos os itens
+	For nX := 1 To oGrid:Length()
+
+		// posiciono na primeira linha
+		oGrid:GoLine(1)
+
+		// deleto o item
+		oGrid:DeleteLine()
+
+	Next nX
+
+	// crio um array com a estrutura da SX3
+	For nX := 1 To Len(oGrid:aHeader)
+
+		aSX3:= oSX3:GetInfoSX3(,oGrid:aHeader[nX,2])
+		Aadd(aFields, CriaVar(aSX3[1,2]:cCAMPO))
+
+	Next nX
+
+	aadd(aFields,.F.)
+
+	// copio a estrutura do array aDataModel
+	aAux := aClone(oGrid:aDataModel[1])
+
+	// atualizo a estrutura
+	aAux[1,1] := aClone(aFields)
+
+	// limpo a estrutura do aDataModel
+	oGrid:aDataModel := {}
+
+	// atualizo a estrutura doa aDataModel
+	aadd(oGrid:aDataModel,aAux)
+
+	// posiciono na primeira linha
+	oGrid:GoLine(1)
+
+	// se estiver deletada, tiro a deleÁ„o
+	If oGrid:IsDeleted()
+		oGrid:UnDeleteLine()
+	EndIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*
+‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±…ÕÕÕÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕª±±
+±±∫Programa  ≥CriaLog     ∫Autor  ≥AndrÈ R. Barrero     ∫Data ≥19/01/15   ∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Desc.     ≥ Cria arquivo de log                                        ∫±±
+±±∫          ≥                                                            ∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Uso       ≥ AP                                                        ∫±±
+±±»ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+*/
+User Function CriaLog(cPasta,cNomeArq,cTexto)
+	Local cFile := cPasta+cNomeArq//"\temp\arquivo.txt"
+	Local nH
+
+	nH := FILE(cFile)
+	If nH == .F.
+		nH := fCreate(cFile,FC_NORMAL)
+		If nH == -1
+			MsgStop("Falha ao criar arquivo - erro "+str(ferror()))
+			Return
+		Endif
+	Else
+		nH := fOpen(cFile , FO_READWRITE + FO_SHARED)
+		If nH == -1
+			MsgStop('Erro de abertura : FERROR '+str(ferror(),4))
+		Endif
+	Endif
+
+// Posiciona no fim do arquivo
+	FSeek(nH, 0, FS_END)
+
+// Escreve o texto mais a quebra de linha CRLF
+	fWrite( nH,cTexto + chr(13)+chr(10) )
+
+	fClose(nH)
+
+Return
+
+/*/{Protheus.doc} RetModul
+Funcao para retornar o modulo que o usuario 
+esta acessando.
+@author TOTVS
+@since 05/08/2016
+@version P12
+@param 
+@return nulo
+/*/
+
+User Function RetModul()
+
+	Local aOpcoes  		:= {}
+	Local aParam   		:= {}
+	Local cMod     		:= ""
+	Local lFuneraria 	:= SuperGetMV("MV_XFUNE",.F.,.F.)
+	Local lCemiterio 	:= SuperGetMV("MV_XCEMI",.F.,.F.)
+
+	If (AllTrim(FunName()) == "RCPGA001" .Or. nModulo == 97) .And. lCemiterio .And. lFuneraria //cemiterio
+		cMod := "CEM"
+	ElseIf (AllTrim(FunName()) == "RFUNA002" .Or. nModulo == 98) .And. lFuneraria .And. lCemiterio //funeraria
+		cMod := "FUN"
+	ElseIf (nModulo == 97 .Or. lCemiterio) .And. !lFuneraria //cemiterio
+		cMod := "CEM"
+	ElseIf (nModulo == 98 .Or. lFuneraria) .And. !lCemiterio //funeraria
+		cMod := "FUN"
+	Else //Mostra Tela pra selecionar o Modulo
+		aOpcoes    := {"Cemiterio", "Funeraria"}
+		aAdd(aParam, {2, "MÛdulo:", "Cemiterio", aOpcoes,, "Pertence('Cemiterio', 'Funeraria')", .T.})
+		If !ParamBox(aParam, "Selecione o mÛdulo de cemitÈrio ou funer·ria", @aOpcoes)
+			Aviso( "", "OperaÁ„o cancelada pelo usu·rio", {"Ok"} )
+			Return()
+		EndIf
+		If MV_PAR01 == "Cemiterio"
+			cMod := "CEM"
+		Else
+			cMod := "FUN"
+		EndIf
+	EndIf
+
+Return(cMod)
+
+//Exemplo
+//U_UXmlTag("TESTE","conteudo da tag aqui")
+//retorno: <TESTE>conteudo da tag aqui</TESTE>
+User Function UXmlTag(cNmTag, cContent, lEOL, cComplem)
+
+	Local cRet := ""
+	Default lEOL := .F.
+	Default cComplem := ""
+
+	cRet += "<"+cNmTag+cComplem+">"
+	if lEOL
+		cRet += chr(13)+chr(10)
+	endif
+	cRet += cContent
+	cRet += "</"+cNmTag+">"
+	cRet += chr(13)+chr(10)
+
+Return cRet
+
+/*
+‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±…ÕÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕª±±
+±±∫Programa≥QuebraTexto ∫Autor  ≥Wellington GonÁalves∫ Data ≥ 23/12/13    ∫±±
+±±ÃÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Desc.   ≥ Funcao que faz quebra de texto								  ∫±±
+±±»ÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±∫Param.  ≥ 1- String												 	  ∫±±
+±±∫		   ≥ 2- Qtd de caracteres que ser· feito a quebra				  ∫±±
+±±»ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±∫Retorno.≥ Array com as linhas do texto			                      ∫±±
+±±ÃÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Uso     ≥ Vale do Cerrado                                           	  ∫±±
+±±»ÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+*/
+
+User Function UQuebraTexto(_cString,_nCaracteres)
+
+	Local aTexto    := {}
+	Local cAux   	:= ""
+	Local cString   := AllTrim(_cString)
+	Local nX     	:= 1
+	Local nY       	:= 1
+
+	if _nCaracteres > Len(cString)
+		aadd(aTexto,cString)
+	else
+
+		While nX <= Len(cString)
+
+			cAux := SubStr(cString,nX,_nCaracteres)
+
+			if Empty(cAux)
+				nX += _nCaracteres
+			else
+
+				if SubStr(cAux,Len(cAux),1) == " " .OR. nX + _nCaracteres > Len(cString)
+					aadd(aTexto,cAux)
+					nX += _nCaracteres
+				else
+
+					For nY := Len(cAux) To 1 Step -1
+
+						if SubStr(cAux,nY,1) == " "
+
+							aadd(aTexto,SubStr(cAux,1,nY))
+							nX += nY
+							Exit
+
+						endif
+
+					Next nY
+
+				endif
+
+			endif
+
+		EndDo
+
+	endif
+
+Return(aTexto)
+/*
+‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±…ÕÕÕÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕª±±
+±±∫Programa  ≥xPutSx1 ∫Autor≥Raphael Martins 	   ∫ Data ≥  03/02/17  		∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Desc.     ≥ AdaptaÁ„o da funÁ„o padr„o xPutSx1.						    ∫±±
+±±∫          ≥ Utilizada para criar os parametros na tabela SX1 		    ∫±±
+±±∫          ≥ 																∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Uso       ≥ Postumos                                                     ∫±±
+±±»ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+*/
+User Function xPutSx1(cGrupo,cOrdem,cPergunt,cPerSpa,cPerEng,cVar,;
+		cTipo ,nTamanho,nDecimal,nPresel,cGSC,cValid,;
+		cF3, cGrpSxg,cPyme,;
+		cVar01,cDef01,cDefSpa1,cDefEng1,cCnt01,;
+		cDef02,cDefSpa2,cDefEng2,;
+		cDef03,cDefSpa3,cDefEng3,;
+		cDef04,cDefSpa4,cDefEng4,;
+		cDef05,cDefSpa5,cDefEng5,;
+		aHelpPor,aHelpEng,aHelpSpa,cHelp)
+
+	LOCAL aArea := GetArea()
+	Local cKey
+	Local lPort := .f.
+	Local lSpa  := .f.
+	Local lIngl := .f.
+
+	cKey  := "P." + AllTrim( cGrupo ) + AllTrim( cOrdem ) + "."
+
+	cPyme    := Iif( cPyme 		== Nil, " ", cPyme		)
+	cF3      := Iif( cF3 		== NIl, " ", cF3		)
+	cGrpSxg  := Iif( cGrpSxg	== Nil, " ", cGrpSxg	)
+	cCnt01   := Iif( cCnt01		== Nil, "" , cCnt01 	)
+	cHelp	 := Iif( cHelp		== Nil, "" , cHelp		)
+
+	dbSelectArea( "SX1" )
+	dbSetOrder( 1 )
+
+	// Ajusta o tamanho do grupo. Ajuste emergencial para validaÁ„o dos fontes.
+	// RFC - 15/03/2007
+	cGrupo := PadR( cGrupo , Len( SX1->X1_GRUPO ) , " " )
+
+	If !( DbSeek( cGrupo + cOrdem ))
+
+		cPergunt:= If(! "?" $ cPergunt .And. ! Empty(cPergunt),Alltrim(cPergunt)+" ?",cPergunt)
+		cPerSpa	:= If(! "?" $ cPerSpa  .And. ! Empty(cPerSpa) ,Alltrim(cPerSpa) +" ?",cPerSpa)
+		cPerEng	:= If(! "?" $ cPerEng  .And. ! Empty(cPerEng) ,Alltrim(cPerEng) +" ?",cPerEng)
+
+		Reclock( "SX1" , .T. )
+
+		Replace X1_GRUPO   With cGrupo
+		Replace X1_ORDEM   With cOrdem
+		Replace X1_PERGUNT With cPergunt
+		Replace X1_PERSPA  With cPerSpa
+		Replace X1_PERENG  With cPerEng
+		Replace X1_VARIAVL With cVar
+		Replace X1_TIPO    With cTipo
+		Replace X1_TAMANHO With nTamanho
+		Replace X1_DECIMAL With nDecimal
+		Replace X1_PRESEL  With nPresel
+		Replace X1_GSC     With cGSC
+		Replace X1_VALID   With cValid
+
+		Replace X1_VAR01   With cVar01
+
+		Replace X1_F3      With cF3
+		Replace X1_GRPSXG  With cGrpSxg
+
+		If Fieldpos("X1_PYME") > 0
+			If cPyme != Nil
+				Replace X1_PYME With cPyme
+			Endif
+		Endif
+
+		Replace X1_CNT01   With cCnt01
+		If cGSC == "C"			// Mult Escolha
+			Replace X1_DEF01   With cDef01
+			Replace X1_DEFSPA1 With cDefSpa1
+			Replace X1_DEFENG1 With cDefEng1
+
+			Replace X1_DEF02   With cDef02
+			Replace X1_DEFSPA2 With cDefSpa2
+			Replace X1_DEFENG2 With cDefEng2
+
+			Replace X1_DEF03   With cDef03
+			Replace X1_DEFSPA3 With cDefSpa3
+			Replace X1_DEFENG3 With cDefEng3
+
+			Replace X1_DEF04   With cDef04
+			Replace X1_DEFSPA4 With cDefSpa4
+			Replace X1_DEFENG4 With cDefEng4
+
+			Replace X1_DEF05   With cDef05
+			Replace X1_DEFSPA5 With cDefSpa5
+			Replace X1_DEFENG5 With cDefEng5
+		Endif
+
+		Replace X1_HELP  With cHelp
+
+		xPutSx1Help(cKey,aHelpPor,aHelpEng,aHelpSpa)
+
+		MsUnlock()
+	Else
+
+		lPort := ! "?" $ X1_PERGUNT .And. ! Empty(SX1->X1_PERGUNT)
+		lSpa  := ! "?" $ X1_PERSPA  .And. ! Empty(SX1->X1_PERSPA)
+		lIngl := ! "?" $ X1_PERENG  .And. ! Empty(SX1->X1_PERENG)
+
+		If lPort .Or. lSpa .Or. lIngl
+			RecLock("SX1",.F.)
+			If lPort
+				SX1->X1_PERGUNT:= Alltrim(SX1->X1_PERGUNT)+" ?"
+			EndIf
+			If lSpa
+				SX1->X1_PERSPA := Alltrim(SX1->X1_PERSPA) +" ?"
+			EndIf
+			If lIngl
+				SX1->X1_PERENG := Alltrim(SX1->X1_PERENG) +" ?"
+			EndIf
+			SX1->(MsUnLock())
+		EndIf
+	Endif
+
+	RestArea( aArea )
+
+Return
+
+/*
+‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±…ÕÕÕÕÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÀÕÕÕÕÕÕ—ÕÕÕÕÕÕÕÕÕÕÕÕÕª±±
+±±∫Programa  ≥xPutSx1Help∫Autor≥Raphael Martins 	   ∫ Data ≥  03/02/17   ∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ ÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Desc.     ≥ AdaptaÁ„o da funÁ„o padr„o xPutSx1Help.					    ∫±±
+±±∫          ≥ Utilizada para criar helps de par‚metros e campos 		    ∫±±
+±±∫          ≥ personalizados												∫±±
+±±ÃÕÕÕÕÕÕÕÕÕÕÿÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕπ±±
+±±∫Uso       ≥ Postumos                                                     ∫±±
+±±»ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕº±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ
+*/
+Static Function xPutSx1Help(cKey,aHelpPor,aHelpEng,aHelpSpa,lUpdate,cStatus)
+
+	Local cFilePor := "SIGAHLP.HLP"
+	Local cFileEng := "SIGAHLE.HLE"
+	Local cFileSpa := "SIGAHLS.HLS"
+	Local nRet
+	Local nT
+	Local nI
+	Local cLast
+	Local cNewMemo
+	Local cAlterPath := ''
+	Local nPos
+
+	If ( ExistBlock('HLPALTERPATH') )
+		cAlterPath := Upper(AllTrim(ExecBlock('HLPALTERPATH', .F., .F.)))
+		If ( ValType(cAlterPath) != 'C' )
+			cAlterPath := ''
+		ElseIf ( (nPos:=Rat('\', cAlterPath)) == 1 )
+			cAlterPath += '\'
+		ElseIf ( nPos == 0	)
+			cAlterPath := '\' + cAlterPath + '\'
+		EndIf
+
+		cFilePor := cAlterPath + cFilePor
+		cFileEng := cAlterPath + cFileEng
+		cFileSpa := cAlterPath + cFileSpa
+
+	EndIf
+
+	Default aHelpPor := {}
+	Default aHelpEng := {}
+	Default aHelpSpa := {}
+	Default lUpdate  := .T.
+	Default cStatus  := ""
+
+	If Empty(cKey)
+		Return
+	EndIf
+
+	If !(cStatus $ "USER|MODIFIED|TEMPLATE")
+		cStatus := NIL
+	EndIf
+
+	cLast 	 := ""
+	cNewMemo := ""
+
+	nT := Len(aHelpPor)
+
+	For nI:= 1 to nT
+		cLast := Padr(aHelpPor[nI],40)
+		If nI == nT
+			cLast := RTrim(cLast)
+		EndIf
+		cNewMemo+= cLast
+	Next
+
+	If !Empty(cNewMemo)
+		nRet := SPF_SEEK( cFilePor, cKey, 1 )
+		If nRet < 0
+			SPF_INSERT( cFilePor, cKey, cStatus,, cNewMemo )
+		Else
+			If lUpdate
+				SPF_UPDATE( cFilePor, nRet, cKey, cStatus,, cNewMemo )
+			EndIf
+		EndIf
+	EndIf
+
+	cLast 	 := ""
+	cNewMemo := ""
+
+	nT := Len(aHelpEng)
+
+	For nI:= 1 to nT
+		cLast := Padr(aHelpEng[nI],40)
+		If nI == nT
+			cLast := RTrim(cLast)
+		EndIf
+		cNewMemo+= cLast
+	Next
+
+	If !Empty(cNewMemo)
+		nRet := SPF_SEEK( cFileEng, cKey, 1 )
+		If nRet < 0
+			SPF_INSERT( cFileEng, cKey, cStatus,, cNewMemo )
+		Else
+			If lUpdate
+				SPF_UPDATE( cFileEng, nRet, cKey, cStatus,, cNewMemo )
+			EndIf
+		EndIf
+	EndIf
+
+	cLast 	 := ""
+	cNewMemo := ""
+
+	nT := Len(aHelpSpa)
+
+	For nI:= 1 to nT
+		cLast := Padr(aHelpSpa[nI],40)
+		If nI == nT
+			cLast := RTrim(cLast)
+		EndIf
+		cNewMemo+= cLast
+	Next
+
+	If !Empty(cNewMemo)
+		nRet := SPF_SEEK( cFileSpa, cKey, 1 )
+		If nRet < 0
+			SPF_INSERT( cFileSpa, cKey, cStatus,, cNewMemo )
+		Else
+			If lUpdate
+				SPF_UPDATE( cFileSpa, nRet, cKey, cStatus,, cNewMemo )
+			EndIf
+		EndIf
+	EndIf
+Return
+
+/*‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹‹
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+±±∫ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ∫±±
+±±∫Programa  ≥ RetDadosSM0 ∫ Autor ≥ Wellington GonÁalves      ∫ Data≥ 08/11/2016 ∫±±
+±±∫ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ∫±±
+±±∫Desc.     ≥ FunÁ„o que retorna informaÁıes do cadastro de empresas			  ∫±±
+±±∫ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ∫±±
+±±∫Uso       ≥ CemitÈrio e Funer·ria               			                      ∫±±
+±±∫ÕÕÕÕÕÕÕÕÕÕœÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕÕ∫±±
+±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±
+ﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂﬂ*/
+
+User Function RetInfSM0(cEmp,cFil,cCampo)
+ 
+Local aArea		:= GetArea()       
+Local aAreaSM0	:= SM0->(GetArea()) 
+Local cRet		:= ""    
+
+cRet := Posicione("SM0",1,cEmp + cFil,cCampo)
+
+RestArea(aAreaSM0)
+RestArea(aArea)
+
+Return(cRet)
+
+
+/*/{Protheus.doc} UWhenVenc.
+Funcao para validar os campos 
+UF2_DIAVEN, UF2_PRIMVE,
+U00_DIAVEN e U00_PRIMVE
+@author Raphael Martins
+@since 05/02/2018
+@version P12
+@param Nao recebe parametros            
+@return nulo.
+/*/
+User Function UWhenVenc()
+
+	Local lRet 				:= .T.
+	Local lPrimVencto		:= SuperGetMv("MV_XPRIMVC",.F.,.F.)
+	Local cField			:= ReadVar()
+
+	if IsInCallStack("U_RCPGA001")
+
+		//para o campo de dia de vencimento ser habilitado o parametro precisa estar desativado
+		if cField == "M->U00_DIAVEN" .And. lPrimVencto
+
+			lRet := .F.
+
+		elseif cField == "M->U00_PRIMVE" .And. !lPrimVencto
+
+			lRet := .F.
+
+		endif
+
+		if lRet .And. !Inclui .And. U00->U00_STATUS <> 'P'
+
+			lRet := .F.
+
+		endif
+
+	elseif IsInCallStack("U_RFUNA002")
+
+		//para o campo de dia de vencimento ser habilitado o parametro precisa estar desativado
+		if cField == "M->UF2_DIAVEN" .And. lPrimVencto
+
+			lRet := .F.
+
+		elseif cField == "M->UF2_PRIMVE" .And. !lPrimVencto
+
+			lRet := .F.
+
+		endif
+
+		if lRet .And. !Inclui .And. UF2->UF2_STATUS <> 'P'
+
+			lRet := .F.
+
+		endif
+
+	endif
+
+Return( lRet )
+
+/*/{Protheus.doc} UCONSX3
+Consulta padrao de campos da SX3
+@author Raphael Martins
+@since 30/11/2018
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function UCONSX3(cModel,cCampo)
+
+	Local aCpos       	:= {}       //Array com os dados
+	Local aRet        	:= {}       //Array do retorno da opcao selecionada
+	Local aButtons    	:= {}
+	Local cTitulo     	:= "Campos do sistema"
+	Local lRet		  	:= .F.
+	Local cGetCpo     	:= Space(10)
+	Local cGetDescCpo 	:= Space(30)
+	Local cEntidade		:= ""
+	Local nList       	:= 0
+	Local lRet        	:= .T.
+	Local lAtivMultNat	:= SuperGetMV("MV_XMULNPA",.F.,.F.)	// rateio de multiplas naturezas virtus
+	Local lMulNatR		:= SuperGetMV("MV_MULNATR",.F.,.F.)	// rateio de multiplas naturezas padr„o
+	Local nLinIni		:= 30
+	Local oGrpCampos	:= NIL
+	Local oModelCpo		:= NIL
+	Local oSX3        	:= NIL
+	Local oLbx          := NIL
+	Local oGetCpo		:= NIL
+	Local oGetDescCpo	:= NIL
+	Local oBPesq   		:= NIL
+	Local oView			:= FWViewActive()
+	Local oModel		:= FWModelActive()
+	Local oSX3			:= UGetSxFile():New()
+	Local aAux			:= {}
+	Local nX			:= 1
+	Local nI			:= 0
+
+	Static cRet			:= ""
+	Static cRet2		:= ""
+
+	Default	cModel		:= ""
+	Default	cCampo		:= ""
+
+	if !Empty(cModel) .And. !Empty(cCampo)
+
+		oModelCpo	:= oModel:GetModel(cModel)
+		cEntidade	:= oModelCpo:GetValue(cCampo)
+
+	endif
+
+	If !Empty(cEntidade)
+
+		//⁄ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒø
+		//≥Carrega o vetor com os campos da tabela selecionada≥
+		//¿ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ
+		aAux:= oSX3:GetInfoSX3(cEntidade)
+
+		if Len(aAux) > 0
+
+			For nX:= 1 to Len(aAux)
+				if aAux[nX,2]:cCONTEXT <> "V"
+
+					AADD(aCpos,{aAux[nX,2]:cCAMPO,aAux[nX,2]:cTITULO })
+
+				endif
+			Next nX
+
+			if cEntidade == "SE1" .And. lAtivMultNat .And. lMulNatR
+
+				for nI := 1 To 10
+					AADD(aCpos,{ "NATUREZA"+StrZero(nI,2), "RATEIO NATUREZA " + StrZero(nI,2)})
+					AADD(aCpos,{ "VALOR"+StrZero(nI,2), "RATEIO VALOR  " + StrZero(nI,2)})
+				next nI
+
+			endIf
+
+		endif
+
+		If Len( aCpos ) > 0
+
+			DEFINE MSDIALOG oSX3 TITLE cTitulo FROM 0,0 TO 340,500 PIXEL
+
+			@ nLinIni + 007,005 Say "Campo:" Size 070,008 COLOR CLR_BLACK PIXEL OF oSX3
+			@ nLinIni + 005,027 MSGET oGetCpo VAR cGetCpo SIZE 50,9 PIXEL OF oSX3
+
+			@ nLinIni + 007,079 Say "Desc Campo:" Size 070,008 COLOR CLR_BLACK PIXEL OF oSX3
+			@ nLinIni + 005,117 MSGET oGetDescCpo VAR cGetDescCpo SIZE 80,9 PIXEL OF oSX3
+
+			@ nLinIni + 005, 198 BUTTON oBPesq PROMPT "Pesquisar" SIZE 045, 010 OF oSX3 PIXEL ACTION ( DoPosLine(@aCpos,@oLbx,cGetCpo,cGetDescCpo) )
+
+			@ nLinIni + 020, 007 GROUP oGrpCampos TO 160,245  PROMPT "Campos da Tabela: "+cEntidade+" " OF oSX3 COLOR 0, 16777215 PIXEL
+			@ nLinIni + 030,10 LISTBOX oLbx FIELDS HEADER "Campo", "DescriÁ„o"  SIZE 230,95 OF oSX3 PIXEL
+
+			oLbx:SetArray( aCpos )
+			oLbx:bLine := {|| {aCpos[oLbx:nAt,1], aCpos[oLbx:nAt,2]}}
+			oLbx:bLDblClick := {|| {oSX3:End(), aRet := {oLbx:aArray[oLbx:nAt,1],oLbx:aArray[oLbx:nAt,2]}}}
+
+			ACTIVATE MSDIALOG oSX3 ON INIT EnchoiceBar(oSX3, {|| aRet := {oLbx:aArray[oLbx:nAt,1],oLbx:aArray[oLbx:nAt,2]},oSX3:End()},{|| oSX3:End()},,@aButtons)
+
+			If Len(aRet) > 0
+				cRet := aRet[1]
+				cRet2:= aRet[2]
+			Else
+				cRet := cEntidade+"_FILIAL"
+				cRet2:= "Filial"
+			EndIf
+
+			//oView:Refresh()
+
+		EndIf
+	Else
+		MsgAlert("ObrigatÛrio o preenchimento do campo Entidade!","AtenÁ„o!")
+		lRet := .F.
+	EndIf
+
+Return(lRet)
+
+/*/{Protheus.doc} USX3RET
+//Retorno da consulta USX3RET
+@Author Leandro Rodrigues
+@Since 13/08/2018
+@Version 1.0
+@Return
+@Type function
+/*/
+
+User Function USX3RET(nOpc)
+
+	Local cRetCon:= ""
+
+	If nOpc == 1
+		cRetCon := cRet
+
+		&(ReadVar()) := cRet
+	else
+		cRetCon := cRet2
+
+		&(ReadVar()) := cRet2
+	endif
+
+Return(cRetCon)
+
+/*/{Protheus.doc} DoPosLine
+Posiciona na linha pesquisada
+@author Raphael Martins
+@since 30/11/2018
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+Static Function DoPosLine(aCampos,oObjList,cCampo,cCpoDesc)
+
+	Local nPosPesq := 0
+
+	If !Empty(cCampo)
+		nPosPesq := aScan(aCampos,{|x| Upper(Alltrim(cCampo)) $ Upper(AllTrim(x[1])) })
+	ElseIf !Empty(cCpoDesc)
+		nPosPesq := aScan(aCampos,{|x| Upper(Alltrim(cCpoDesc)) $ Upper(AllTrim(x[2])) })
+	EndIf
+
+	If nPosPesq > 0
+
+		oObjList:nAT := nPosPesq
+		oObjList:Refresh()
+
+	EndIf
+
+Return()
+
+/*/{Protheus.doc} UxNumCx
+Funcao para retornar o codigo do caixa do vendedor
+@author Raphael Martins
+@since 10/03/2017
+@version undefined
+
+@type function
+/*/
+User Function UxNumCx(cVendedor)
+
+	Local aArea 			:= GetArea()
+	Local aAreaSA3			:= SA3->(GetArea())
+	Local cNumCaixa			:= ""
+	Local cNomeCaixa	 	:= ""
+
+	SA3->(DbSetOrder(1)) //A3_FILIAL + A3_COD
+
+//consulto o usuario do vendedor
+	If SA3->( DbSeek( xFilial("SA3") + cVendedor ) ) .And. !Empty(SA3->A3_CODUSR)
+
+		cNomeCaixa := Upper(Alltrim(UsrRetName(Alltrim(SA3->A3_CODUSR))))
+
+		SA6->( DbSetOrder(2) ) //A6_FILIAL+A6_NOME
+
+		//consulto o caixa referente ao usuario do vendedor
+		if SA6->( DbSeek( xFilial("SA6") + cNomeCaixa  ) )
+			cNumCaixa	:= SA6->A6_COD
+
+			IF EMPTY(cNumCaixa)
+				Alert("NUMERO DE CAIXA VAZIO" )
+			ENDIF
+
+		else
+			Alert("CFILANT:" + cFilAnt )
+
+			ALERT("XFILIAL SA6:" + xFilial("SA6") + " ")
+
+			Alert("NAO POSICIONOU NO SA6 : " + cNomeCaixa )
+		endif
+
+	else
+		Alert("NAO POSICIONOU NO VENDEDOR :> " + cVendedor )
+	endif
+
+
+	RestArea(aArea)
+	RestArea(aAreaSA3)
+
+Return(cNumCaixa)
+
+/*/{Protheus.doc} RetPrecoVenda
+Funcao para retornar o preco de venda do item
+de acordo com a tabela
+@author Raphael Martins 
+@since 21/05/2018
+@version P12
+@return nPreco - Preco de Venda da Tabela
+/*/
+User Function RetPrecoVenda(cCodTab, cProduto, lMensagem)
+
+	Local aArea			:= GetArea()
+	Local aAreaDA1		:= DA1->(GetArea())
+	Local aAreaSB1		:= SB1->(GetArea())
+	Local cQry 			:= ""
+	Local lCemiterio 	:= SuperGetMV("MV_XCEMI",,.F.)
+	Local nPreco		:= 0
+
+	Default cCodTab		:= ""
+	Default cProduto	:= ""
+	Default lMensagem	:= .T.
+
+	if Select("QRYTAB") > 0
+		QRYTAB->(DbCloseArea())
+	endif
+
+	cQry := " SELECT "
+	cQry += " DA1_PRCVEN PRECO, "
+	cQry += " DA1_DATVIG VIGENCIA "
+	cQry += " FROM  "
+	cQry += + RetSQLName("DA1")
+	cQry += " WHERE "
+	cQry += " D_E_L_E_T_ = ' '  "
+	cQry += " AND DA1_FILIAL = '"+xFilial("DA1")+"' "
+	cQry += " AND DA1_CODPRO = '"+cProduto+"'
+	cQry += " AND DA1_CODTAB = '"+cCodTab+"'
+	cQry += " ORDER BY DA1_DATVIG DESC
+
+	cQry := ChangeQuery(cQry)
+
+	TcQuery cQry NEW Alias "QRYTAB"
+
+	if QRYTAB->(!Eof())
+
+		//verifico se o preco esta vigente
+		if STOD(QRYTAB->VIGENCIA) <= dDataBase
+			nPreco := QRYTAB->PRECO
+		endIf
+
+	endIf
+
+	// para o modulo de cemiterio
+	if lCemiterio .And. lMensagem .And. nPreco == 0
+		SB1->(DbSetOrder(1))
+		if SB1->(MsSeek(xFilial("SB1")+cProduto))
+			if SB1->(Fieldpos("B1_XTPCEM")) > 0 // verifico se campo existe
+				if !(SB1->B1_XTPCEM $ "1/3/4" .And. SB1->B1_XLOCACA == 'S')
+					lMensagem := .F.
+				endIf
+			endIf
+		endIf
+	endIf
+
+	// verifico se exibo a mensagem
+	if lMensagem .And. nPreco == 0
+		Help( ,, 'Help',, 'O Produto/Servico: '+ Alltrim(cProduto) +' n„o possui preÁo vigente na tabela: ' +Alltrim(cCodTab)+'', 1, 0 )
+	endif
+
+	if Select("QRYTAB") > 0
+		QRYTAB->(DbCloseArea())
+	endif
+
+	RestArea(aAreaSB1)
+	RestArea(aAreaDA1)
+	RestArea(aArea)
+
+Return(nPreco)
+
+/*/{Protheus.doc} GavetaValida
+//Funcao para Validar se endereco Gaveta Esta disponivel
+@Author Raphael Martins 
+@Since 16/01/2019
+@Version 1.0
+@Param cSelJazigo - Jazigo Selecionado
+@Param cSelGaveta - Gaveta Selecionado
+@Return
+@Type function
+/*/
+User Function GavetaValida(cContrato,cServico,cQuadra,cModulo,cJazigo,cGaveta,cApontamento,lMensagem)
+
+	Local aArea 			:= GetArea()
+	Local cQry 				:= ""
+	Local cGavIn			:= ""
+	Local lContinua			:= .T.
+	Local lAtivSeqGaveta	:= SuperGetMv("MV_XSEQGAV",,.F.)
+	Local nGaveta			:= 0
+
+	Default cJazigo		:= ""
+	Default cGaveta		:= ""
+	Default lMensagem	:= .T.
+
+	SB1->(DbSetOrder(1)) //B1_FILIAL + B1_COD
+
+	///////////////////////////////////////////////////////////////////////////////////////
+	//////////// VALIDO SE JAZIGO OU GAVETA ESTA RESERVADA OU SENDO UTILIZADA ////////////
+	/////////////////////////////////////////////////////////////////////////////////////
+
+	////valido se o servico ocupa gaveta
+	if SB1->(DbSeek(xFilial("SB1")+cServico))
+
+		//caso tenha selecionado a gaveta ou seja servico diferente de locacao, valido se possui reserva
+		if !Empty(cGaveta) .Or. SB1->B1_XLOCACA <> 'S'
+
+			cQry := " SELECT "
+			cQry += " UJV.UJV_CODIGO AS CODIGO, "
+			cQry += " SB1.B1_XLOCACA AS LOCACAO, "
+			cQry += " SB1.B1_XOCUGAV AS OCUPA_GAVETA "
+			cQry += " FROM "
+			cQry += RetSQLName("UJV") + " UJV "
+			cQry += " INNER JOIN "
+			cQry += RetSQLName("SB1") + " SB1 "
+			cQry += " ON SB1.D_E_L_E_T_	= ' ' "
+			cQry += " AND SB1.B1_FILIAL		= '" + xFilial("SB1") + "'
+			cQry += " AND UJV.UJV_SERVIC 	= SB1.B1_COD "
+			cQry += " WHERE UJV.D_E_L_E_T_ 	= ' ' "
+			cQry += " AND UJV.UJV_FILIAL	= '" + xFilial("UJV") + "'
+			cQry += " AND UJV.UJV_QUADRA 	= '" + cQuadra + "' "
+			cQry += " AND UJV.UJV_MODULO 	= '" + cModulo + "' "
+			cQry += " AND UJV.UJV_JAZIGO 	= '" + cJazigo + "' "
+
+			//valido se esta preenchido a gaveta, caso esteja, sera validado se ocupa gaveta e se a reserva tambem ocupa
+			if !Empty(cGaveta)
+				cQry += " AND UJV.UJV_GAVETA = '" + cGaveta + "'
+				cQry += " AND SB1.B1_XOCUGAV = 'S' "
+			endif
+
+			if !Empty(cApontamento)
+				cQry += " AND UJV.UJV_CODIGO <> '" + cApontamento + "'  "
+			endif
+
+			cQry += " AND UJV.UJV_STATUS 	<> 'F'"
+			cQry += " AND UJV.UJV_STENDE 	<> 'E'"
+
+			if U38->(Fieldpos("U38_STATUS")) > 0
+				cQry += " UNION "
+				cQry += " SELECT U38.U38_CODIGO AS CODIGO, "
+				cQry += "        SB1.B1_XLOCACA AS LOCACAO, "
+				cQry += "        SB1.B1_XOCUGAV AS OCUPA_GAVETA "
+				cQry += " FROM " + RetSQLName("U38") + " U38 "
+				cQry += " INNER JOIN " + RetSQLName("SB1") + " SB1 ON SB1.D_E_L_E_T_ = ' ' "
+				cQry += " AND SB1.B1_FILIAL = '" + xFilial("SB1") + "' "
+				cQry += " AND U38.U38_SERVDE = SB1.B1_COD " 
+				cQry += " WHERE U38.D_E_L_E_T_ = ' ' "
+				cQry += " AND U38.U38_FILIAL = '" + xFilial("U38") + "' "
+				cQry += " AND U38.U38_QDDEST = '" + cQuadra + "' "
+				cQry += " AND U38.U38_MDDEST = '" + cModulo + "' "
+				cQry += " AND U38.U38_JZDEST = '" + cJazigo + "' "
+
+				//valido se esta preenchido a gaveta, caso esteja, sera validado se ocupa gaveta e se a reserva tambem ocupa
+				if !Empty(cGaveta)
+					cQry += " AND U38.U38_GVDEST = '" + cGaveta + "' "
+					cQry += " AND SB1.B1_XOCUGAV = 'S' "
+				endif
+
+				cQry += " AND U38.U38_STATUS = '1' "
+
+			endIf
+
+			// verifico se nao existe este alias criado
+			if Select("QRYUJV") > 0
+				QRYUJV->(DbCloseArea())
+			endif
+
+			// crio o alias temporario
+			TcQuery cQry New Alias "QRYUJV"
+
+			if QRYUJV->(!Eof())
+
+				lContinua := .F.
+				if lMensagem
+					Help(,,'Help',,"O EndereÁo selecionado est· reservado para o apontamento/transferencia: " + Alltrim(QRYUJV->CODIGO) + " ",1,0,;
+						,,,,{"Favor, selecione outro EndereÁo!"})
+				endIf
+
+			endif
+
+		endif
+
+		//caso nao possua reserva, verifico se endereco esta sendo utilizado
+		if lContinua
+
+			// verifico se nao existe este alias criado
+			If Select("QRYEND") > 0
+				QRYEND->(DbCloseArea())
+			EndIf
+
+			cQry := " SELECT "
+			cQry += " U04.U04_CODIGO AS CONTRA "
+			cQry += " FROM  "
+			cQry += RetSQLName("U04") + " U04 "
+			cQry += " WHERE D_E_L_E_T_ = ' ' "
+			cQry += " AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+			cQry += " AND U04.U04_QUADRA = '" + cQuadra + "' "
+			cQry += " AND U04.U04_MODULO = '" + cModulo + "' "
+			cQry += " AND U04.U04_JAZIGO = '" + cJazigo + "' "
+
+			if !Empty(cGaveta)
+
+				cQry += " AND U04.U04_GAVETA = '" + cGaveta + "' "
+				cQry += " AND (((U04.U04_OCUPAG = 'N' AND U04.U04_CODIGO <> '" + cContrato + "' )" // ocupa gaveta diferente de n„o e contrato diferente do endereÁado
+				cQry += " 		OR U04.U04_OCUPAG <> 'N' AND U04.U04_PREVIO <> 'S')" // ocupa gaveta diferente de n„o e endereÁamento de prÈvio
+				cQry += "	 	OR U04.U04_OCUPAG = 'N' AND U04.U04_CODIGO <> '" + cContrato + "')" // ocupa gaveta igual a n„o e contrato diferente do endereÁado
+
+			else
+
+				cQry += " AND U04.U04_CODIGO <> '" + cContrato + "' "
+				cQry += " AND U04.U04_LOCACA <> 'S' "
+
+			endif
+
+			// crio o alias temporario
+			TcQuery cQry New Alias "QRYEND"
+
+			if QRYEND->(!Eof())
+
+				lContinua := .F.
+				if lMensagem
+					Help( ,, 'Help',, 'O EndereÁo selecionado utilizado pelo contrato:'+ Alltrim(QRYEND->CONTRA) +'....', 1, 0 )
+				endIf
+
+			endif
+
+		endif
+
+		// valido se devo cotinuar com a validacao
+		if lContinua .And. lAtivSeqGaveta
+
+			// caso a gaveta estiver preenchida e a gaveta n„o for a primeira gaveta
+			if !Empty(cGaveta) .And. Val(cGaveta) > 1
+
+				// verifico se nao existe este alias criado
+				If Select("QRYEND") > 0
+					QRYEND->(DbCloseArea())
+				EndIf
+
+				cQry := " SELECT "
+				cQry += " U04.U04_CODIGO AS CONTRA "
+				cQry += " FROM  "
+				cQry += RetSQLName("U04") + " U04 "
+				cQry += " WHERE D_E_L_E_T_ = ' ' "
+				cQry += " AND U04.U04_FILIAL = '" + xFilial("U04") + "' "
+				cQry += " AND U04.U04_QUADRA = '" + cQuadra + "' "
+				cQry += " AND U04.U04_MODULO = '" + cModulo + "' "
+				cQry += " AND U04.U04_JAZIGO = '" + cJazigo + "' "
+				cQry += " AND U04.U04_GAVETA = '" + StrZero(Val(cGaveta)-1,TamSX3("U04_GAVETA")[1]) + "' "
+				cQry += " AND U04.U04_QUEMUT <> ' ' "
+
+				TcQuery cQry New Alias "QRYEND"
+
+				// caso n„o existam registros
+				if QRYEND->(Eof()) // È final de arquivo
+					lContinua := .F.
+					if lMensagem
+						Help( ,, 'Help - MV_XSEQGAV',, 'N„o È possÌvel endereÁar a Gaveta '+ cGaveta + ', sem a gaveta ' + StrZero(Val(cGaveta)-1,TamSX3("U04_GAVETA")[1]) + ' estar endereÁada....', 1, 0 )
+					endIf
+				endIf
+
+				// verifico se nao existe este alias criado
+				If Select("QRYEND") > 0
+					QRYEND->(DbCloseArea())
+				EndIf
+
+			endIf
+
+		endIf
+
+	endif
+
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} VldCobranca
+Funcao para validar se o titulo esta em cobrana
+@author Raphael Martins 
+@since 12/12/2019
+@version P12
+/*/
+User Function VldCobranca(cFiltTit, cContrato, cCodConv)
+	Local lRet		:= .T.
+	Local aArea		:= GetArea()
+	Local aAreaSE1	:= SE1->( GetArea() )
+	Local aAreaSK1	:= SK1->( GetArea() )
+	Local cQry 		:= ""
+
+	///////////////////////////////////////////////////////////////
+	///// CONSULTO SE O CONTRATO POSSUI TITULOS EM COBRANCA	//////
+	//////////////////////////////////////////////////////////////
+
+	cQry 	:= " SELECT "
+	cQry 	+= " K1_FILIAL FILIAL, "
+	cQry 	+= " K1_PREFIXO PREFIXO, "
+	cQry 	+= " K1_NUM NUMERO, "
+	cQry 	+= " K1_PARCELA PARCELA, "
+	cQry 	+= " K1_TIPO TIPO, "
+	cQry 	+= " K1_FILORIG FILORIG "
+	cQry	+= " FROM "
+	cQry	+= + RetSQLName("SK1") + " COBRANCA
+	cQry 	+= " INNER JOIN "
+	cQry 	+= + RetSQLName("SE1") + " TITULO
+	cQry 	+= " ON "
+	cQry 	+= " COBRANCA.K1_PREFIXO = TITULO.E1_PREFIXO "
+	cQry	+= " AND COBRANCA.K1_NUM 	= TITULO.E1_NUM "
+	cQry	+= " AND COBRANCA.K1_PARCELA = TITULO.E1_PARCELA "
+	cQry	+= " AND TITULO.E1_XCTRFUN	= '" + cContrato + "' " //-- Contrato Funeraria
+	If !Empty(cCodConv)
+		cQry	+= " AND TITULO.E1_XCONCTR	= '" + cCodConv + "' " //-- Contrato Convalescencia
+	EndIf
+	cQry	+= " AND TITULO.E1_FILIAL 	= '" + cFiltTit + "' "
+	cQry	+= " AND TITULO.D_E_L_E_T_ 	= ' ' "
+	cQry	+= " WHERE "
+	cQry	+= "	COBRANCA.D_E_L_E_T_ = ' '"
+	cQry	+= " 	AND COBRANCA.K1_FILORIG = '" + cFiltTit + "' "
+	cQry 	+= " 	AND COBRANCA.K1_OPERAD	<> 'XXXXXX' " //XXXXXX Titulo marcado como excecao na cobranca
+
+
+	If Select("QRYCOB") > 0
+		QRYCOB->(DbCloseArea())
+	Endif
+
+	cQry := ChangeQuery(cQry)
+	TcQuery cQry NEW Alias "QRYCOB"
+
+	QRYCOB->( DbGotop() )
+
+	//valido se possui cobranca para o contrato
+	if QRYCOB->(!Eof())
+
+		if MsgYesNo("O Contrato selecionado possui titulo(s) em cobranÁa.deseja continuar a operaÁ„o? "+;
+				Chr(13) + Chr(10) + " Os Titulos do contrato ser„o marcado como exceÁ„o no mÛdulo de CallCenter.")
+
+
+			SK1->(DbSetOrder(1)) //K1_FILIAL+K1_PREFIXO+K1_NUM+K1_PARCELA+K1_TIPO+K1_FILORIG
+
+			While QRYCOB->(!Eof())
+
+				//marco o titulo como excecao de cobranca, assim o mesmo estara apto para exclusao
+				if SK1->(DbSeek(QRYCOB->FILIAL+QRYCOB->PREFIXO+QRYCOB->NUMERO+QRYCOB->PARCELA+QRYCOB->TIPO+QRYCOB->FILORIG))
+
+					RecLock("SK1",.F.)
+					SK1->K1_OPERAD := 'XXXXXX'
+					SK1->(MsUnlock())
+
+				endif
+
+
+				QRYCOB->(DbSkip())
+
+			EndDo
+
+
+		else
+
+			lRet := .F.
+
+		endif
+
+
+	endif
+
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+	RestArea(aAreaSK1)
+
+Return( lRet )
+
+/*/{Protheus.doc} UAgeCalculate
+Funcao para Calcular a idade de acordo com os parametros
+passados
+@author Raphael Martins 
+@since 12/12/2019
+@version P12
+/*/
+User Function UAgeCalculate(dNascimento,dDataCalc)
+
+	Local aArea 		:= GetArea()
+	Local lAnoMesDia	:= SuperGetMv("MV_XANMEDI",.F.,.F.)
+	Local nIdade		:= 0
+
+	//valido se considero mes + ano + dia no calcula das idades, caso contrario considera apenas Ano + Mes
+	if lAnoMesDia
+
+		nIdade := DateDiffYear(dNascimento,dDataCalc)
+
+	else
+
+		nIdade := Calc_Idade(dDataCalc,dNascimento)
+
+	endif
+
+	RestArea(aArea)
+
+Return(nIdade)
+
+/*/{Protheus.doc} ExcBord
+Remove tÌtulos de borderÙ
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/02/2020
+@param nRecSE1, numeric, Recno tabela SE1
+/*/
+User Function ExcBord(nRecSE1)
+	Local aArea := GetArea()
+	Local aAreaSE1 := SE1->( GetArea() )
+	Local aAreaSEA := SEA->( GetArea() )
+
+	DbSelectArea("SE1")
+	SE1->(DbGoTo(nRecSE1))
+
+	DbSelectArea("SEA")
+	//-- EA_FILIAL+EA_NUMBOR+EA_PREFIXO+EA_NUM+EA_PARCELA+EA_TIPO+EA_FORNECE+EA_LOJA
+	SEA->(DbSetOrder(1))
+
+	//-- Se houver borderÙ associado, exclui --//
+	If SEA->(DbSeek(xFilial("SEA")+SE1->E1_NUMBOR+SE1->E1_PREFIXO+SE1->E1_NUM+SE1->E1_PARCELA+SE1->E1_TIPO))
+		RecLock("SEA")
+		SEA->(DbDelete())
+		SEA->(MsUnlock())
+	EndIf
+
+	SE1->(DbGoTo(nRecSE1))
+	RecLock("SE1")
+	SE1->E1_SITUACA	:= "0"
+	SE1->E1_OCORREN	:= ""
+	SE1->E1_NUMBCO	:= ""
+	SE1->E1_NUMBOR	:= ""
+	SE1->E1_DATABOR	:= CToD("")
+	SE1->(MsUnLock())
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+	RestArea(aAreaSEA)
+Return
+
+/*/{Protheus.doc} toString
+Funcao para transformar variavis em string
+ muito util para fwlogmsg, ver arrays.
+
+@type function
+@version 
+@author g.sampaio
+@since 21/05/2020
+@param xValue, param_type, valor a ser retornado o conteudo
+@return cRetorno, retorno da variavel em formato de texto
+/*/
+
+User Function toString(xValue)
+
+	Local aArea		:= GetArea()
+	Local cRetorno	:= ""
+	Local cType		:= ""
+	Local nI		:= 0
+
+	Default xValue	:= Nil
+
+	// pego o tipo do prametro
+	cType := valType(xValue)
+
+	DO CASE
+	case cType == "C"
+		cRetorno :=  '"'+ xValue +'"'
+	case cType == "N"
+		cRetorno := CvalToChar(xValue)
+	case cType == "L"
+		cRetorno := if(xValue,"true","false")
+	case cType == "D"
+		cRetorno := '"'+ DtoC(xValue) +'"'
+	case cType == "U"
+		cRetorno := "null"
+	case cType == "A"
+		cRetorno := '['
+
+		For nI := 1 to len(xValue)
+			if(nI != 1)
+				cRetorno += ', '
+			endif
+			cRetorno += U_toString(xValue[nI])
+		Next
+
+		cRetorno += ']'
+	case cType == "B"
+		cRetorno := '"Type Block"'
+	case cType == "M"
+		cRetorno := '"Type Memo"'
+	case cType =="O"
+		cRetorno := '"Type Object"'
+	case cType =="H"
+		cRetorno := '"Type Object"'
+	OtherWise
+		cRetorno := "invalid type"
+	ENDCASE
+
+	RestArea( aArea )
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CriaSX1
+Posicoes do array para criar o aSX1
+aSX1[1] - SX1->X1_GRUPO    
+aSX1[2] - SX1->X1_ORDEM    
+aSX1[3] - SX1->X1_PERGUNTE 
+aSX1[4] - SX1->X1_PERSPA   
+aSX1[5] - SX1->X1_PERENG   
+aSX1[6] - SX1->X1_VARIAVL  
+aSX1[7] - SX1->X1_TIPO     
+aSX1[8] - SX1->X1_TAMANHO  
+aSX1[9] - SX1->X1_DECIMAL  
+aSX1[10] - SX1->X1_PRESEL   
+aSX1[11] - SX1->X1_GSC      
+aSX1[12] - SX1->X1_VALID    
+aSX1[13] - SX1->X1_VAR01    
+aSX1[14] - SX1->X1_DEF01    
+aSX1[15] - SX1->X1_DEF02    
+aSX1[16] - SX1->X1_DEF03    
+aSX1[17] - SX1->X1_DEF04    
+aSX1[18] - SX1->X1_DEF05    
+aSX1[19] - SX1->X1_F3       
+
+@type function
+@version 
+@author g.sampaio
+@since 02/06/2020
+@param aSX1, array, param_description
+@return return_type, return_description
+/*/
+User Function CriaSX1( aSX1 )
+
+	Local aArea 	:= GetArea()
+	Local nI		:= 0
+
+	Default aSX1	:= {}
+
+	dbSelectArea('SX1')
+	SX1->(dbSetOrder(1))
+
+	BEGIN TRANSACTION
+
+		// percorro os parametros a serem criados
+		For nI := 1 to Len(aSX1)
+
+			If SX1->( RecLock('SX1',Iif(!SX1->(DbSeek(PadR(aSX1[nI][01],10)+aSX1[nI][02])),.T.,.F.)) )
+
+				Replace SX1->X1_GRUPO       With aSX1[nI][01]
+				Replace SX1->X1_ORDEM       With aSX1[nI][02]
+				Replace SX1->X1_PERGUNT    	With aSX1[nI][03]
+				Replace SX1->X1_PERSPA  	With aSX1[nI][03]
+				Replace SX1->X1_PERENG  	With aSX1[nI][03]
+				Replace SX1->X1_PERSPA      With aSX1[nI][04]
+				Replace SX1->X1_PERENG      With aSX1[nI][05]
+				Replace SX1->X1_VARIAVL     With aSX1[nI][06]
+				Replace SX1->X1_TIPO        With aSX1[nI][07]
+				Replace SX1->X1_TAMANHO     With aSX1[nI][08]
+				Replace SX1->X1_DECIMAL     With aSX1[nI][09]
+				Replace SX1->X1_PRESEL      With aSX1[nI][10]
+				Replace SX1->X1_GSC         With aSX1[nI][11]
+				Replace SX1->X1_VALID       With aSX1[nI][12]
+				Replace SX1->X1_VAR01       With aSX1[nI][13]
+				Replace SX1->X1_DEF01       With aSX1[nI][14]
+				Replace SX1->X1_DEFSPA1     With aSX1[nI][14]
+				Replace SX1->X1_DEFENG1     With aSX1[nI][14]
+				Replace SX1->X1_DEF01       With aSX1[nI][14]
+				Replace SX1->X1_DEF02       With aSX1[nI][15]
+				Replace SX1->X1_DEF03       With aSX1[nI][16]
+				Replace SX1->X1_DEF04       With aSX1[nI][17]
+				Replace SX1->X1_DEF05       With aSX1[nI][18]
+				Replace SX1->X1_F3          With aSX1[nI][19]
+				SX1->( MsUnlock() )
+
+			Else
+
+				Help('',1,'REGNOIS')
+				SX1->( DisarmTransaction() )
+
+			Endif
+
+		Next nI
+
+	END TRANSACTION
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} DadosJazigo
+Pego os dados de jazigo do contrato 
+caso tenha mais de um jazigo para o contrato
+permite ao usuario escolher.
+Mostra - U04_QUADRA - U04_MODULO - U04_JAZIGO
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/06/2020
+@param cContrato, character, param_description
+@param lPrevio, Boolean, Endereco Previo Sim ou Nao
+@return array, retorna os jazigos utilizados para o contrato
+@History 09/06/2020, Raphael Martins, Acrescentado a validacao 
+para consultar enderecamento previo
+/*/
+User Function DadosJazigo( cContrato, lPrevio )
+
+	Local aArea			:= GetArea()
+	Local aAux			:= {}
+	Local aRetorno		:= {}
+	Local aEnd			:= {}
+	Local cQuery 		:= ""
+	Local nI			:= 0
+
+	Default cContrato	:= ""
+	Default lPrevio		:= .F.
+
+	If Select("TRBJAZ") > 0
+		TRBJAZ->( DbCloseArea() )
+	EndIf
+
+	// query para buscar os endereÁo do contrato
+	cQuery := " SELECT "
+	cQuery += " U04.U04_QUADRA	QUADRA,
+	cQuery += " U04.U04_MODULO	MODULO,
+	cQuery += " U04.U04_JAZIGO	JAZIGO
+	cQuery += " FROM " + RetSQLName("U04") + " U04 "
+	cQuery += " WHERE U04.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U04.U04_FILIAL = '" + xFilial("U04") + "'	"
+	cQuery += " AND U04.U04_CODIGO = '" + cContrato + "' "
+	cQuery += " AND (U04.U04_TIPO   = 'J' OR U04.U04_QUADRA <> ' ')"
+
+	if lPrevio
+
+		cQuery += " AND U04_QUEMUT = ' ' "
+		cQuery += " AND U04_PREVIO = 'S' "
+
+	endif
+
+	cQuery += " GROUP BY U04.U04_QUADRA, U04.U04_MODULO, U04.U04_JAZIGO "
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBJAZ"
+
+	While TRBJAZ->(!Eof())
+
+		// preencho o array de jazigos
+		Aadd( aAux, { TRBJAZ->QUADRA, TRBJAZ->MODULO, TRBJAZ->JAZIGO } )
+
+		TRBJAZ->( DbSkip() )
+	EndDo
+
+	// verifico se existe mais de um jazigo para o contrato
+	If Len(aAux) > 1
+
+		// mensagem para o usu·rio
+		MsgInfo("O Contrato possui mais de um jazigo, selecione o jazigo para o apontamento!")
+
+		// pego os dados do jazigo
+		aRetorno := TelaJazigo( cContrato, aAux )
+
+	Else // caso for um jazigo por contrato
+
+		// preencho o array de retorno
+		For nI := 1 To Len(aAux)
+			Aadd( aRetorno, aAux[nI, 1] )
+			Aadd( aRetorno, aAux[nI, 2] )
+			Aadd( aRetorno, aAux[nI, 3] )
+		Next nI
+
+	EndIf
+
+	If Select("TRBJAZ") > 0
+		TRBJAZ->( DbCloseArea() )
+	EndIf
+
+	RestArea( aArea )
+
+Return( aRetorno )
+
+/*/{Protheus.doc} TelaJazigo
+funcao para mostrar os jazigos do contrato
+caso tenham mais de um jazigo vinculado ao contrato
+@type function
+@version 
+@author g.sampaio
+@since 07/06/2020
+@param cContrato, character, param_description
+@param aJazigos, array, param_description
+@return return_type, return_description
+/*/
+Static Function TelaJazigo( cContrato, aJazigos )
+
+	Local aArea			:= GetArea()
+	Local aAreaU00		:= U00->( GetArea() )
+	Local aAreaU05		:= U05->( GetArea() )
+	Local aBrwJazigos 	:= {}
+	Local aRetorno		:= {}
+	Local cDescPlano	:= ""
+	Local nI			:= 0
+	Local nOper			:= 0
+	Local oFont1 		:= TFont():New("MS Sans Serif",,016,,.T.,,,,,.F.,.F.)
+	Local oBrwJazigos	:= Nil
+	Local oButton1		:= Nil
+	Local oButton2		:= Nil
+	Local oGroup1		:= Nil
+	Local oGroup2		:= Nil
+	Local oSay1			:= Nil
+	Local oSay2			:= Nil
+	Local oSay3			:= Nil
+	Local oSay4			:= Nil
+	Local oDlgJaz		:= Nil
+
+	Default aJazigos	:= {}
+	Default cContrato	:= ""
+
+	// posiciono no cadastro do contrato
+	U00->( DbSetOrder(1) )
+	if U00->( MsSeek( xFilial("U00")+cContrato ) )
+
+		// posiciono no cadastro do plano
+		U05->( DbSetOrder(1) )
+		if U05->( MsSeek( xFilial("U05")+U00->U00_PLANO ) )
+			cDescPlano	:= U05->U05_DESCRI
+		endIf
+
+	endIf
+
+	DEFINE MSDIALOG oDlgJaz TITLE "Jazigos por Contrato" FROM 000, 000  TO 240, 500 COLORS 0, 16777215 PIXEL
+
+	@ 002, 002 GROUP oGroup1 TO 029, 244 PROMPT "Dados do Contrato" OF oDlgJaz COLOR 0, 16777215 PIXEL
+
+	// linha 1 - info contrato
+	@ 014, 010 SAY oSay1 PROMPT "Contrato" 	SIZE 031, 007 OF oDlgJaz FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 015, 045 SAY oSay2 PROMPT cContrato 	SIZE 025, 007 OF oDlgJaz COLORS 0, 16777215 PIXEL
+
+	// linha 1 - info plano
+	@ 014, 085 SAY oSay3 PROMPT "Plano" 	SIZE 024, 007 OF oDlgJaz FONT oFont1 COLORS 0, 16777215 PIXEL
+	@ 015, 110 SAY oSay4 PROMPT cDescPlano 	SIZE 150, 007 OF oDlgJaz COLORS 0, 16777215 PIXEL
+
+	@ 032, 003 GROUP oGroup2 TO 115, 244 PROMPT "Jazigos" OF oDlgJaz COLOR 0, 16777215 PIXEL
+
+	// monto o browse com os dados do jazigos do contrato
+	BrwJazigos( aJazigos, @aBrwJazigos, @oBrwJazigos, @oDlgJaz )
+
+	@ 097, 155 BUTTON oButton2 PROMPT "Cancelar" SIZE 037, 012 OF oDlgJaz PIXEL ACTION( oDlgJaz:End() )
+	@ 097, 200 BUTTON oButton1 PROMPT "Confirmar" SIZE 037, 012 OF oDlgJaz PIXEL ACTION( nOper := 1, oDlgJaz:End() )
+
+	ACTIVATE MSDIALOG oDlgJaz CENTERED
+
+	// caso tenha confirmado o item
+	if nOper == 1
+
+		// percorro o array de jazigos
+		For nI := 1 To Len( aBrwJazigos )
+
+			// verifico se a linha esta preenchida
+			If aBrwJazigos[nI,1]
+
+				// preencho o array de retorno
+				aAdd( aRetorno, aBrwJazigos[nI,2] )	// quadra
+				aAdd( aRetorno, aBrwJazigos[nI,3] )	// modulo
+				aAdd( aRetorno, aBrwJazigos[nI,4] )	// jazigo
+
+			EndIf
+
+		Next nI
+
+	EndIf
+
+	RestArea( aAreaU05 )
+	RestArea( aAreaU00 )
+	RestArea( aArea )
+
+Return( aRetorno )
+
+/*/{Protheus.doc} BrwJazigos
+description
+@type function
+@version 
+@author g.sampaio
+@since 07/06/2020
+@param aJazigos, array, param_description
+@param aBrwJazigos, array, param_description
+@param oBrwJazigos, object, param_description
+@return return_type, return_description
+/*/
+Static Function BrwJazigos( aJazigos, aBrwJazigos, oBrwJazigos, oDlgJaz )
+
+	Local aArea			:= GetArea()
+	Local aAreaU10		:= U10->( GetArea() )
+	Local cQuadra		:= ""
+	Local cModulo		:= ""
+	Local cJazigo		:= ""
+	Local nI			:= 0
+	Local oOk 			:= LoadBitmap( GetResources(), "CHECKED")
+	Local oNo 			:= LoadBitmap( GetResources(), "UNCHECKED")
+
+	Default aJazigos	:= {}
+	Default aBrwJazigos	:= {}
+	Default oBrwJazigos	:= Nil
+	Default oDlgJaz		:= Nil
+
+	// verifico se o objeto e diferente de nulo
+	if ValType(oDlgJaz) <> "U"
+
+		// percorro o cadastro de jazigos
+		For nI := 1 To Len( aJazigos )
+
+			// pego as informacoes do endereco
+			cQuadra		:= Padl(aJazigos[nI,1],TamSX3("U10_QUADRA")[1])
+			cModulo		:= Padl(aJazigos[nI,2],TamSX3("U10_MODULO")[1])
+			cJazigo		:= Padl(aJazigos[nI,3],TamSX3("U10_CODIGO")[1])
+
+			// posiciono no cadastro de jazigos
+			U10->( DbSetOrder(1) )
+			If U10->( MsSeek( xFilial("U10")+cQuadra+cModulo+cJazigo ) )
+
+				// alimento o array de dados do jazigo
+				Aadd(aBrwJazigos,{.F., U10->U10_QUADRA, U10->U10_MODULO, U10->U10_CODIGO, U10->U10_DESC})
+
+			EndIf
+
+		Next nI
+
+		@ 040, 007 LISTBOX oBrwJazigos Fields HEADER "","Quadra","Modulo","Jazigo","DescriÁ„o" SIZE 229, 051 OF oBrwJazigos PIXEL ColSizes 50,50
+		oBrwJazigos:SetArray(aBrwJazigos)
+
+		// alimento com os dados do objeto de browse
+		oBrwJazigos:bLine := {|| {;
+			If(aBrwJazigos[oBrwJazigos:nAT,1],oOk,oNo),;
+				aBrwJazigos[oBrwJazigos:nAt,2],;
+				aBrwJazigos[oBrwJazigos:nAt,3],;
+				aBrwJazigos[oBrwJazigos:nAt,4],;
+				aBrwJazigos[oBrwJazigos:nAt,5],;
+				} }
+
+			// DoubleClick event
+			oBrwJazigos:bLDblClick := {|| aBrwJazigos[oBrwJazigos:nAt,1] := !aBrwJazigos[oBrwJazigos:nAt,1],;
+				MarcaUm( @oBrwJazigos, @aBrwJazigos, oBrwJazigos:nAt ), oBrwJazigos:DrawSelect() }
+
+		endIf
+
+		RestArea( aAreaU10 )
+		RestArea( aArea )
+
+		Return(Nil)
+
+/*/{Protheus.doc} MarcaUm
+description
+@type function
+@version 
+@author g.sampaio
+@since 07/06/2020
+@param aBrwJazigos, array, param_description
+@param nLinha, numeric, param_description
+@return return_type, return_description
+/*/
+Static Function MarcaUm( oBrwJazigos, aBrwJazigos, nLinha )
+
+	Local nI := 0
+
+	Default oBrwJazigos	:= Nil
+	Default aBrwJazigos	:= {}
+	Default nLinha		:= 0
+
+	// percorro os dados marcados
+	for nI := 1 to Len( aBrwJazigos )
+
+		if nI <> nLinha
+			aBrwJazigos[nI, 1] := .F.
+		endIf
+
+	next nI
+
+	// atualizo o brose
+	oBrwJazigos:Refresh()
+
+Return(Nil)
+
+/*/{Protheus.doc} URETMES
+funcao para retornoar os meses do ano
+
+@type function
+@version 
+@author g.sampaio
+@since 12/08/2020
+@return cRetorno, retorno
+/*/
+User Function URETMES()
+
+	Local cRetorno	:= ""
+
+	// retorno com os meses do ano
+	cRetorno := "01=Janeiro;"
+	cRetorno += "02=Fevereiro;"
+	cRetorno += "03=MarÁo;"
+	cRetorno += "04=Abril;"
+	cRetorno += "05=Maio;"
+	cRetorno += "06=Junho;"
+	cRetorno += "07=Julho;"
+	cRetorno += "08=Agosto;"
+	cRetorno += "09=Setembro;"
+	cRetorno += "10=Outubro;"
+	cRetorno += "11=Novembro;"
+	cRetorno += "12=Dezembro"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} RetContr
+funcao para retornar o codigo do contrato
+
+@type function
+@version 
+@author g.sampaio
+@since 14/09/2020
+@return return_type, return_description
+/*/
+User Function RetContr()
+
+	Local cRet
+
+	cRet := U00->U00_CODIGO
+
+Return cRet
+
+/*/{Protheus.doc} IncPerfil
+Abertura de cadastro MVC de Perfil de Pagamento
+
+@type function
+@version 
+@author Wellington GonÁalves
+@since 24/02/2019
+@return return_type, return_description
+/*/
+User Function UIncPerfil()
+
+	Local lRet := .T.
+
+	nInc := FWExecView('INCLUIR','UVIND07',3,,{|| .T. })
+
+	if nInc <> 0
+		MsgInfo("A Inclus„o do Perfil de Pagamento n„o foi realizada. N„o ser· possÌvel ativar o contrato!","AtenÁ„o!")
+		lRet := .F.
+	endif
+
+Return(lRet)
+
+
+/*/{Protheus.doc} NaoExistCliRecor
+Verifica se existe contrato em recorrÍncia ativo para cliente
+
+baseado na funcao RecNaoExist da funcao UVIND12
+@type function
+@version 1.0
+@author g.sampaio
+@since 27/10/2020
+@param cCodCli, character
+@param cLoja, character
+@return lRet, logic
+/*/
+User Function NaoExistCliRecor(cCodCliente, cLojaCli, cCodContrato)
+
+	Local aSolucao          as Array
+	Local cQuery    	    as Character
+	Local cMensagem         as Character
+	Local lRetorno  	    as Logical
+	
+	Default cCodCliente	    := ""
+	Default cLojaCli	    := ""
+	Default cCodContrato    := ""
+
+	// atribuo valor as variaveis
+	cQuery		:= ""
+	lRetorno	:= .T.
+	
+	if Select("U61REC") > 0
+		U61REC->( dbCloseArea() )
+	endIf
+
+	cQuery := " SELECT U61.U61_CONTRA CONTRATO "
+	cQuery += " FROM " + RetSqlName("U61") + " U61 "
+	cQuery += " WHERE U61.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U61.U61_MSFIL 	= '"+ xFilial("U61") +"' "
+	cQuery += " AND U61.U61_STATUS 	= 'A' " //-- Ativo
+	cQuery += " AND U61.U61_CLIENT 	= '"+ cCodCliente +"' "
+	cQuery += " AND U61.U61_LOJA 	= '"+ cLojaCli +"' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "U61REC"
+
+	while U61REC->(!Eof()) .And. lRetorno
+
+		// verifico se È o mesmo contrato
+		if U61REC->CONTRATO == cCodContrato
+			lRetorno := .F.
+
+		else// caso for contrato diferente
+
+			lRetorno := .F.
+
+			// mensagens para o help
+			cMensagem   := "J· existe contrato em recorrÍncia para o cliente informado. Nr. Ctr.: " + U61REC->CONTRATO
+			aSolucao    := {"Retire o contrato vigente da recorrÍncia para poder incluir novo contrato."}
+
+			Help(Nil, Nil, "AtenÁ„o!", Nil, cMensagem, 1, 0, Nil, Nil, Nil, Nil, Nil, aSolucao)
+
+		endIf			
+
+		U61REC->(DbSkip())
+	endDo
+
+	if Select("U61REC") > 0
+		U61REC->( dbCloseArea() )
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} UVirtusViewPV
+Funcao para visualizar o pedido de vendas
+@type function
+@version 1.0
+@author g.sampaio
+@since 11/11/2020
+@param cPedidoVendas, character, numero do pedido de vendas
+/*/
+User Function UVirtusViewPV(cPedidoVendas)
+
+	Local aArea	:= GetArea()
+	Local aAreaSC5	:= SC5->(GetArea())
+
+	Default cPedidoVendas	:= ""
+
+	SC5->(DbSetOrder(1))
+	if SC5->( MsSeek( xFilial("SC5")+cPedidoVendas ) )
+
+		// Wizard de Preparacao de Doc de Saida		
+		FWMsgRun(,{|oSay| MatA410(Nil, Nil, Nil, Nil, "A410Visual")},'Aguarde...','Abrindo Pedido de Vendas...')
+
+	endIf
+
+	RestArea(aAreaSC5)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} UVirtusEditPV
+Funcao para visualizar o pedido de vendas
+@type function
+@version 1.0
+@author g.sampaio
+@since 11/11/2020
+@param cPedidoVendas, character, numero do pedido de vendas
+/*/
+User Function UVirtusAlteraPV(cPedidoVendas)
+
+	Local aArea	:= GetArea()
+	Local aAreaSC5	:= SC5->(GetArea())
+
+	Default cPedidoVendas	:= ""
+
+	SC5->(DbSetOrder(1))
+	if SC5->( MsSeek( xFilial("SC5")+cPedidoVendas ) )
+
+		// Wizard de Preparacao de Doc de Saida		
+		FWMsgRun(,{|oSay| MatA410(Nil, Nil, Nil, Nil, "A410Altera")},'Aguarde...','Abrindo Pedido de Vendas...')
+
+	endIf
+
+	RestArea(aAreaSC5)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} UTrataDados
+Funcao para tratar os dados do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/12/2020
+@param aCabecalho, array, cabecalhos do relatorio
+@param aInfo, array, informacaoes para o relatorio
+@param aPosQtd, array, array de posicoes de quantidade
+@return array, retorna os dados tratados
+/*/
+User Function UTrataDados(aCabecalho, aInfo, aPosQtd, lSemVirgula)
+
+	Local aRetorno	As Array
+	Local aItens	As Array
+	Local nInfo		As Numeric
+	Local nItens	As Numeric
+	Local nPosQtd	As Numeric
+
+	Default aCabecalho	:= {}
+	Default aInfo		:= {}
+	Default aPosQtd		:= {}
+	Default lSemVirgula	:= .F.
+
+	// atribuo valor as variaveis
+	aRetorno	:= {}
+	aItens		:= {}
+	nInfo		:= 0
+	nItens		:= 0
+	nPosQtd		:= 0
+
+	// percorro o array de informacoes do relatorio
+	For nInfo := 1 To Len(aInfo)
+
+		// zero o array de itens
+		aItens := {}
+
+		// percorro o array de itens do cabecalho
+		For nItens := 1 To Len(aCabecalho)
+
+			// zero a variavel de posicao de quantidade
+			nPosQtd := 0
+
+			// verifico se a posicao e de quantidade
+			If lSemVirgula
+				nPosQtd := 1
+			Else
+				nPosQtd := aScan( aPosQtd, {|x| x == nItens} )
+			EndIf
+
+			Do Case
+			Case AllTrim(ValType(aInfo[nInfo][nItens])) == "D"
+				aAdd(aItens,{aCabecalho[nItens]  	, aInfo[nInfo][nItens], "DATA"})
+
+			Case AllTrim(ValType(aInfo[nInfo][nItens])) == "N" .And. nPosQtd > 0
+				aAdd(aItens,{aCabecalho[nItens]  	, aInfo[nInfo][nItens], "QTD"})
+
+			Case AllTrim(ValType(aInfo[nInfo][nItens])) == "N"
+				aAdd(aItens,{aCabecalho[nItens]  	, aInfo[nInfo][nItens], "VALOR"})
+
+			Otherwise
+				aAdd(aItens,{aCabecalho[nItens]  	, aInfo[nInfo][nItens], ""})
+
+			EndCase
+
+		Next nItens
+
+		// alimento o array de retorno
+		aAdd(aRetorno, aItens)
+
+	Next nInfo
+
+Return(aRetorno)
+
+/*/{Protheus.doc} UValDir
+Esta funÁ„o valida se existe o diretÛrio informado, caso n„o exista o mesmo È criado.
+Os par‚metros s„o:
+cPath ñ Caminho a ser verificado/criado do diretÛrio
+lDrive ñ Flag para controlar a digitaÁ„o da unidade de drive.
+.T. ñ ter· que informar a unidade de drive
+
+.F. ñ N„o controla a unidade de drive
+lMSg ñ Questiona sobre criar diretÛrio
+@type method
+@version 1.0
+@author g.sampaio
+@since 28/12/2020
+@param cPath, character, Caminho a ser verificado/criado do diretÛrio
+@param lDrive, logical, Flag para controlar a digitaÁ„o da unidade de drive.
+@param lMSg, logical, Questiona sobre criar diretÛrio
+/*/
+User Function UValDir( cPath, lDrive, lMSg )
+
+	Local aClientInfo	:= {}
+	Local aDir			:= {}
+	Local lRet			:= .T.
+
+	Default lMSg 		:= .T.
+
+	aClientInfo	:= GetRmtInfo()
+
+	If Empty(cPath)
+		Return lRet
+	EndIf
+
+	lDrive := If(lDrive == Nil, .T., lDrive)
+
+	cPath := Alltrim(cPath)
+
+	if Len(aClientInfo) > 0
+
+		If "LINUX" $ Upper(aClientInfo[2]) .Or. "MAC" $ Upper(aClientInfo[2]) 
+
+			// retiro a ultima barra se houver
+			if Right(cPath, 1) == "/"
+				cPath := SubStr(cPath, 1, Len(cPath)-1)
+			endIf
+
+		Else//Se n„o (Windows), a barra ser· invertida (\) e a raÌz ser· 'C:\'
+		
+			// retiro a ultima barra se houver
+			if Right(cPath, 1) == "\"
+				cPath := SubStr(cPath, 1, Len(cPath)-1)
+			endIf
+
+			If Subst(cPath,2,2) <> ":" .AND. lDrive
+				MsgInfo("Unidade de drive nao especificada") //Unidade de drive n?o especificada
+				lRet:=.F.
+			endIf
+
+		EndIf
+
+	endIf
+	
+	if lRet
+
+		cPath := If(Right(cPath,1)=="", Left(cPath,Len(cPath)-1), cPath)
+		aDir  := Directory(cPath,"D")
+
+		If Len(aDir) = 0
+			
+			If lMSg
+				If MsgYesNo("Diretorio - "+cPath+" - nao encontrado, deseja cria-lo" ) //Diretorio  -  nao encontrado, deseja cria-lo
+					If MakeDir(cPath) <> 0
+						Help(" ",1,"NOMAKEDIR")
+						lRet := .F.
+					EndIf
+				EndIf
+			Else
+				If MakeDir(cPath) <> 0
+					Help(" ",1,"NOMAKEDIR")
+					lRet := .F.
+				EndIf
+			EndIf
+
+		EndIf
+
+	EndIf
+
+Return lRet
+
+/*/{Protheus.doc} UVALCADEND
+valido o cadastro do endereÁo
+@type function
+@version 1.0 
+@author g.sampaio
+@since 03/03/2021
+@param cTipoEnd, character, tipo do endereco
+@param aDadosEnd, array, dados do endereco
+@return logical, caso o endereco existir retorno .T. se n„o retorna .F.
+/*/
+User Function UVALCADEND( cTipoEnd, aDadosEnd )
+
+	Local cQuery	:= ""
+	Local lRetorno	:= .T.
+
+	Default cTipoEnd 	:= ""
+	Default aDadosEnd	:= {}
+
+	if Select("TRBCAD") > 0
+		TRBCAD->(dbCloseArea())
+	endIf
+
+	if cTipoEnd == "C"
+		cQuery := " SELECT U12.U12_CODIGO FROM " + RetSqlName("U12") + " U12 "
+		cQuery += " WHERE U12.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U12.U12_CREMAT = '" + aDadosEnd[1] + "' "
+		cQuery += " AND U12.U12_CODIGO = '" + aDadosEnd[2] + "' "
+
+	elseIf cTipoEnd == "J"
+		cQuery := " SELECT U10.U10_CODIGO FROM " + RetSqlName("U10") + " U10 "
+		cQuery += " WHERE U10.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U10.U10_QUADRA = '" + aDadosEnd[1] + "' "
+		cQuery += " AND U10.U10_MODULO = '" + aDadosEnd[2] + "' "
+		cQuery += " AND U10.U10_CODIGO = '" + aDadosEnd[3] + "' "
+
+	elseIf cTipoEnd == "O"
+
+		cQuery := " SELECT U14.U14_CODIGO FROM " + RetSqlName("U14") + " U14 "
+		cQuery += " WHERE U14.D_E_L_E_T_ = ' ' "
+		cQuery += " AND U14.U14_OSSARI = '" + aDadosEnd[1] + "' "
+		cQuery += " AND U14.U14_CODIGO = '" + aDadosEnd[2] + "' "
+
+	endIf
+
+	if Len(cQuery)
+
+		TcQuery cQuery New Alias TRBCAD
+
+		if TRBCAD->(Eof())
+			lRetorno := .F.
+		endIf
+
+	endIf
+
+	if Select("TRBCAD") > 0
+		TRBCAD->(dbCloseArea())
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} EstornaLibPedido
+Funcao para Estornar as Liberacoes Pedido de Venda
+do Apontamento Cemiterio
+@author g.sampaio 
+@since 24/01/2020
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function EstornaLibPedido(cPedido)
+
+	Local aArea		:= GetArea()
+	Local aAreaSC5	:= SC5->(GetArea())
+	Local aAreaSC6	:= SC6->(GetArea())
+	Local aAreaSC9	:= SC9->(GetArea())
+	Local lRet		:= .T.
+
+	Begin Transaction
+
+		SC5->(DbSetOrder(1)) //C5_FILIAL+C5_C5_NUM
+		SC9->(DbSetOrder(1)) //C9_FILIAL+C9_PEDIDO+C9_ITEM+C9_SEQUEN+C9_PRODUTO
+		SC6->(DbSetOrder(1)) //C6_FILIAL+C6_NUM+C6_ITEM+C6_PRODUTO
+
+		If SC5->(MsSeek(xFilial("SC5") + cPedido ))
+
+			If SC6->(MsSeek(xFilial("SC6")+SC5->C5_NUM))
+
+				While SC6->(!EOF()) .And. SC6->C6_FILIAL == xFilial("SC6") .And. SC6->C6_NUM == SC5->C5_NUM
+
+					//Estorna liberaÁ„o do PV
+					if SC9->(MsSeek(xFilial("SC9")+SC6->C6_NUM+SC6->C6_ITEM))
+
+						//estorno a liberacao do item
+						if !a460Estorna()
+
+							lRet := .F.
+							Exit
+
+						endif
+
+					endif
+
+					SC6->(DbSkip())
+
+				EndDo
+
+				//Estornado as liberacoes, excluo o pedido
+				if lRet
+
+					lRet := U_ExcluiPedido(cPedido)
+
+				endif
+
+			endif
+
+		else
+
+			lRet := .F.
+			Help( ,, 'Help',, 'Pedido de Venda do Apontamento n„o encontrado!', 1, 0 )
+
+		endif
+
+	End Transaction
+
+	RestArea(aAreaSC5)
+	RestArea(aAreaSC6)
+	RestArea(aAreaSC9)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} ExcluiPedido
+Funcao para Estornar o Pedido de Venda
+do Apontamento Cemiterio
+@author g.sampaio 
+@since 24/01/2020
+@version P12
+@param cPedido = Numero do Pedido de Venda
+@return nulo
+/*/
+User Function ExcluiPedido(cPedido)
+
+	Local aCab		:= {}
+	Local aItens	:= {}
+	Local lRet 		:= .T.
+
+	Private lMsErroAuto := .F.
+
+	SC5->(DbSetOrder(1)) //C5_FILIAL+C5_NUM
+
+	If SC5->(MsSeek(xFilial("SC5") + cPedido))
+
+		Aadd(aCab, {"C5_NUM" 	,SC5->C5_NUM 	,Nil})
+
+		Aadd(aItens,{"C6_NUM" 	,SC5->C5_NUM	,Nil})
+
+		MSExecAuto({|X,Y,Z|Mata410(X,Y,Z)},aCab,{aItens},5)
+
+		If lMsErroAuto
+
+			lRet := .F.
+			MostraErro()
+			DisarmTransaction()
+
+		endif
+
+	endif
+
+Return(lRet)
+
+/*/{Protheus.doc} NextU04
+Funcao para consultar Proximo item
+que sera gerado no enderecamento
+@author g.sampaio 
+@since 24/01/2020
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function NextU04(cContrato)
+
+	Local aArea			:= GetArea()
+	Local aAreaU04		:= U04->(GetArea())
+	Local cQry			:= ""
+	Local cProxItem		:= ""
+	Local nTamU04Item	:= TamSX3("U04_ITEM")[1]
+
+	cQry := " SELECT
+	cQry += " ISNULL(MAX(U04_ITEM),'" + cValToChar(nTamU04Item) + "') MAX_ITEM "
+	cQry += " FROM "
+	cQry += + RetSQLName("U04") + " HIST "
+	cQry += " WHERE "
+	cQry += " HIST.D_E_L_E_T_ = ' ' "
+	cQry += " AND U04_FILIAL = '"+xFilial("U04")+"' "
+	cQry += " AND U04_CODIGO = '" + cContrato + "' "
+
+	// verifico se n„o existe este alias criado
+	If Select("QRYU04") > 0
+		QRYU04->(DbCloseArea())
+	EndIf
+
+	// funÁ„o que converte a query genÈrica para o protheus
+	cQry := ChangeQuery(cQry)
+
+	// crio o alias temporario
+	TcQuery cQry New Alias "QRYU04"
+
+	//proximo item da tabela de historico de enderecamento
+	cProxItem := StrZero(Val(QRYU04->MAX_ITEM) + 1,TamSX3("U04_ITEM")[1])
+
+	RestArea(aArea)
+	RestArea(aAreaU04)
+
+Return(cProxItem)
+
+/*/{Protheus.doc} Inicializador do campo
+UJV_DESTAB
+@author g.sampaio 
+@since 05/02/2019
+@version P12
+@param Nao recebe parametros
+@return nulo
+/*/
+User Function PosPrevio(cContrato,cQuadra,cModulo,cJazigo,cOssario,cNichoO)
+
+	Local cQry 		:= ""
+	Local nRegistro := 0
+
+	Default cQuadra		:= ""
+	Default cModulo		:= ""
+	Default cJazigo		:= ""
+	Default cOssario	:= ""
+	Default cNichoO		:= ""
+
+	if Select("QRYPRV") > 0
+		QRYPRV->(DbCloseArea() )
+	endif
+
+	cQry := "SELECT "
+	cQry += " R_E_C_N_O_ ID_REGISTRO "
+	cQry += " FROM "
+	cQry += RetSQLName("U04") + " U04 "
+	cQry += " WHERE "
+	cQry += " U04.D_E_L_E_T_ = ' ' "
+	cQry += " AND U04_FILIAL = '" + xFilial("U04") + "' "
+	cQry += " AND U04_CODIGO = '" + cContrato + "' "
+	cQry += " AND U04_QUADRA = '" + cQuadra + "' "
+	cQry += " AND U04_MODULO = '" + cModulo + "' "
+	cQry += " AND U04_JAZIGO = '" + cJazigo + "' "
+	cQry += " AND U04_OSSARI = '" + cOssario + "' "
+	cQry += " AND U04_NICHOO = '" + cNichoO + "' "
+
+	cQry += " AND (U04_QUEMUT = ' ' ) "
+
+	// crio o alias temporario
+	TcQuery cQry New Alias "QRYPRV"
+
+	if QRYPRV->(!Eof())
+		nRegistro := QRYPRV->ID_REGISTRO
+	endif
+
+	if Select("QRYPRV") > 0
+		QRYPRV->(DbCloseArea() )
+	endif
+
+Return(nRegistro)
+
+
+/*/{Protheus.doc} MsgVirtus
+FunÁ„o que mostra uma mensagem de Log com a opÁ„o de salvar em txt
+@type function
+@author Atilio
+@since 14/04/2017
+@version 1.0
+@param cMsg, character, Mensagem de Log
+@param cTitulo, character, TÌtulo da Janela
+@param nTipo, numeric, Tipo da Janela (1 = Ok; 2 = Confirmar e Cancelar)
+@param lEdit, logical, Define se o Log pode ser editado pelo usu·rio
+@return logical, Define se a janela foi confirmada
+@example
+    u_zMsgLog("Daniel Teste 123", "TÌtulo", 1, .T.)
+    u_zMsgLog("Daniel Teste 123", "TÌtulo", 2, .F.)
+/*/
+ 
+User Function MsgVirtus(cMsg, cTitulo, cRotina, nTipo, lEdit)
+
+    Local lRetMens 		:= .F.
+    Local oDlgMens
+    Local oBtnOk
+	Local cTxtConf 		:= ""
+    Local oBtnCnc 		:= Nil
+	Local cTxtCancel 	:= ""
+    Local oBtnSlv		:= Nil
+    Local oFntTxt 		:= TFont():New("Lucida Console",,-015,,.F.,,,,,.F.,.F.)
+    Local oMsg
+    Local nIni			:= 1
+    Local nFim			:= 50    
+
+    Default cMsg    := "..."
+    Default cTitulo := "Mensagem"
+	Default cRotina	:= FunName()
+    Default nTipo   := 1 // 1=Ok; 2= Confirmar e Cancelar
+    Default lEdit   := .F.
+     
+    //Definindo os textos dos botıes
+    If(nTipo == 1)
+        cTxtConf:='&Ok'
+    Else
+        cTxtConf:='&Confirmar'
+        cTxtCancel:='C&ancelar'
+    EndIf
+ 
+    //Criando a janela centralizada com os botıes
+    DEFINE MSDIALOG oDlgMens TITLE cTitulo FROM 000, 000  TO 300, 400 COLORS 0, 16777215 PIXEL
+        
+		//Get com o Log
+        @ 002, 004 GET oMsg VAR cMsg OF oDlgMens MULTILINE SIZE 191, 121 FONT oFntTxt COLORS 0, 16777215 HSCROLL PIXEL
+        If !lEdit
+            oMsg:lReadOnly := .T.
+        EndIf
+         
+        //Se for Tipo 1, cria somente o bot„o OK
+        If (nTipo==1)
+            @ 127, 144 BUTTON oBtnOk  PROMPT cTxtConf   SIZE 051, 019 ACTION (lRetMens:=.T., oDlgMens:End()) OF oDlgMens PIXEL
+         
+        //Sen„o, cria os botıes OK e Cancelar
+        ElseIf(nTipo==2)
+            @ 127, 144 BUTTON oBtnOk  PROMPT cTxtConf   SIZE 051, 009 ACTION (lRetMens:=.T., oDlgMens:End()) OF oDlgMens PIXEL
+            @ 137, 144 BUTTON oBtnCnc PROMPT cTxtCancel SIZE 051, 009 ACTION (lRetMens:=.F., oDlgMens:End()) OF oDlgMens PIXEL
+        EndIf
+         
+        //Bot„o de Salvar em Txt
+        @ 127, 004 BUTTON oBtnSlv PROMPT "&Salvar em .txt" SIZE 051, 019 ACTION (GeraArquivo(cMsg, cTitulo, cRotina)) OF oDlgMens PIXEL
+    ACTIVATE MSDIALOG oDlgMens CENTERED
+ 
+Return(lRetMens)
+ 
+/*/{Protheus.doc} GeraArquivo
+FunÁ„o para gerar um arquivo texto
+@type function
+@version 1.0 
+@author g.sampaio
+@since 21/06/2021
+@param cMsg, character, codigo da mensagem
+@param cTitulo, character, titulo da mensagem
+/*/ 
+Static Function GeraArquivo(cMsg, cTitulo, cRotina)
+    Local cFileNom :='\x_arq_'+dToS(Date())+StrTran(Time(),":")+".txt"
+    Local cQuebra  := CRLF + "+=======================================================================+" + CRLF
+    Local lOk      := .T.
+    Local cTexto   := ""
+     
+    //Pegando o caminho do arquivo
+    cFileNom := cGetFile( "Arquivo TXT *.txt | *.txt", "Arquivo .txt...",,'',.T., GETF_LOCALHARD)
+ 
+    //Se o nome n„o estiver em branco    
+    If !Empty(cFileNom)
+        //Teste de existÍncia do diretÛrio
+        If ! ExistDir(SubStr(cFileNom,1,RAt('\',cFileNom)))
+            Alert("DiretÛrio n„o existe:" + CRLF + SubStr(cFileNom, 1, RAt('\',cFileNom)) + "!")
+            Return
+        EndIf
+         
+        //Montando a mensagem
+        cTexto := "FunÁ„o   - "+ cRotina 	     + CRLF
+        cTexto += "Usu·rio  - "+ cUserName       + CRLF
+        cTexto += "Data     - "+ dToC(dDataBase) + CRLF
+        cTexto += "Hora     - "+ Time()          + CRLF
+        cTexto += "Mensagem - "+ cTitulo + cQuebra  + cMsg + cQuebra
+         
+        //Testando se o arquivo j· existe
+        If File(cFileNom)
+            lOk := MsgYesNo("Arquivo j· existe, deseja substituir?", "AtenÁ„o")
+        EndIf
+         
+        If lOk
+            MemoWrite(cFileNom, cTexto)
+            MsgInfo("Arquivo Gerado com Sucesso:"+CRLF+cFileNom,"AtenÁ„o")
+        EndIf
+    EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} USX3CBOX
+funcao para retornar o conteudo do X3_CBOX
+do campo informado
+@type function
+@version 1.0
+@author g.sampaio
+@since 26/07/2021
+@param cCampo, character, campo com X3_CBOX
+@param cValorCampo, character, conteudo do campo
+@return character, retorna descricao da opcao do campo
+/*/
+User Function USX3CBOX(cCampo, cValorCampo)
+
+	Local aX3Cbox		:= {}
+	Local cX3Cbox		:= ""
+	Local cRetorno		:= ""
+	Local nPosX3Cbox	:= 0
+	Local nAT			:= 0
+
+	Default cCampo		:= ""
+	Default cValorCampo	:= ""
+
+	// pego o conteudo do campo X3_CBOX do campo UF4_TIPO
+	cX3Cbox := GetSx3Cache(cCampo,"X3_CBOX")
+
+	If "#" $ AllTrim(cX3Cbox)
+		cX3Cbox := &(SubStr(cX3Cbox,2,Len(cX3Cbox)))
+	endIf
+
+	// alimento o array de dados
+	aX3Cbox	:= StrToKarr( cX3Cbox, ";" )
+
+	// pego os dados a posicao do tipo de servico para buscar a descricao conforme na X3_CBOX
+	nPosX3Cbox 	:= aScan( aX3Cbox, { |x| SubStr( x, 1, len(Alltrim(cValorCampo)) ) == AllTrim(cValorCampo) } )
+
+	// verifico se encontrei o tipo de servico
+	If nPosX3Cbox > 0
+
+		// procuro a posicao do sinal de igual(=)
+		nAT := AT("=",aX3Cbox[nPosX3Cbox])
+
+		// verifico se encontrou
+		if nAT > 0
+			cRetorno := SubStr( aX3Cbox[nPosX3Cbox], nAT+1 )
+		else
+			cRetorno := aX3Cbox[nPosX3Cbox]
+		endIf
+
+	EndIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} UExistSA1
+Funcao para verificar se existe o cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/04/2024
+@param cCodCliente, character, codigo do cliente
+@param cLojaCli, character, loja do cliente
+@return logical, retorna .T. caso exista o cliente
+/*/
+User Function UExistSA1(cCodCliente, cLojaCli)
+
+	Local cQuery	:= ""
+	Local lRetorno 	:= .F.
+
+	cQuery := " SELECT SA1.A1_COD FROM " + RetSqlName("SA1") + " SA1 "
+	cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery += " AND SA1.A1_COD = '" + cCodCliente + "' "
+	cQuery += " AND SA1.A1_LOJA = '" + cLojaCli + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPCLIENTE' )
+
+	If TMPCLIENTE->(!Eof())
+		lRetorno := .T.
+	EndIf
+
+Return(lRetorno)
+
+User Function UGETSX3V(cTabGet, cCampoGet) 
+
+	Local cQuery 		:= ""
+	Local cRetorno		:= ""
+
+	Default cTabGet 	:= ""
+	Default cCampoGet	:= ""
+
+	cQuery := " SELECT MAX(" + cCampoGet + ") MAXITEM FROM " + RetSqlName(cTabGet) + " " + cTabGet + " "
+	cQuery += " WHERE "+cTabGet+".D_E_L_E_T_ = ' '"
+	cQuery += " AND " + cTabGet + "_FILIAL = '" + xFilial(cTabGet) + "'"	
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPCOD' )
+
+	If TMPCOD->(!Eof()) .And. !Empty(TMPCOD->MAXITEM)
+		cRetorno := Soma1(Alltrim(TMPCOD->MAXITEM))
+	Else
+		cRetorno := StrZero(1, TamSX3(cCampoGet)[1])
+	EndIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( cTabGet+xFilial(cTabGet)+cRetorno )
+		// gero um novo nosso numero
+		cRetorno := Soma1( Alltrim(cRetorno) )
+	EndDo
+
+Return(cRetorno)
+
+User Function UGetGrauPar(lGrauPar, lChave, cGrauPar)
+
+	Local aDadosSX5		:= {}
+	Local cRetorno		:= ""
+	Local nSX5			:= 0
+	Local oUGetSxFile 	:= UGetSxFile():New()
+	Local oStruSX5		:= Nil
+
+	Default lGrauPar	:= .T.
+	Default lChave		:= .T.
+	Default cGrauPar	:= ""
+
+	// dados da SX5
+	aDadosSX5	:= oUGetSxFile:GetInfoSX5("ZG", cGrauPar)
+
+	For nSX5 := 1 To Len(aDadosSX5)
+
+		// pego a estrutura da SX5
+		oStruSX5 := aDadosSX5[nSX5, 2]
+
+		If lGrauPar
+			If lChave
+				cRetorno += AllTrim(oStruSX5:cChave) + "=" + AllTrim(oStruSX5:cDescricao) + ";"
+			Else
+				cRetorno += AllTrim(oStruSX5:cDescricao) + ";"
+			EndIf
+		Else
+			If lChave
+				cRetorno += AllTrim(oStruSX5:cChave) + "=" + AllTrim(oStruSX5:cDescricao)
+			Else
+				cRetorno += AllTrim(oStruSX5:cDescricao)
+			EndIf
+		EndIf
+
+		// limpo os dados do objeto
+		FreeObj(oStruSX5)
+		oStruSX5 := Nil
+		
+	Next nSX5
+
+Return(cRetorno)
+
+User Function UInGrauPar(cGrauPar)
+	
+	Local aDadosSX5		:= {}
+	Local lRetorno 		:= .T.
+	Local oUGetSxFile 	:= UGetSxFile():New()
+	
+	Default cGrauPar	:= ""
+
+	aDadosSX5	:= oUGetSxFile:GetInfoSX5("ZG", cGrauPar)
+
+	If Len(aDadosSX5) > 0
+		lRetorno := .F.
+		Help(,,'Help - GRAUPA',,"Grau de Parentesco (" + cGrauPar + ") nao encontrado no cadastro de Grau de Parentesco [ZG]!",1,0)		
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} TrataDataPOUI
+Funcao para tratamento de Data para formato do PO-UI
+@type function
+@version 1.0
+@author g.sampaio
+@since 02/01/2024
+@param dDataPar, date, data enviada para tratamento
+@return character, converte a data para AAAA-MM-DD
+/*/
+User Function TrataDataPOUI(dDataPar As Date)
+
+	Local cDataAux 	As Character
+	Local cRetorno	As Character
+
+	Default dDataPar	:= StoD("")
+
+	// converto a data em texxto
+	cDataAux := DtoS(dDataPar)
+
+	// monto o retorno da data para AAAA-MM-DD
+	cRetorno := SubStr(cDataAux,1,4) + "-" + SubStr(cDataAux,5,2) + "-" + SubStr(cDataAux,7,2)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} SpecialNoChar
+Funcao para para tratamento de caracteres especiciais
+@type function
+@version 1.0
+@author g.sampaio
+@since 02/01/2024
+@param cStr, character, string para ser tratada
+@param cMask, character, mascara a ser tratada
+@return character, retorna o texto apos o tratamento
+/*/
+User Function SpecialNoChar(cStr As Character, cMask As Character)
+
+	Local cRetorno 	As Character
+	Local nX		As Numeric
+
+	Default cMask := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,()-_;:/\!?&+"
+	
+	// trata os acentos da string
+	cStr := FwNoAccent(Alltrim(cStr))
+
+	For nX :=1 to len(cStr)
+		If SubStr(cStr,nX,1) $ cMask
+			cRetorno += SubStr(cStr,nX,1)
+		EndIf
+	Next†nX
+
+Return(cRetorno)
+
+/*/{Protheus.doc} RESPCU02
+Funcao para pesquisa de autorizado
+(U02AGE)
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+/*/
+User Function RESPCU02(cContrato)
+
+	Local oBrwAutorizados
+	Local aBrwAutorizados := {}
+	Local bFiltroU02 := {|| }
+	Local oButton1
+	Local oButton2
+	Local oButton3
+	Local oButton4
+	Local oGet1
+	Local oGet2
+	Local cAutorizado := Space(TamSX3("U02_NOME")[1])
+	Local oGroup1
+	Local oGroup2
+	Local oGroup3
+	Local oSay1
+	Local oSay2
+	Local oDlgAut
+	Local oButtonVirtus := Nil
+	Local cBlueCSSButton	:= ""
+	Local cGrayCSSButton	:= ""
+	Local cRedCSSButton		:= ""
+	Local cGreenCSSButton	:= ""
+	Local cCSSGet			:= ""
+
+	Static __xcRetAutorizado := ""
+
+	Default cContrato := ""
+
+	oButtonVirtus		:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cBlueCSSButton		:= oButtonVirtus:CSSButtonBlue()
+	cGrayCSSButton		:= oButtonVirtus:CSSButtonGray()
+	cRedCSSButton		:= oButtonVirtus:CSSButtonRed()
+	cGreenCSSButton		:= oButtonVirtus:CSSButtonGreen()
+	cCSSGet				:= oButtonVirtus:CSSGet(Nil, 6)
+
+	If !Empty(__xcRetAutorizado)
+		__xcRetAutorizado := ""
+	EndIf
+
+	bFiltroU02 := {|| FiltraU02(cContrato, cAutorizado, @oBrwAutorizados, @aBrwAutorizados, @oDlgAut)}
+
+	DEFINE MSDIALOG oDlgAut TITLE "Pesquisa Autorizado" FROM 000, 000  TO 400, 700 COLORS 0, 16777215 PIXEL
+
+		@ 002, 002 GROUP oGroup1 TO 034, 350 PROMPT "Dados do Contrato" OF oDlgAut COLOR 0, 16777215 PIXEL
+
+		@ 008, 010 SAY oSay1 PROMPT "Contrato" SIZE 025, 007 OF oDlgAut COLORS 0, 16777215 PIXEL
+		@ 018, 010 MSGET oGet1 VAR cContrato WHEN .F. SIZE 060, 010 OF oDlgAut COLORS 0, 16777215 PIXEL
+
+		@ 008, 080 SAY oSay2 PROMPT "Autorizado" SIZE 025, 007 OF oDlgAut COLORS 0, 16777215 PIXEL
+		@ 018, 080 MSGET oGet2 VAR cAutorizado SIZE 169, 010 OF oDlgAut COLORS 0, 16777215 PIXEL VALID (iif(!Empty(cAutorizado),Eval(bFiltroU02),.T.))
+
+		@ 016, 260 BUTTON oButton2 PROMPT "Filtrar" SIZE 037, 012 OF oDlgAut PIXEL Action(Eval(bFiltroU02))
+		@ 016, 305 BUTTON oButton1 PROMPT "Limpar" SIZE 037, 012 OF oDlgAut PIXEL Action(cAutorizado := "", Eval(bFiltroU02))
+
+		@ 035, 002 GROUP oGroup2 TO 160, 350 PROMPT "Autorizados" OF oDlgAut COLOR 0, 16777215 PIXEL
+		BrwAutorizados(cContrato, cAutorizado, @oBrwAutorizados, @aBrwAutorizados, @oDlgAut)
+
+		@ 165, 002 GROUP oGroup3 TO 195, 350 OF oDlgAut COLOR 0, 16777215 PIXEL
+		
+		@ 175, 260 BUTTON oButton3 PROMPT "Fechar" SIZE 037, 012 OF oDlgAut PIXEL ACTION oDlgAut:End()
+		@ 175, 305 BUTTON oButton4 PROMPT "Confirmar" SIZE 037, 012 OF oDlgAut PIXEL ACTION (__xcRetAutorizado := aBrwAutorizados[oBrwAutorizados:nAt,1], oDlgAut:End())
+
+		// aplico o css nos objetos
+		oGet1:SetCSS(cCSSGet)
+		oGet2:SetCSS(cCSSGet)
+		oButton1:SetCSS(cGrayCSSButton)
+		oButton2:SetCSS(cGreenCSSButton)
+		oButton3:SetCSS(cRedCSSButton)
+		oButton4:SetCSS(cBlueCSSButton)
+
+	ACTIVATE MSDIALOG oDlgAut CENTERED
+
+Return(.T.)
+
+/*/{Protheus.doc} FiltraU02
+Funcao para filtrar os autorizados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+@param cAutorizado, character, autorizado a ser pesquisado
+@param oBrwAutorizados, object, objeto do browse
+@param aBrwAutorizados, array, array do browse
+@param oDlgAut, object, objeto do dialog
+/*/
+Static Function FiltraU02(cContrato, cAutorizado, oBrwAutorizados, aBrwAutorizados, oDlgAut)
+	BrwAutorizados(cContrato, cAutorizado, @oBrwAutorizados, @aBrwAutorizados, @oDlgAut, .T.)
+
+	If oBrwAutorizados <> Nil
+		oBrwAutorizados:Refresh()
+	EndIf
+
+	If oDlgAut <> Nil
+		oDlgAut:Refresh()
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwAutorizados
+Funcao para browse de autorizados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+@param cAutorizado, character, autorizado a ser pesquisado
+@param oBrwAutorizados, object, objeto do browse
+@param aBrwAutorizados, array, array do browse
+@param oDlgAut, object, objeto do dialog
+/*/
+Static Function BrwAutorizados(cContrato, cAutorizado, oBrwAutorizados, aBrwAutorizados, oDlgAut, lFiltro)
+
+	Local cQuery 	:= ""
+	Local lContinua	:= .T.
+
+	Default cContrato	:= ""
+	Default cAutorizado	:= ""
+	Default lFiltro		:= .F.
+	
+	cQuery := " SELECT "
+	cQuery += " 	U02.U02_ITEM AS ITEM, "
+	cQuery += " 	U02.U02_NOME AS NOME, "
+	cQuery += " 	U02.U02_GRAUPA AS GRAU " 
+	cQuery += " FROM " + RetSqlName("U02") + " U02 "
+	cQuery += " WHERE U02.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "' "
+	cQuery += " AND U02.U02_CODIGO = '" + cContrato + "' "
+	
+	If !Empty(cAutorizado)
+		cQuery += " AND U02.U02_NOME LIKE '%" + Alltrim(cAutorizado) + "%' "
+	EndIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPU02' )
+
+	If TMPU02->(!Eof())
+		While TMPU02->(!Eof())
+			Aadd(aBrwAutorizados,{TMPU02->ITEM, TMPU02->NOME, U_UGetGrauPar(.F., .F., TMPU02->GRAU)})
+			TMPU02->(DbSkip())
+		EndDo
+	Else
+		If lFiltro
+			Aadd(aBrwAutorizados,{"","",""})
+		Else
+			lContinua := .F.
+			MsgAlert("N„o existem autorizados para o contrato [" + cContrato + "]!")    	
+		EndIf
+	EndIf
+
+	If lContinua
+
+		@ 043, 005 LISTBOX oBrwAutorizados Fields HEADER "Item","Nome","Grau Parentesco" SIZE 338, 116 OF oDlgAut PIXEL ColSizes 50,50
+		oBrwAutorizados:SetArray(aBrwAutorizados)
+		oBrwAutorizados:bLine := {|| {;
+		aBrwAutorizados[oBrwAutorizados:nAt,1],;
+		aBrwAutorizados[oBrwAutorizados:nAt,2],;
+		aBrwAutorizados[oBrwAutorizados:nAt,3];
+		}}
+
+		// DoubleClick event
+		oBrwAutorizados:bLDblClick := {|| __xcRetAutorizado := aBrwAutorizados[oBrwAutorizados:nAt,1],;
+		oBrwAutorizados:DrawSelect(), oDlgAut:End()}
+
+	Else
+		oDlgAut:End()
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RESPRU02
+Funcao para retorno do autorizado
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@return character, retorno da consulta U02AGE
+/*/
+User Function RESPRU02()
+Return(__xcRetAutorizado)
+
+/*/{Protheus.doc} RESPCU37
+Funcao para pesquisa de servicos habilitados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+/*/
+User Function RESPCU37(cContrato, cTipoEnd)
+
+	Local oBrwServHab
+	Local aBrwServHab := {}
+	Local bFiltroU37 := {|| }
+	Local oButton1
+	Local oButton2
+	Local oButton3
+	Local oButton4
+	Local oGet1
+	Local oGet2
+	Local cServico := Space(TamSX3("B1_DESC")[1])
+	Local oGroup1
+	Local oGroup2
+	Local oGroup3
+	Local oSay1
+	Local oSay2
+	Local oDlgServ
+	Local oButtonVirtus := Nil
+	Local cBlueCSSButton	:= ""
+	Local cGrayCSSButton	:= ""
+	Local cRedCSSButton		:= ""
+	Local cGreenCSSButton	:= ""
+	Local cCSSGet			:= ""
+	Local cEndereco			:= ""	
+	Local cReadVar 			:= Alltrim(ReadVar()) //M->UZG_EMPFIL
+
+	Static __xcRetServico := ""
+
+	Default cContrato 	:= ""
+	Default cTipoEnd	:= ""
+
+	oButtonVirtus		:= VirtusEstiloCSS():New() // inicio a classe de butoes virtus
+	cBlueCSSButton		:= oButtonVirtus:CSSButtonBlue()
+	cGrayCSSButton		:= oButtonVirtus:CSSButtonGray()
+	cRedCSSButton		:= oButtonVirtus:CSSButtonRed()
+	cGreenCSSButton		:= oButtonVirtus:CSSButtonGreen()
+	cCSSGet				:= oButtonVirtus:CSSGet(Nil, 6)
+
+	If !Empty(__xcRetServico)
+		__xcRetServico := ""
+	EndIf
+
+	If cTipoEnd == "J"
+		cEndereco := "Jazigo"
+	ElseIf cTipoEnd == "C"
+		cEndereco := "CemitÈrio"
+	ElseIf cTipoEnd == "O"
+		cEndereco := "Oss·rio"
+	EndIf
+
+	bFiltroU37 := {|| FiltraU37(cContrato, cTipoEnd, cServico, @oBrwServHab, @aBrwServHab, @oDlgServ)}
+
+	DEFINE MSDIALOG oDlgServ TITLE "Pesquisa ServiÁos Habilitados" FROM 000, 000  TO 400, 700 COLORS 0, 16777215 PIXEL
+
+		@ 002, 002 GROUP oGroup1 TO 034, 350 PROMPT "Dados do Contrato" OF oDlgServ COLOR 0, 16777215 PIXEL
+
+		@ 008, 010 SAY oSay1 PROMPT "Contrato" SIZE 025, 007 OF oDlgServ COLORS 0, 16777215 PIXEL
+		@ 018, 010 MSGET oGet1 VAR cContrato WHEN .F. SIZE 060, 010 OF oDlgServ COLORS 0, 16777215 PIXEL
+
+		@ 008, 080 SAY oSay2 PROMPT "ServiÁo" SIZE 025, 007 OF oDlgServ COLORS 0, 16777215 PIXEL
+		@ 018, 080 MSGET oGet2 VAR cServico SIZE 169, 010 OF oDlgServ COLORS 0, 16777215 PIXEL VALID (iif(!Empty(cServico),Eval(bFiltroU37),.T.))
+
+		@ 016, 260 BUTTON oButton2 PROMPT "Filtrar" SIZE 037, 012 OF oDlgServ PIXEL Action(Eval(bFiltroU37))
+		@ 016, 305 BUTTON oButton1 PROMPT "Limpar" SIZE 037, 012 OF oDlgServ PIXEL Action(cServico := "", Eval(bFiltroU37))
+
+		@ 035, 002 GROUP oGroup2 TO 160, 350 PROMPT "ServiÁos Habilitados - " + cEndereco OF oDlgServ COLOR 0, 16777215 PIXEL
+		BrwServiHab(cContrato, cTipoEnd, cServico, @oBrwServHab, @aBrwServHab, @oDlgServ)
+
+		@ 165, 002 GROUP oGroup3 TO 195, 350 OF oDlgServ COLOR 0, 16777215 PIXEL
+		
+		@ 175, 260 BUTTON oButton3 PROMPT "Fechar" SIZE 037, 012 OF oDlgServ PIXEL ACTION oDlgServ:End()
+		@ 175, 305 BUTTON oButton4 PROMPT "Confirmar" SIZE 037, 012 OF oDlgServ PIXEL ACTION (__xcRetServico := aBrwServHab[oBrwServHab:nAt,1], oDlgServ:End())
+
+		// aplico o css nos objetos
+		oGet1:SetCSS(cCSSGet)
+		oGet2:SetCSS(cCSSGet)
+		oButton1:SetCSS(cGrayCSSButton)
+		oButton2:SetCSS(cGreenCSSButton)
+		oButton3:SetCSS(cRedCSSButton)
+		oButton4:SetCSS(cBlueCSSButton)
+
+	ACTIVATE MSDIALOG oDlgServ CENTERED
+
+	&(cReadVar) := __xcRetServico
+
+Return(.T.)
+
+/*/{Protheus.doc} FiltraU02
+Funcao para filtrar os autorizados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+@param cTipoEnd, character, tipo de endereco
+@param cServico, character, codigo do servico
+@param oBrwServHab, object, objeto do browse
+@param aBrwServHab, array, array do browse
+@param oDlgServ, object, objeto do dialog
+/*/
+Static Function FiltraU37(cContrato, cTipoEnd, cServico, oBrwServHab, aBrwServHab, oDlgServ)
+	BrwServiHab(cContrato, cTipoEnd, cServico, @oBrwServHab, @aBrwServHab, @oDlgServ, .T.)
+
+	If oBrwServHab <> Nil
+		oBrwServHab:Refresh()
+	EndIf
+
+	If oDlgServ <> Nil
+		oDlgServ:Refresh()
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwServiHab
+Funcao para browse de Servicos Habilitados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@param cContrato, character, contrato a ser pesquisado
+@param cTipoEnd, character, tipo de endereco
+@param cServico, character, codigo do servico
+@param oBrwServHab, object, objeto do browse
+@param aBrwServHab, array, array do browse
+@param oDlgServ, object, objeto do dialog
+@param lFiltro, logical, define se È um filtro
+/*/
+Static Function BrwServiHab(cContrato, cTipoEnd, cServico, oBrwServHab, aBrwServHab, oDlgServ, lFiltro)
+
+	Local cQuery 	:= ""
+	Local lContinua	:= .T.
+	Local lFacServ	:= .F.
+
+	Default cContrato	:= ""
+	Default cTipoEnd	:= ""
+	Default cServico	:= ""
+	Default lFiltro		:= .F.
+
+	If FWIsInCallStack("U_RUTIL49B")
+		lFacServ := SuperGetMV("MV_XFACU37", .F. , .T.)
+	EndIf
+
+	aBrwServHab := {}
+	
+	cQuery := " SELECT "
+	cQuery += " 	SB1.B1_COD 	AS CODIGO, "
+	cQuery += " 	SB1.B1_DESC AS DESCRICAO "
+	cQuery += " FROM " + RetSqlName("SB1") + " SB1 "
+	cQuery += " INNER JOIN " + RetSqlName("U37") + " U37 ON U37.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND U37.U37_FILIAL = '" + xFilial("U37") + "' "
+	cQuery += " 	AND U37.U37_CODIGO = '" + cContrato +  "' "
+	cQuery += " 	AND U37.U37_SERVIC = SB1.B1_COD "
+	cQuery += " WHERE SB1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SB1.B1_FILIAL = '" + xFilial("SB1") + "' "
+	
+	If !FWIsInCallStack("U_RUTIL49B")
+		cQuery += " AND SB1.B1_XREQSER IN " + FormatIN(cTipoEnd,';') + " "
+	ElseIf FWIsInCallStack("U_RUTIL49B")
+		If U92->U92_TIPO <> "4" 
+			cQuery += " AND SB1.B1_XREQSER IN " + FormatIN(cTipoEnd,';') + " "
+		EndIf
+	EndIf
+
+	If lFacServ
+	
+		If U92->U92_TIPO == "1" // sepultamento
+			cQuery += " AND (SB1.B1_DESC LIKE '%SEPUL%' OR SB1.B1_DESC LIKE '%INUMA%')"
+		ElseIf U92->U92_TIPO == "2" // exumacao
+			cQuery += " AND (SB1.B1_DESC LIKE '%EXUMA%' OR SB1.B1_DESC LIKE '%TRAS%')"
+		ElseIf U92->U92_TIPO == "5" // entrada de restos 
+			cQuery += " AND (SB1.B1_DESC LIKE '%ENTRA%' OR SB1.B1_DESC LIKE '%INUMA%')"	
+		ElseIf U92->U92_TIPO == "6" // cremaÁ„o
+			cQuery += " AND SB1.B1_DESC LIKE '%CREMA%' "
+		EndIf
+		
+	EndIf
+	
+	If !Empty(cServico)
+		cQuery += " AND SB1.B1_DESC LIKE '%" + Alltrim(cServico) + "%' "
+	EndIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TMPU37' )
+
+	If TMPU37->(!Eof())
+		While TMPU37->(!Eof())
+			Aadd(aBrwServHab,{TMPU37->CODIGO, TMPU37->DESCRICAO})
+			TMPU37->(DbSkip())
+		EndDo
+	Else
+		If lFiltro
+			Aadd(aBrwServHab,{"",""})
+		Else
+			lContinua := .F.
+			MsgAlert("N„o existem serviÁos habilitados para o contrato [" + cContrato + "]!")    	
+		EndIf
+	EndIf
+
+	If lContinua
+
+		@ 043, 005 LISTBOX oBrwServHab Fields HEADER "Codigo","Descricao" SIZE 338, 116 OF oDlgServ PIXEL ColSizes 50,50
+		oBrwServHab:SetArray(aBrwServHab)
+		oBrwServHab:bLine := {|| {;
+		aBrwServHab[oBrwServHab:nAt,1],;
+		aBrwServHab[oBrwServHab:nAt,2];
+		}}
+
+		// DoubleClick event
+		oBrwServHab:bLDblClick := {|| __xcRetServico := aBrwServHab[oBrwServHab:nAt,1],;
+		oBrwServHab:DrawSelect(), oDlgServ:End()}
+
+	Else
+		oDlgServ:End()
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RESPRU37
+Funcao para retorno dE 
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2024
+@return character, retorno da consulta U02AGE
+/*/
+User Function RESPRU37()
+Return(__xcRetServico)

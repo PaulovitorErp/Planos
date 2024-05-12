@@ -1,0 +1,70 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} GetLojCliente
+faz preenchimento do campo loja a partir do CGC.
+
+Criar gatilho para o campo A1_CGC:
+Regra - iif(Existblock("GetLojCliente"),U_GetLojCliente(),"")
+Contra Dominio - Para preencher o campo A1_LOJA
+@type function
+@version  1.0
+@author g.sampaio
+@since 14/01/2022
+@return character, retorna o codigo da loja do cliente
+/*/
+User Function GetLojCliente()
+
+	Local aArea 	As Array
+	Local aAreaSA1 	As Array
+	Local cRetorno 	As Character
+	Local cCod 		As Character
+	Local cTipo 	As Character
+	Local nCount 	As Numeric
+	Local nTamLoja 	As Numeric
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaSA1 	:= SA1->(GetArea())
+	cRetorno 	:= ""
+	cCod 		:= M->A1_COD
+	cTipo 		:= M->A1_PESSOA
+	nCount 		:= 0
+	nTamLoja	:= TamSX3("A1_LOJA")[1]
+
+	if INCLUI // somente para inclusao
+
+		if empty(M->A1_COD)
+			cRetorno := Space(TamSX3("A1_LOJA")[1])
+		else
+
+			if M->A1_TIPO == "X" //se estrangeiro
+				cRetorno := StrZero(01, TamSX3("A1_LOJA")[1] ) //sempre 01
+			else
+				SA1->(Dbsetorder(1))
+				If cTipo == "F" .AND. SA1->(MsSeek( xFilial("SA1")+cCod ))
+
+					While SA1->(!EOF() ) .AND. SA1->A1_FILIAL+SA1->A1_COD == xFilial("SA1")+cCod
+						nCount++
+						SA1->(dbSkip())
+					Enddo
+
+					cRetorno := StrZero(++nCount, TamSX3("A1_LOJA")[1])
+
+				Else
+
+					If cTipo == "J"
+						cRetorno:= SubStr(AllTrim(M->A1_CGC),9,nTamLoja)
+					else
+						cRetorno := StrZero(1, TamSX3("A1_LOJA")[1] )
+					Endif
+
+				Endif
+			endif
+
+		endif
+	endif
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(cRetorno)

@@ -1,0 +1,56 @@
+#include "totvs.ch"
+
+User Function InitCodigoCliente()
+
+	Local aArea     As Array
+	Local aAreaSA1  As Array
+	Local cQuery    As Character
+	Local cRetorno  As Character
+	Local nTam     	As Numeric
+
+	// atribui valor as variaveis
+	aArea     := GetArea()
+	aAreaSA1  := SA1->(GetArea())
+	cQuery    := ""
+	cRetorno  := ""
+	nTam      := TamSx3("A1_COD")[1]
+
+	if Select("TRBAUX") > 0
+		TRBAUX->(dbCloseArea())
+	endIf
+
+	cQuery := "SELECT MAX(SA1.A1_COD) AS NSEQ FROM "+RetSqlName("SA1")+" SA1 "
+	cQuery += " WHERE D_E_L_E_T_<>'*' "
+	cQuery += " AND SA1.A1_COD LIKE 'C%'"
+	cQuery += " AND SA1.A1_COD NOT IN ('ESTADO','UNIAO ','MUNIC ') " //Protecao para Fornecedores/Clientes cadastrados automaticamente pelo sistema
+	cQuery += " AND SA1.A1_FILIAL = '"+xfilial("SA1")+"' "
+
+	cQuery:=Changequery(cQuery)
+
+	MPSysOpenQuery( cQuery, 'TRBAUX' )
+
+	if TRBAUX->(!Eof()) .And. !Empty(TRBAUX->NSEQ)
+		cRetorno:= Soma1(AllTrim(TRBAUX->NSEQ))
+	else
+		cRetorno := "C" + Strzero(1,nTam-1)
+	endIf
+
+	if Select("TRBAUX") > 0
+		TRBAUX->(dbCloseArea())
+	endIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( "SA1"+xFilial("SA1")+cRetorno )
+		// gero um novo nosso numero
+		cRetorno := Soma1( Alltrim(cRetorno) )
+	EndDo
+
+	if Select("TRBSA1") > 0
+		TRBSA1->(dbCloseArea())
+	endIf
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(cRetorno)

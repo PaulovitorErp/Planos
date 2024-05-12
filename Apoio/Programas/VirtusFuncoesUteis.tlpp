@@ -1,0 +1,4 @@
+#include "totvs.ch"
+
+User Function VirtusFuncoesUteis()
+Return(Nil)

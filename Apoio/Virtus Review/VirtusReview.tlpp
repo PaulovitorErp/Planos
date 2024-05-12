@@ -1,0 +1,41 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} UVIRTUSERP
+Funcao de uso do Virtus ERP
+@type function
+@version 1.0
+@author g.sampaio
+@since 29/01/2021
+/*/
+User Function VirtusReview()
+Return(Nil)
+
+    /*/{Protheus.doc} VirtusERP
+    Classe para auxiliar na compatibilizacao 
+    e sustentacao do VirtusERP
+    @type class
+    @version 1.0
+    @author g.sampaio
+    @since 29/01/2021
+    /*/
+	Class VirtusReview
+
+		Data aSX6Virtus
+
+		Method New() Constructor        // método construtor
+        Method InitParam()
+        Method ReviewParam()
+        Method SX2Virtus()              // método de diagnostico e compatilibizacao da SX2
+        Method SXGVirtus()              // método de diagnostico e compatilibizacao da SXG
+		Method SX6Virtus()              // método de diagnostico e compatilibizacao da SX6
+        Method GeradorDeTermosVirtus()  // método de diganostico e compatibilizacao do Gerador de Termos
+        
+	EndClass
+
+Method New() Class VirtusReview
+
+Return(Nil)
+
+Method SX6Virtus() Class VirtusReview
+
+Return(Nil)

@@ -1,0 +1,115 @@
+#INCLUDE "totvs.ch"
+#INCLUDE "TopConn.ch"
+
+/*/{Protheus.doc} GetCodCliente
+Funcao para preencher o código do cliente,
+conforme a base do CNPJ.
+
+Criar gatilho para o campo A1_CGC:
+Regra - iif(Existblock("GetCodCliente"),U_GetCodCliente(),"")
+Contra Dominio - Para preencher o campo A1_COD
+@type function
+@version  1.0
+@author g.sampaio
+@since 14/01/2022
+@return character, retorna o codigo do cliente
+/*/
+User Function GetCodCliente()
+
+	Local aArea 	As Array
+	Local aAreaSA1	As Array
+	Local cRetorno 	As Character
+	Local oModel 	As Object
+	Local oModelSA1	As Object
+
+	// atribuo valor as variaveis
+	aArea 		:= GetArea()
+	aAreaSA1 	:= SA1->(GetArea())
+	cRetorno 	:= ""
+	oModel		:= FWModelActive()
+	oModelSA1	:= oModel:GetModel("SA1MASTER")
+
+	// se inclusao
+	if Inclui
+
+		// quando for estrangeiro preencheo com 00000000000
+		if M->A1_CGC == "00000000000000" .OR. M->A1_CGC == "00000000000"
+			cRetorno := "EX" + SeqSA1()
+
+			// carrego os valores nos campos do cadastro de clientes
+			oModelSA1:LoadValue("A1_TIPO","X")
+			oModelSA1:LoadValue("A1_EST","EX")
+
+		else
+			if Len(Alltrim(M->A1_CGC)) == 14
+				cRetorno := SubStr(M->A1_CGC,1,8)
+
+				// carrego os valores nos campos do cadastro de clientes
+				If oModelSA1 <> Nil
+					oModelSA1:LoadValue("A1_PESSOA","J")
+				Else
+					M->A1_PESSOA := "J"
+				EndIf
+
+			else
+				cRetorno := SubStr(M->A1_CGC,1,9)
+
+				// carrego os valores nos campos do cadastro de clientes
+				If oModelSA1 <> Nil
+					oModelSA1:LoadValue("A1_PESSOA","F")
+				Else
+					M->A1_PESSOA := "F"
+				EndIf
+				
+			endIf
+		endif
+
+	Endif
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} SeqSA1
+Retorna a sequencia, quando estrangeiro
+@type function
+@version 1.0  
+@author g.sampaio
+@since 27/02/2022
+@return character, retorno a sequencia para cliente estrangeiro
+/*/
+Static Function SeqSA1()
+
+	Local cRetorno 		:= ""
+	Local cQuery 		:= ""
+	Local nSequencia 	:= 0
+	Local nTamAux 		:= TamSX3("A1_COD")[1]-2
+
+	if Select("TRBSEQ") > 0
+		TRBSEQ->(dbCloseArea())
+	endif
+
+	cQuery := " SELECT MAX(SUBSTRING(A1_COD,3,"+Alltrim(Str(nTamAux))+")) CODIGO "
+	cQuery += " FROM "+RetSqlName("SA1")+" SA1 "
+	cQuery += " WHERE D_E_L_E_T_ <> '*'"
+	cQuery += "  AND A1_TIPO = 'X'" //exportaçao
+	cQuery += "  AND SUBSTRING(A1_COD,1,2) = 'EX' "
+
+	cQuery := ChangeQuery(cQuery) //comando para evitar erros de incompatibilidade de bancos
+
+	MPSysOpenQuery( cQuery, 'TRBSEQ' )
+
+	if TRBSEQ->(!Eof())
+		nSequencia := val(TRBSEQ->CODIGO) + 1
+	else
+		nSequencia := 1
+	endIf
+
+	cRet := StrZero(nSequencia,nTamAux)
+
+	if Select("TRBSEQ") > 0
+		TRBSEQ->(dbCloseArea())
+	endif
+
+Return(cRetorno)

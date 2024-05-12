@@ -1,0 +1,60 @@
+#Include 'totvs.ch'
+
+User Function VirtusConsultasEspecificas()
+Return(Nil)
+
+/*/{Protheus.doc} UCONSM0
+Consulta Especifica de filiais
+(FILSEL)
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/8/2024
+@return logico, retorno logico da funcao
+/*/
+User Function UCONSM0()
+
+	Local aDados	:= {}
+	Local aEmpresas := FWLoadSM0()
+	Local cTitulo	:= "Selecao de Filiais"
+	Local MvParDef	:= ""
+	Local cVarIni	:= ""
+	Local nX		:= 0
+	Local nFiliais  := 0
+	Local nTamCod	:= TamSX3("UF2_FILIAL")[1]
+
+	Public __xxRetFilial	:= ""
+
+	__xxRetFilial := ""
+
+	cVarIni := &(Alltrim(ReadVar()))
+
+	For nFiliais := 1 To Len(aEmpresas)
+
+		aadd(aDados, AllTrim(aEmpresas[nFiliais, 2]) + " - " + AllTrim(aEmpresas[nFiliais, 7]))
+		MvParDef += AllTrim(aEmpresas[nFiliais, 2])
+
+	Next nFiliais
+
+	If F_Opcoes(@cVarIni, cTitulo, aDados, MvParDef, 12, 49, .F., nTamCod, 36)
+
+		For nX := 1 To Len(cVarIni) Step nTamCod
+
+			If substr(cVarIni, nX, nTamCod) # Replicate("*", nTamCod)
+
+				If !Empty(__xxRetFilial)
+					__xxRetFilial += ";"
+				EndIf
+
+				__xxRetFilial += substr(cVarIni,nX,nTamCod)
+
+			EndIf
+
+		Next nX
+
+	EndIf
+
+Return(.T.)
+
+User Function RUCONSM0()
+Return(__xxRetFilial)

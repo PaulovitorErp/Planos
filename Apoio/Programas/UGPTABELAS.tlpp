@@ -1,0 +1,2023 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+#Define CRLF Chr(13)+Chr(10)
+
+/*/{Protheus.doc} UGPTABELAS
+Programa para compatiblizar e auxiliar
+na importacao do dicionario de dados atual
+para o TOTVS Gestao de Projetos (SIGACFG)
+@type function
+@version 1.0
+@author g.sampaio
+@since 16/01/2021
+/*/
+User function UGPTABELAS()
+
+	Local oNewPag			:= NIL
+	Local oStepWiz 			:= NIL
+	Local oDlg 				:= NIL
+	Local oPanelBkg			:= NIL
+
+	Private cArqRel			:= Space(300)
+	Private cArqProc		:= Space(300)
+	Private nHdlLog			:= 0
+	Private cProjeto    	:= Space(6)
+	Private lCampoUsuario	:= .F.
+	Private lRefazProjeto	:= .F.
+
+	//crio dialog que ira receber o Wizard
+	DEFINE DIALOG oDlg TITLE 'Assistente de Processamento de Compatibilizacao - Virtus ERP' PIXEL STYLE nOR(  WS_VISIBLE ,  WS_POPUP )
+
+	oDlg:nWidth 	:= 800
+	oDlg:nHeight	:= 620
+
+	//crio panel do wizard
+	oPanelBkg:= TPanel():New(0,0,"",oDlg,,,,,,300,300)
+
+	oPanelBkg:Align := CONTROL_ALIGN_ALLCLIENT
+
+	//instacio o objeto do wizard
+	oStepWiz:= FWWizardControl():New(oPanelBkg)//Instancia a classe FWWizard
+	oStepWiz:ActiveUISteps()
+
+	////////////////////////////////////////////////////////
+	///crio a pagina 1 do wizard - Instrucoes Iniciais
+	///////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("1")
+
+	//Altero a descricao do step
+	oNewPag:SetStepDescription("Instrucoes Iniciais")
+
+	//Defino o bloco de construcao
+	oNewPag:SetConstruction({|Panel| Pag1Intrucoes(Panel) })
+
+	//Defino o bloco ao clicar no botao Proximo
+	oNewPag:SetNextAction({||.T.})
+
+	//Defino o bloco ao clicar no botao Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 2 do wizard - Relatorio de Processamento
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("2", {|Panel| RelImport(Panel) })
+
+	//Altero a descricao do step
+	oNewPag:SetStepDescription("Arquivo de Log e Projeto")
+
+	//Defino o bloco ao clicar no botao Proximo
+	oNewPag:SetNextAction({||ValProjeto()})
+
+	//Defino o bloco ao clicar no botao Cancelar
+	oNewPag:SetCancelAction({||oDlg:End()})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 2 do wizard - Processamento da Rotina
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("3", {|Panel| ArqProcess(Panel) })
+
+	//Altero a descricao do step
+	oNewPag:SetStepDescription("Parametros")
+
+	oNewPag:SetNextAction({||oDlg:End(),.T.})
+
+	/////////////////////////////////////////////////////////
+	///crio a pagina 4 do wizard - Processamento da Rotina
+	/////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("4", {|Panel| TelaResult(Panel) })
+
+	//Altero a descricao do step
+	oNewPag:SetStepDescription("Processamento da Rotina")
+
+	oNewPag:SetNextAction({||oDlg:End(),.T.})
+
+	//Defino o bloco ao clicar no botao Cancelar
+	oNewPag:SetCancelAction({||.F.})
+
+	oNewPag:SetCancelWhen({||.F.})
+
+	oNewPag:SetPrevAction({||.F.})
+
+	oStepWiz:Activate()
+
+	ACTIVATE DIALOG oDlg CENTER
+
+	oStepWiz:Destroy()
+
+Return(Nil)
+
+/*/{Protheus.doc} Pag1Intrucoes
+Instrucoes Iniciais do Wizard de Processametno
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oPanel, object, objeto do painel
+/*/
+Static Function Pag1Intrucoes(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local cTexto1		:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Bem Vindo..." SIZE 200, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 += "Esta rotina tem como objetivo ajuda-lo no procedimento de compatibilizacao Virtus ERP" + CRLF
+
+	@ 065 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaPartSup
+Cria parte superior do panel do
+wizard com a logo e texto explicativo
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oPanel, object, objeto do painel
+/*/
+Static Function CriaPartSup(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oSay3 		:= NIL
+	Local oLgTotvs		:= NIL
+	Local oGroup1		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+
+	//carrego a imagem do repositorio
+	@ 003, 003 REPOSITORY oLgTotvs SIZE 90, 90 OF oPanel PIXEL NOBORDER
+	oLgTotvs:LoadBmp("APLOGO.JPG")
+
+	@ 005 , 055 SAY oSay1 PROMPT "Atencao!" SIZE 060, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 020 , 055 SAY oSay2 PROMPT "Siga atentamente os passos para realizar:" SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 030 , 055 SAY oSay3 PROMPT "Compatibilizacao de Dados - Virtus" SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 040 , 020 GROUP oGroup1 TO 042 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} RelImport
+Funcao para montar panel de selecao
+do arquivo de log a ser gerado do
+processamento
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oPanel, object, objeto do painel
+/*/
+Static Function RelImport(oPanel)
+
+	Local cTexto1		:= ""
+	Local cImgArq		:= "icone_file.png"
+	Local cImgFileHover	:= "icone_file_foco.png"
+	Local cCSSBtnFile	:= ""
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oArqRel		:= NIL
+	Local oBtnRel		:= NIL
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe os dados para o processamento" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := " Apos o procedimento o sistema ira gerar um relatorio constando todas informacoes referentes ao processamento.	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 085 , 020 SAY oSay2 PROMPT "Relatorio do Processamento:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 110 , 020 SAY oSay3 PROMPT "Diretorio:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 110 , 070 MSGET oArqRel VAR cArqRel  SIZE 200,010 PIXEL  Font oFnt16 OF oPanel PICTURE "@!"
+
+	@ 132 , 020 SAY oSay2 PROMPT "Projeto a ser compatibilizado:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 149 , 020 GROUP oGroup2 TO 151 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 157 , 020 SAY oSay3 PROMPT "Projeto:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 156 , 070 MSGET oProjeto VAR cProjeto  SIZE 060,010 PIXEL F3 "GPROJE" Font oFnt16 OF oPanel PICTURE "@!" HASBUTTON
+
+	oBtnRel	:= TButton():New(109,275,"" ,oPanel,{|| cArqRel := cGetFile( '*.csv' , 'Diretorio para salvar o relatorio de processamento', 16, , .F.,GETF_LOCALHARD,.F., .T. ) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnRel:SetCss(cCSSBtnFile)
+
+Return(Nil)
+
+/*/{Protheus.doc} ArqProcess
+Funcao para montar panel de selecao
+do arquivo de log a ser gerado do
+processamento
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oPanel, object, objeto do painel
+/*/
+Static Function ArqProcess(oPanel)
+
+	Local cTexto1		:= ""
+	Local cImgArq		:= "icone_file.png"
+	Local cImgFileHover	:= "icone_file_foco.png"
+	Local cCSSBtnFile	:= ""
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oArqRel		:= NIL
+	Local oBtnRel		:= NIL
+	Local oCheckBo1		:= Nil
+	Local oCheckBo2		:= Nil
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe os dados para o processamento" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := "Selecione o arquivo com as tabelas a serem processadas	"
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 085 , 020 SAY oSay2 PROMPT "Aruqivo para Processamento:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 110 , 020 SAY oSay3 PROMPT "Arquivo:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 110 , 070 MSGET oArqRel VAR cArqProc  SIZE 200,010 PIXEL  Font oFnt16 OF oPanel PICTURE "@!"
+
+	@ 132 , 020 SAY oSay2 PROMPT "Parametros:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 149 , 020 GROUP oGroup2 TO 151 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 157 , 020 CHECKBOX oCheckBo1 VAR lCampoUsuario PROMPT "Apenas Campos de Usuário" SIZE 090, 008 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 165 , 020 CHECKBOX oCheckBo2 VAR lRefazProjeto PROMPT "Refaz Projeto" SIZE 090, 008 OF oPanel COLORS 0, 16777215 PIXEL
+
+	oBtnRel	:= TButton():New(110,275,"" ,oPanel,{|| cArqProc := cGetFile( '*.csv' , 'Selecione o arquivo para importação', 16, , .T.,GETF_LOCALHARD,.F., .T. )},22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnRel:SetCss(cCSSBtnFile)
+
+Return(Nil)
+
+/*/{Protheus.doc} VldArqRel
+Funcao para validar o arquivo digitado para
+geracao do relatorio
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+/*/
+
+Static Function VldArqRel(oWriteLog, cTextoLog)
+
+	Local lRet 			:= .T.
+
+	Default oWriteLog	:= Nil
+	Default cTextoLog	:= ""
+
+	if !Empty(cArqRel)
+
+		// crio o objeto de escrita de arquivo
+		oWriter := FWFileWriter():New( AllTrim(cArqRel) + ".log", .T.)
+
+		// se houve falha ao criar, mostra a mensagem
+		If !oWriter:Create()
+
+			MsgStop("Houve um erro ao gerar o arquivo: " + CRLF + oWriter:Error():Message, "Atenção")
+
+			lRet := .F.
+			Help(,,'Help',,"Nao foi possivel criar o arquivo de relatorio de processamento, favor o diretorio selecionado!" + CRLF + oWriter:Error():Message,1,0)
+
+		Else// senão, continua com o processamento
+
+			// escreve uma frase qualquer no arquivo
+			oWriter:Write( cTextoLog + CRLF)
+
+			// encerra o arquivo
+			oWriter:Close()
+
+		EndIf
+
+	endif
+
+Return(lRet)
+
+/*/{Protheus.doc} TelaResult
+Funcao para montar tela de resultado final
+do processamento
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oPanel, object, objeto do painel
+/*/										
+Static Function TelaResult(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oGroup1		:= NIL
+	Local oProcessados	:= NIL
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cTexto1		:= ""
+	Local nRowsProces	:= 0
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	FWMsgRun(,{|oSay| ProcessaRotina(oSay,@nRowsProces)},'Aguarde...','Processando Compatibilizacao de Dados.')
+
+	@ 045 , 020 SAY oSay4 PROMPT "Processo de Compatibilizacao de dados - Totvs Servicos Postumos" SIZE 300, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := "Processo finalizado, abaixo segue os dados processados com sucesso!	" + CRLF
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Resultado do Processamento:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 107 , 020 SAY oSay3 PROMPT "Contratos Processados:" SIZE 080, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 100 MSGET oProcessados VAR nRowsProces  SIZE 080,010 READONLY PIXEL  Font oFnt16 OF oPanel PICTURE "@E 9999999"
+
+	@ 140 , 020 BUTTON oBtnImp PROMPT "Visualizar Log" SIZE 070, 015 OF oPanel PIXEL ACTION (if(!Empty(cArqRel),ShellExecute("Open", cArqRel + ".log", " ", "C:\", 1 ),.T.))
+
+Return(Nil)
+
+/*/{Protheus.doc} ProcessaRotina
+Funcao para tratar os dados dos arquivos
+e gerar executar processamento
+@author g.sampaio
+@type function
+@since 16/01/2021
+@version P12
+@param oSay, object, objeto da tela de processamento
+@param oSay, numeric, numero de registros processados
+/*/
+
+Static Function ProcessaRotina(oSay, nProcess)
+
+	Local aArea 		As Array
+	Local aFile			As Array
+	Local cTextoLog		As Character
+	Local nTabelas		As Numeric
+	Local oReader		As Object
+	Local oWriteLog		As Object
+
+	// atribuo valor nas variaveis
+	aArea 		:= GetArea()
+	aFile		:= {}
+	cTextoLog	:= ""
+	nTabelas	:= 0
+	oReader		:= Nil
+	oWriteLog	:= Nil
+
+	Default nProcess	:= 0
+
+	// le o arquivo a ser importado
+	oReader := FWFileReader():New(Lower(cArqProc))
+
+	// verifico se abriu o arquivo
+	if (oReader:Open())
+
+		// retorna as linhas do arquivo em um array
+		aFile := oReader:getAllLines()
+
+		oReader:Close()
+
+	endIf
+
+	// percorro as tabelas preenchidas no arquivo
+	for nTabelas := 1 to Len(aFile)
+
+		// escrevo o log
+		cTextoLog += "#########  COMPATIBILIZACAO DE DADOS VIRTUS #############" + CRLF
+		cTextoLog += " >> Projeto processado: " + cProjeto + CRLF
+		cTextoLog += " >> Data Inicio: " + DTOC( Date() ) + CRLF
+		cTextoLog += " >> Hora Inicio: " + Time() + CRLF
+
+		//==================================================
+		// Compatibilizar a SX2 no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SX2 (Tabelas)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSX2GP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SX3 no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SX3 (Campos)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSX3GP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SIX no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SIX (Indices)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSIXGP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SX7 no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SX7 (Gatilhos)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSX7GP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SXA no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SXA (Pastas e Agrupamentos)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSXAGP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SXB no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SXB (Consultas Padrão)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSXBGP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		//==================================================
+		// Compatibilizar a SXG no TOTVS Gestão de Projetos
+		//==================================================
+
+		// escrevo o log
+		cTextoLog += " >> Reprocessamento de Gestão de Projetos - SXG (Grupo de Campos)"
+		cTextoLog += CRLF
+
+		// reprocessamento de regras de contrato
+		RepSXGGP( oSay, @nProcess, @cTextoLog, aFile[nTabelas] )
+
+		cTextoLog += "Registros processados: " + cValToChar(nProcess) + CRLF
+		cTextoLog += "######### FIM DO PROCESSAMENTO #############" + CRLF
+
+		// verifico se preecheu o arquivo de log
+		if !Empty(cTextoLog)
+
+			// gero o arquivo de log
+			VldArqRel(@oWriteLog, cTextoLog)
+
+		endIf
+
+	next nConta
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSX2GP
+rotina de reprocessamento de regras de contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2020
+@param oSay, object, objeto da barra de processaemnto
+@param nProcess, numeric, controle do arquivo de log
+/*/
+Static Function RepSX2GP( oSay, nProcess, cTextoLog, cAliasTab )
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SX2X31" + cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT
+	cQuery	+= " 	SX2.X2_CHAVE,"
+	cQuery	+= " 	SX2.X2_PATH,"
+	cQuery	+= " 	SX2.X2_ARQUIVO,"
+	cQuery	+= " 	SX2.X2_NOME,"
+	cQuery	+= " 	SX2.X2_NOMESPA,"
+	cQuery	+= " 	SX2.X2_NOMEENG,"
+	cQuery	+= " 	SX2.X2_ROTINA,"
+	cQuery	+= " 	SX2.X2_MODO,"
+	cQuery	+= " 	SX2.X2_MODOUN,"
+	cQuery	+= " 	SX2.X2_MODOEMP,"
+	cQuery	+= " 	SX2.X2_DELET,"
+	cQuery	+= " 	SX2.X2_TTS,"
+	cQuery 	+= " 	SX2.X2_UNICO,"
+	cQuery	+= " 	SX2.X2_PYME,"
+	cQuery	+= " 	SX2.X2_MODULO,"
+	cQuery	+= " 	SX2.X2_DISPLAY,"
+	cQuery	+= " 	SX2.X2_SYSOBJ,"
+	cQuery	+= " 	SX2.X2_USROBJ,"
+	cQuery	+= " 	SX2.X2_POSLGT,"
+	cQuery	+= " 	SX2.X2_CLOB,"
+	cQuery	+= " 	SX2.X2_AUTREC,"
+	cQuery	+= " 	SX2.X2_TAMFIL,"
+	cQuery	+= " 	SX2.X2_TAMUN,"
+	cQuery	+= " 	SX2.X2_TAMEMP,"
+	cQuery	+= " 	SX2.R_E_C_N_O_"
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SX2")), "SX2"+cEmpAnt+"0", RetSqlName("SX2")) + " SX2 "
+	cQuery	+= " WHERE SX2.D_E_L_E_T_ = ' ' "
+	cQuery	+= " AND SX2.X2_CHAVE IN " + FormatIn( AllTrim(cAliasTab),";")
+	cQuery	+= "   AND NOT EXISTS
+	cQuery	+= "     ( SELECT SX2GP.X2_CHAVE
+	cQuery	+= "      FROM " + cAliasGP + " SX2GP "
+	cQuery	+= "      WHERE SX2GP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "        AND SX2GP.X2_CHAVE = SX2.X2_CHAVE "
+	cQuery	+= "        AND SX2GP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->X2_CHAVE) 		// [1]
+		aAdd( aAuxInsert, TRBREG->X2_PATH)			// [2]
+		aAdd( aAuxInsert, TRBREG->X2_ARQUIVO)		// [3]
+		aAdd( aAuxInsert, TRBREG->X2_NOME)			// [4]
+		aAdd( aAuxInsert, TRBREG->X2_NOMESPA)		// [5]
+		aAdd( aAuxInsert, TRBREG->X2_NOMEENG)		// [6]
+		aAdd( aAuxInsert, TRBREG->X2_ROTINA)		// [7]
+		aAdd( aAuxInsert, TRBREG->X2_MODO)			// [8]
+		aAdd( aAuxInsert, TRBREG->X2_MODOUN)		// [9]
+		aAdd( aAuxInsert, TRBREG->X2_MODOEMP)		// [10]
+		aAdd( aAuxInsert, TRBREG->X2_DELET)			// [11]
+		aAdd( aAuxInsert, TRBREG->X2_TTS)			// [12]
+		aAdd( aAuxInsert, TRBREG->X2_UNICO)			// [13]
+		aAdd( aAuxInsert, TRBREG->X2_PYME)			// [14]
+		aAdd( aAuxInsert, TRBREG->X2_MODULO)		// [15]
+		aAdd( aAuxInsert, TRBREG->X2_DISPLAY)		// [16]
+		aAdd( aAuxInsert, TRBREG->X2_SYSOBJ)		// [17]
+		aAdd( aAuxInsert, TRBREG->X2_USROBJ)		// [18]
+		aAdd( aAuxInsert, TRBREG->X2_POSLGT)		// [19]
+		aAdd( aAuxInsert, TRBREG->X2_CLOB)			// [20]
+		aAdd( aAuxInsert, TRBREG->X2_AUTREC)		// [21]
+		aAdd( aAuxInsert, TRBREG->X2_TAMFIL)		// [22]
+		aAdd( aAuxInsert, TRBREG->X2_TAMUN)			// [23]
+		aAdd( aAuxInsert, TRBREG->X2_TAMEMP)		// [24]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_)		// [25]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Tabela: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSX3GP
+rotina de reprocessamento de regras de contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/04/2020
+@param oSay, object, objeto da barra de processaemnto
+@param nProcess, numeric, controle do arquivo de log
+/*/
+Static Function RepSX3GP( oSay, nProcess, cTextoLog, cAliasTab )
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP	As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SX3X31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT "
+	cQuery	+= " 	SX3.X3_ARQUIVO, "
+	cQuery	+= " 	SX3.X3_ORDEM, "
+	cQuery	+= " 	SX3.X3_CAMPO, "
+	cQuery	+= " 	SX3.X3_TIPO, "
+	cQuery	+= " 	SX3.X3_TAMANHO, "
+	cQuery	+= " 	SX3.X3_DECIMAL, "
+	cQuery	+= " 	SX3.X3_TITULO, "
+	cQuery	+= " 	SX3.X3_TITSPA, "
+	cQuery	+= " 	SX3.X3_TITENG, "
+	cQuery	+= " 	SX3.X3_DESCRIC, "
+	cQuery	+= " 	SX3.X3_DESCSPA, "
+	cQuery	+= " 	SX3.X3_DESCENG, "
+	cQuery	+= " 	SX3.X3_PICTURE, "
+	cQuery	+= " 	SX3.X3_VALID, "
+	cQuery	+= " 	SX3.X3_USADO, "
+	cQuery	+= " 	SX3.X3_RELACAO, "
+	cQuery	+= " 	SX3.X3_F3, "
+	cQuery	+= " 	SX3.X3_NIVEL, "
+	cQuery	+= " 	SX3.X3_RESERV, "
+	cQuery	+= " 	SX3.X3_CHECK, "
+	cQuery	+= " 	SX3.X3_TRIGGER, "
+	cQuery	+= " 	SX3.X3_PROPRI, "
+	cQuery	+= " 	SX3.X3_BROWSE, "
+	cQuery	+= " 	SX3.X3_VISUAL, "
+	cQuery	+= " 	SX3.X3_CONTEXT, "
+	cQuery	+= " 	SX3.X3_OBRIGAT, "
+	cQuery	+= " 	SX3.X3_VLDUSER, "
+	cQuery	+= " 	SX3.X3_CBOX, "
+	cQuery	+= " 	SX3.X3_CBOXSPA, "
+	cQuery	+= " 	SX3.X3_CBOXENG, "
+	cQuery	+= " 	SX3.X3_PICTVAR, "
+	cQuery	+= " 	SX3.X3_WHEN, "
+	cQuery	+= " 	SX3.X3_INIBRW, "
+	cQuery	+= " 	SX3.X3_GRPSXG, "
+	cQuery	+= " 	SX3.X3_FOLDER, "
+	cQuery	+= " 	SX3.X3_PYME, "
+	cQuery	+= " 	SX3.X3_CONDSQL, "
+	cQuery	+= " 	SX3.X3_CHKSQL, "
+	cQuery	+= " 	SX3.X3_IDXSRV, "
+	cQuery	+= " 	SX3.X3_ORTOGRA, "
+	cQuery	+= " 	SX3.X3_IDXFLD, "
+	cQuery	+= " 	SX3.X3_TELA, "
+	cQuery	+= " 	SX3.X3_PICBRV, "
+	cQuery	+= " 	SX3.X3_AGRUP, "
+	cQuery	+= " 	SX3.X3_POSLGT, "
+	cQuery	+= " 	SX3.X3_MODAL, "
+	cQuery	+= " 	SX3.R_E_C_N_O_"
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SX3")), "SX3"+cEmpAnt+"0", RetSqlName("SX3")) + " SX3 "
+	cQuery	+= " WHERE SX3.D_E_L_E_T_ = ' ' "
+	cQuery	+= " AND SX3.X3_ARQUIVO IN " + FormatIn( AllTrim(cAliasTab),";") + " "
+
+	// pego apenas os campos de usuario
+	if lCampoUsuario
+		cQuery += " AND SX3.X3_PROPRI = 'U' "
+	endIf
+
+	cQuery	+= "   AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SX3GP.X3_CAMPO "
+	cQuery	+= "      FROM " + cAliasGP + " SX3GP "
+	cQuery	+= "      WHERE SX3GP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SX3GP.X3_CAMPO = SX3.X3_CAMPO "
+	cQuery	+= "        AND SX3GP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->X3_ARQUIVO) 		// [1]
+		aAdd( aAuxInsert, TRBREG->X3_ORDEM)			// [2]
+		aAdd( aAuxInsert, TRBREG->X3_CAMPO)			// [3]
+		aAdd( aAuxInsert, TRBREG->X3_TIPO)			// [4]
+		aAdd( aAuxInsert, TRBREG->X3_TAMANHO)		// [5]
+		aAdd( aAuxInsert, TRBREG->X3_DECIMAL)		// [6]
+		aAdd( aAuxInsert, TRBREG->X3_TITULO)		// [7]
+		aAdd( aAuxInsert, TRBREG->X3_TITSPA)		// [8]
+		aAdd( aAuxInsert, TRBREG->X3_TITENG)		// [9]
+		aAdd( aAuxInsert, TRBREG->X3_DESCRIC)		// [10]
+		aAdd( aAuxInsert, TRBREG->X3_DESCSPA)		// [11]
+		aAdd( aAuxInsert, TRBREG->X3_DESCENG)		// [12]
+		aAdd( aAuxInsert, TRBREG->X3_PICTURE)		// [13]
+		aAdd( aAuxInsert, TRBREG->X3_VALID)			// [14]
+		aAdd( aAuxInsert, TRBREG->X3_USADO)			// [15]
+		aAdd( aAuxInsert, TRBREG->X3_RELACAO)		// [16]
+		aAdd( aAuxInsert, TRBREG->X3_F3)			// [17]
+		aAdd( aAuxInsert, TRBREG->X3_NIVEL)			// [18]
+		aAdd( aAuxInsert, TRBREG->X3_RESERV)		// [19]
+		aAdd( aAuxInsert, TRBREG->X3_CHECK)			// [20]
+		aAdd( aAuxInsert, TRBREG->X3_TRIGGER)		// [21]
+		aAdd( aAuxInsert, TRBREG->X3_PROPRI)		// [22]
+		aAdd( aAuxInsert, TRBREG->X3_BROWSE)		// [23]
+		aAdd( aAuxInsert, TRBREG->X3_VISUAL)		// [24]
+		aAdd( aAuxInsert, TRBREG->X3_CONTEXT)		// [25]
+		aAdd( aAuxInsert, TRBREG->X3_OBRIGAT)		// [26]
+		aAdd( aAuxInsert, TRBREG->X3_VLDUSER)		// [27]
+		aAdd( aAuxInsert, TRBREG->X3_CBOX)			// [28]
+		aAdd( aAuxInsert, TRBREG->X3_CBOXSPA)		// [29]
+		aAdd( aAuxInsert, TRBREG->X3_CBOXENG)		// [30]
+		aAdd( aAuxInsert, TRBREG->X3_PICTVAR)		// [31]
+		aAdd( aAuxInsert, TRBREG->X3_WHEN)			// [32]
+		aAdd( aAuxInsert, TRBREG->X3_INIBRW)		// [33]
+		aAdd( aAuxInsert, TRBREG->X3_GRPSXG)		// [34]
+		aAdd( aAuxInsert, TRBREG->X3_FOLDER)		// [35]
+		aAdd( aAuxInsert, TRBREG->X3_PYME)			// [36]
+		aAdd( aAuxInsert, TRBREG->X3_CONDSQL)		// [37]
+		aAdd( aAuxInsert, TRBREG->X3_CHKSQL)		// [38]
+		aAdd( aAuxInsert, TRBREG->X3_IDXSRV)		// [39]
+		aAdd( aAuxInsert, TRBREG->X3_ORTOGRA)		// [40]
+		aAdd( aAuxInsert, TRBREG->X3_IDXFLD)		// [41]
+		aAdd( aAuxInsert, TRBREG->X3_TELA)			// [42]
+		aAdd( aAuxInsert, TRBREG->X3_PICBRV)		// [43]
+		aAdd( aAuxInsert, TRBREG->X3_AGRUP)			// [44]
+		aAdd( aAuxInsert, TRBREG->X3_POSLGT)		// [45]
+		aAdd( aAuxInsert, TRBREG->X3_MODAL)			// [46]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_)		// [47]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Tabela: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Campo: " + aDadosInsert[nContaInsert][3] + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSIXGP
+description
+@type function
+@version  
+@author g.sampaio
+@since 28/01/2021
+@param oSay, object, param_description
+@param nProcess, numeric, param_description
+@param cTextoLog, Characteracter, param_description
+@param cAliasTab, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function RepSIXGP(oSay, nProcess, cTextoLog, cAliasTab)
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SIXX31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT "
+	cQuery	+= " 	SIX.INDICE,
+	cQuery	+= " 	SIX.ORDEM,
+	cQuery	+= " 	SIX.CHAVE,
+	cQuery	+= " 	SIX.DESCRICAO,
+	cQuery	+= " 	SIX.DESCSPA,
+	cQuery	+= " 	SIX.DESCENG,
+	cQuery	+= " 	SIX.PROPRI,
+	cQuery	+= " 	SIX.F3,
+	cQuery	+= " 	SIX.NICKNAME,
+	cQuery	+= " 	SIX.SHOWPESQ,
+	cQuery	+= " 	SIX.IX_VIRTUAL,
+	cQuery	+= " 	SIX.IX_VIRCUST,
+	cQuery	+= " 	SIX.R_E_C_N_O_"
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SIX")), "SIX"+cEmpAnt+"0", RetSqlName("SIX")) + " SIX "
+	cQuery	+= " WHERE SIX.D_E_L_E_T_ = ' ' "
+	cQuery	+= " AND SIX.INDICE IN " + FormatIn( AllTrim(cAliasTab),";") + " "
+
+	// pego apenas os campos de usuario
+	if lCampoUsuario
+		cQuery += " AND SIX.PROPRI = 'U' "
+	endIf
+
+	cQuery	+= "   AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SIXGP.INDICE "
+	cQuery	+= "      FROM " + cAliasGP + " SIXGP "
+	cQuery	+= "      WHERE SIXGP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SIXGP.INDICE = SIX.INDICE "
+	cQuery	+= "        AND SIXGP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->INDICE) 		// [1]
+		aAdd( aAuxInsert, TRBREG->ORDEM) 		// [2]
+		aAdd( aAuxInsert, TRBREG->CHAVE) 		// [3]
+		aAdd( aAuxInsert, TRBREG->DESCRICAO) 	// [4]
+		aAdd( aAuxInsert, TRBREG->DESCSPA) 		// [5]
+		aAdd( aAuxInsert, TRBREG->DESCENG) 		// [6]
+		aAdd( aAuxInsert, TRBREG->PROPRI) 		// [7]
+		aAdd( aAuxInsert, TRBREG->F3) 			// [8]
+		aAdd( aAuxInsert, TRBREG->NICKNAME) 	// [9]
+		aAdd( aAuxInsert, TRBREG->SHOWPESQ) 	// [10]
+		aAdd( aAuxInsert, TRBREG->IX_VIRTUAL) 	// [11]
+		aAdd( aAuxInsert, TRBREG->IX_VIRCUST) 	// [12]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_) 	// [13]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Tabela: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Indice: " + aDadosInsert[nContaInsert][2] + CRLF
+		cTextoLog += " >> Chave: " + aDadosInsert[nContaInsert][3] + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSX7GP
+description
+@type function
+@version  
+@author g.sampaio
+@since 28/01/2021
+@param oSay, object, param_description
+@param nProcess, numeric, param_description
+@param cTextoLog, Characteracter, param_description
+@param cAliasTab, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function RepSX7GP(oSay, nProcess, cTextoLog, cAliasTab)
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP	:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SX7X31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT "
+	cQuery	+= " 	SX7.X7_CAMPO,
+	cQuery	+= " 	SX7.X7_SEQUENC,
+	cQuery	+= " 	SX7.X7_REGRA,
+	cQuery	+= " 	SX7.X7_CDOMIN,
+	cQuery	+= " 	SX7.X7_TIPO,
+	cQuery	+= " 	SX7.X7_SEEK,
+	cQuery	+= " 	SX7.X7_ALIAS,
+	cQuery	+= " 	SX7.X7_ORDEM,
+	cQuery	+= " 	SX7.X7_CHAVE,
+	cQuery	+= " 	SX7.X7_CONDIC,
+	cQuery	+= " 	SX7.X7_PROPRI,
+	cQuery	+= " 	SX7.D_E_L_E_T_,
+	cQuery	+= " 	SX7.R_E_C_N_O_,
+	cQuery	+= " 	SX7.R_E_C_D_E_L_
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SX7")), "SX7"+cEmpAnt+"0", RetSqlName("SX7")) + " SX7 "
+	cQuery	+= " WHERE SX7.D_E_L_E_T_ = ' ' "
+
+	// pego apenas os campos de usuario
+	if lCampoUsuario
+		cQuery += " AND SX7.X7_PROPRI = 'U' "
+	endIf
+
+	cQuery 	+= " AND EXISTS(
+	cQuery 	+= " 			SELECT X3_CAMPO FROM "+ RetSqlName("SX3") +" SX3
+	cQuery 	+= " 			WHERE SX3.D_E_L_E_T_ = ' '
+	cQuery 	+= " 			AND (SX3.X3_CAMPO = SX7.X7_CAMPO OR SX3.X3_CAMPO = SX7.X7_CDOMIN )
+	cQuery 	+= " 			AND SX3.X3_ARQUIVO IN " + FormatIn( AllTrim(cAliasTab),";") + ")"
+	cQuery	+= " AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SX7GP.X7_CAMPO  "
+	cQuery	+= "      FROM " + cAliasGP + " SX7GP "
+	cQuery	+= "      WHERE SX7GP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SX7GP.X7_CAMPO = SX7.X7_CAMPO "
+	cQuery 	+= "		AND SX7GP.X7_SEQUENC = SX7.X7_SEQUENC "
+	cQuery	+= "        AND SX7GP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->X7_CAMPO) 		// [1]
+		aAdd( aAuxInsert, TRBREG->X7_SEQUENC) 		// [2]
+		aAdd( aAuxInsert, TRBREG->X7_REGRA) 		// [3]
+		aAdd( aAuxInsert, TRBREG->X7_CDOMIN) 		// [4]
+		aAdd( aAuxInsert, TRBREG->X7_TIPO) 			// [5]
+		aAdd( aAuxInsert, TRBREG->X7_SEEK) 			// [6]
+		aAdd( aAuxInsert, TRBREG->X7_ALIAS) 		// [7]
+		aAdd( aAuxInsert, TRBREG->X7_ORDEM) 		// [8]
+		aAdd( aAuxInsert, TRBREG->X7_CHAVE) 		// [10]
+		aAdd( aAuxInsert, TRBREG->X7_CONDIC) 		// [11]
+		aAdd( aAuxInsert, TRBREG->X7_PROPRI) 		// [12]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_) 		// [13]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+		cTextoLog += " >> Campo: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Sequencia: " + aDadosInsert[nContaInsert][2] + CRLF
+		cTextoLog += " >> Contra Dominio: " + aDadosInsert[nContaInsert][4] + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSXAGP
+description
+@type function
+@version  
+@author g.sampaio
+@since 28/01/2021
+@param oSay, object, param_description
+@param nProcess, numeric, param_description
+@param cTextoLog, Characteracter, param_description
+@param cAliasTab, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function RepSXAGP(oSay, nProcess, cTextoLog, cAliasTab)
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SXAX31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT "
+	cQuery	+= " 	SXA.XA_ALIAS,
+	cQuery	+= " 	SXA.XA_ORDEM,
+	cQuery	+= " 	SXA.XA_DESCRIC,
+	cQuery	+= " 	SXA.XA_DESCSPA,
+	cQuery	+= " 	SXA.XA_DESCENG,
+	cQuery	+= " 	SXA.XA_PROPRI,
+	cQuery	+= " 	SXA.XA_AGRUP,
+	cQuery	+= " 	SXA.XA_TIPO,
+	cQuery	+= " 	SXA.R_E_C_N_O_
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SXA")), "SXA"+cEmpAnt+"0", RetSqlName("SXA")) + " SXA "
+	cQuery	+= " WHERE SXA.D_E_L_E_T_ = ' ' "
+	cQuery	+= " AND SXA.XA_ALIAS IN " + FormatIn( AllTrim(cAliasTab),";") + " "
+
+	// pego apenas os campos de usuario
+	if lCampoUsuario
+		cQuery += " AND SXA.XA_PROPRI = 'U' "
+	endIf
+
+	cQuery	+= "   AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SXAGP.XA_ALIAS "
+	cQuery	+= "      FROM " + cAliasGP + " SXAGP "
+	cQuery	+= "      WHERE SXAGP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SXAGP.XA_ALIAS = SXA.XA_ALIAS "
+	cQuery	+= "        AND SXAGP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->XA_ALIAS) 	// [1]
+		aAdd( aAuxInsert, TRBREG->XA_ORDEM) 	// [2]
+		aAdd( aAuxInsert, TRBREG->XA_DESCRIC) 	// [3]
+		aAdd( aAuxInsert, TRBREG->XA_DESCSPA) 	// [4]
+		aAdd( aAuxInsert, TRBREG->XA_DESCENG) 	// [5]
+		aAdd( aAuxInsert, TRBREG->XA_PROPRI) 	// [6]
+		aAdd( aAuxInsert, TRBREG->XA_AGRUP) 	// [7]
+		aAdd( aAuxInsert, TRBREG->XA_TIPO) 		// [8]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_) 	// [10]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+		cTextoLog += " >> Tabela: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Ordem: " + aDadosInsert[nContaInsert][2] + CRLF
+		cTextoLog += " >> Descricao Pasta: " + aDadosInsert[nContaInsert][3] + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSXBGP
+description
+@type function
+@version  
+@author g.sampaio
+@since 28/01/2021
+@param oSay, object, param_description
+@param nProcess, numeric, param_description
+@param cTextoLog, Characteracter, param_description
+@param cAliasTab, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function RepSXBGP(oSay, nProcess, cTextoLog, cAliasTab)
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SXBX31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT "
+	cQuery	+= " 	XB_ALIAS, "
+	cQuery	+= " 	XB_TIPO, "
+	cQuery	+= " 	XB_SEQ, "
+	cQuery	+= " 	XB_COLUNA, "
+	cQuery	+= " 	XB_DESCRI, "
+	cQuery	+= " 	XB_DESCSPA, "
+	cQuery	+= " 	XB_DESCENG, "
+	cQuery	+= " 	XB_CONTEM, "
+	cQuery	+= " 	XB_WCONTEM, "
+	cQuery	+= " 	R_E_C_N_O_ "
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SXB")), "SXB"+cEmpAnt+"0", RetSqlName("SXB")) + " SXB "
+	cQuery	+= " WHERE SXB.D_E_L_E_T_ = ' ' "
+	cQuery 	+= " AND EXISTS( "
+	cQuery 	+= " 			SELECT X3_CAMPO FROM "+ RetSqlName("SX3") +" SX3 "
+	cQuery 	+= " 			WHERE SX3.D_E_L_E_T_ = ' ' "
+	cQuery 	+= " 			AND SX3.X3_F3 = SXB.XB_ALIAS "
+	cQuery 	+= " 			AND SX3.X3_ARQUIVO IN " + FormatIn( AllTrim(cAliasTab),";") + ") "
+	cQuery	+= "   AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SXBGP.XB_ALIAS "
+	cQuery	+= "      FROM " + cAliasGP + " SXBGP "
+	cQuery	+= "      WHERE SXBGP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SXBGP.XB_ALIAS = SXB.XB_ALIAS "
+	cQuery	+= "        AND SXBGP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->XB_ALIAS) 	// [1]
+		aAdd( aAuxInsert, TRBREG->XB_TIPO) 		// [2]
+		aAdd( aAuxInsert, TRBREG->XB_SEQ) 		// [3]
+		aAdd( aAuxInsert, TRBREG->XB_COLUNA) 	// [4]
+		aAdd( aAuxInsert, TRBREG->XB_DESCRI) 	// [5]
+		aAdd( aAuxInsert, TRBREG->XB_DESCSPA) 	// [6]
+		aAdd( aAuxInsert, TRBREG->XB_DESCENG) 	// [7]
+		aAdd( aAuxInsert, TRBREG->XB_CONTEM) 	// [8]
+		aAdd( aAuxInsert, TRBREG->XB_WCONTEM) 	// [9]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_) 	// [10]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+		cTextoLog += " >> Tabela: " + aDadosInsert[nContaInsert][1] + CRLF
+		cTextoLog += " >> Ordem: " + aDadosInsert[nContaInsert][2] + CRLF
+		cTextoLog += " >> Descricao: " + aDadosInsert[nContaInsert][3] + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} RepSXGGP
+reprocessamento da SXG
+@type function
+@version 1.0  
+@author g.sampaio
+@since 01/02/2021
+@param oSay, object, param_description
+@param nProcess, numeric, param_description
+@param cTextoLog, Characteracter, param_description
+@param cAliasTab, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function RepSXGGP(oSay, nProcess, cTextoLog, cAliasTab)
+
+	Local aArea			As Array
+	Local aDadosInsert	As Array
+	Local aAuxInsert	As Array
+	Local cQuery		As Character
+	Local cAliasGP		As Character
+	Local nContaInsert	As Numeric
+
+	Default nProcess 	:= 0
+	Default cTextoLog	:= ""
+	Default cAliasTab	:= ""
+
+	// atribuo valor as variaveis
+	aArea 			:= GetArea()
+	aDadosInsert	:= {}
+	cQuery			:= ""
+	cAliasGP		:= ""
+
+	// alias da tabela do GESTAO de Projetos
+	cAliasGP := "SXGX31"+cEmpAnt
+
+	if lRefazProjeto
+
+		// funcao para limpar os registros do alias
+		LimpaProjeto(cAliasGP, cProjeto, @cTextoLog )
+
+	endIf
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// query de contrato
+	cQuery	:= " SELECT SXG.XG_GRUPO, "
+	cQuery	+= " SXG.XG_DESCRI, "
+	cQuery	+= " SXG.XG_DESSPA, "
+	cQuery	+= " SXG.XG_DESENG, "
+	cQuery	+= " SXG.XG_SIZEMAX, "
+	cQuery	+= " SXG.XG_SIZEMIN, "
+	cQuery	+= " SXG.XG_SIZE, "
+	cQuery	+= " SXG.XG_PICTURE, "
+	cQuery	+= " SXG.XG_CHECK1, "
+	cQuery	+= " SXG.XG_CHECK2, "
+	cQuery	+= " SXG.R_E_C_N_O_ "
+	cQuery	+= " FROM " + iif(Empty(RetSqlName("SXG")), "SXG"+cEmpAnt+"0", RetSqlName("SXG")) + " SXG "
+	cQuery 	+= " WHERE SXG.D_E_L_E_T_ = ' '"
+	cquery 	+= "   AND SXG.XG_GRUPO IN ('X01', 'X02', 'X03', 'X04', 'X05', 'X06', 'X07', 'X08') "
+	cQuery	+= "   AND NOT EXISTS "
+	cQuery	+= "     ( SELECT SXGGP.XG_GRUPO "
+	cQuery	+= "      FROM " + cAliasGP + " SXGGP "
+	cQuery	+= "      WHERE SXGGP.D_E_L_E_T_ = ' ' "
+	cQuery	+= "      	AND SXGGP.XG_GRUPO = SXG.XG_GRUPO "
+	cQuery	+= "        AND SXGGP.ID_PACKAGE = '" + cProjeto + "' )"
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBREG"
+
+	// percorro os registros dos contratos
+	While TRBREG->(!Eof())
+
+		// limpo a variavel de dados para insert no banco de dados
+		aAuxInsert := {}
+
+		aAdd( aAuxInsert, TRBREG->XG_GRUPO) 	// [1]
+		aAdd( aAuxInsert, TRBREG->XG_DESCRI) 	// [2]
+		aAdd( aAuxInsert, TRBREG->XG_DESSPA) 	// [3]
+		aAdd( aAuxInsert, TRBREG->XG_DESENG) 	// [4]
+		aAdd( aAuxInsert, TRBREG->XG_SIZEMAX) 	// [5]
+		aAdd( aAuxInsert, TRBREG->XG_SIZEMIN) 	// [6]
+		aAdd( aAuxInsert, TRBREG->XG_SIZE) 		// [7]
+		aAdd( aAuxInsert, TRBREG->XG_PICTURE) 	// [8]
+		aAdd( aAuxInsert, TRBREG->XG_CHECK1) 	// [9]
+		aAdd( aAuxInsert, TRBREG->XG_CHECK2) 	// [10]
+		aAdd( aAuxInsert, TRBREG->R_E_C_N_O_) 	// [11]
+
+		// alimento o array de dados
+		aAdd( aDadosInsert, aAuxInsert)
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+		TRBREG->(DbSkip())
+	EndDo
+
+	If Select("TRBREG") > 0
+		TRBREG->( DbCloseArea() )
+	EndIf
+
+	// percorro os dados para insert
+	For nContaInsert := 1 To Len(aDadosInsert)
+
+		// escrevo o log
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+		cTextoLog += " >> Projeto: " + cProjeto + CRLF
+		cTextoLog += " >> Grupo de campos: " + aDadosInsert[nContaInsert][1] + CRLF
+
+		// funcao para gravar os dados do banco de dados
+		if InsertDB(cAliasGP, aDadosInsert[nContaInsert], cProjeto, @cTextoLog)
+
+			nProcess++
+
+		endIf
+
+		cTextoLog += " >> ----------------------------------------- <<" + CRLF
+
+	Next nContaInsert
+
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} UCONSGPT
+Consulta para exibir os projetos cadastrados
+@author g.sampaio
+@type function
+@since 30/05/2019
+@version P12
+@return logical, retorno da rotina verdadeiro
+/*/
+
+User Function UCONSGPT()
+
+	Local aArea 			As Array
+	Local aDados			As Array
+	Local aRetorno			As Array
+	Local cTitulo			As Character
+	Local cQuery            As Character
+	Local cPesq				As Character
+	Local lRetorno			As Logical
+	Local nX				As numeric
+	Local oLblProj			As Object
+	Local oDlgProj			As Object
+
+	Public __xcRetProjeto 	:= ""
+
+	aArea 			:= GetArea()
+	aDados			:= {}
+	aRetorno		:= {}
+	cTitulo			:= "Consulta Projetos"
+	cQuery          := ""
+	cPesq			:= Space(10)
+	lRetorno		:= .T.
+	nX				:= 0
+	oLblProj		:= Nil
+	oDlgProj		:= Nil
+
+	// caso a variavel publica estiver preenchida, eu limpo
+	If !Empty(__xcRetProjeto)
+		__xcRetProjeto := ""
+	EndIf
+
+	if Select("TRBPRJ") > 0
+		TRBPRJ->(DbCloseArea())
+	endIf
+
+	// query para buscar os projetos cadastrados
+	cQuery := " SELECT PCK_CODIGO CODIGO, PCK_DESC DESCRICAO "
+	cQuery += " FROM SYS_BCAST_PACKAGE_" + cEmpAnt + " GPROJETOS "
+	cQuery += " WHERE GPROJETOS.D_E_L_E_T_ = ' ' "
+	cQuery += " AND GPROJETOS.PCK_STATUS = '1' "
+
+	TcQuery cQuery New Alias "TRBPRJ"
+
+	While TRBPRJ->(!Eof())
+
+		Aadd( aDados, { TRBPRJ->CODIGO, TRBPRJ->DESCRICAO } )
+
+		TRBPRJ->(DbSkip())
+	EndDo
+
+	// verifico se existem dados para montar a grid
+	If Len( aDados ) > 0
+
+		DEFINE MSDIALOG oDlgProj TITLE cTitulo FROM 0,0 TO 240,500 PIXEL
+
+		@ 10,10 LISTBOX oLblProj FIELDS HEADER "Item", "Indicador", "Descrição"  SIZE 230,95 OF oDlgProj PIXEL
+
+		oLblProj:SetArray( aDados )
+		oLblProj:bLine     	:= {|| { aDados[oLblProj:nAt,1], aDados[oLblProj:nAt,2] }}
+		oLblProj:bLDblClick 	:= {|| { oDlgProj:End(), aRetorno := {oLblProj:aArray[oLblProj:nAt,1],oLblProj:aArray[oLblProj:nAt,2] }}}
+
+		@107,110 MSGET oPesq VAR cPesq SIZE 050, 010  OF oDlgProj HASBUTTON  PIXEL
+
+		@107,165 BUTTON oBtn PROMPT "Pesquisar" SIZE 40,12 ACTION PesqSX3(cPesq) PIXEL OF oDlgProj
+
+		DEFINE SBUTTON FROM 107,213 TYPE 1 ACTION (oDlgProj:End(), aRetorno := {oLblProj:aArray[oLblProj:nAt,1],oLblProj:aArray[oLblProj:nAt,2]})  ENABLE OF oDlgProj
+
+		ACTIVATE MSDIALOG oDlgProj CENTER
+
+		//Posiciona no campo
+		if Len( aRetorno ) > 0
+			__xcRetProjeto := AllTrim( aRetorno[1] )
+		Endif
+
+	EndIf
+
+	if Select("TRBPRJ") > 0
+		TRBPRJ->(DbCloseArea())
+	endIf
+
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} URETGPT
+Funcao para retornoar o conteudo da variavel publica __xcRetProjeto
+que é preenchida na funcao UCONSGPT
+@author g.sampaio
+@type function
+@since 30/05/2019
+@version P12
+@return Characteracter, retorna o projeto selecionado
+/*/
+
+User Function URETGPT()
+
+	Local cRetorno	:= __xcRetProjeto
+
+Return(cRetorno)
+
+/*/{Protheus.doc} InsertDB
+description
+@type function
+@version  
+@author g.sampaio
+@since 25/01/2021
+@param cAliasTab, Characteracter, param_description
+@param aDadosInsert, array, param_description
+@param cProjeto, Characteracter, param_description
+@param cTextoLog, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function InsertDB(cAliasTab, aDadosInsert, cProjeto, cTextoLog)
+
+	Local aArea 		As Array
+	Local cQueryInsert	As Character
+	Local lRetorno		As Logical
+	Local nStatus		As Numeric
+	Local nInsert		As Numeric
+
+	Default cAliasTab		:= ""
+	Default aDadosInsert	:= {}
+	Default cProjeto		:= ""
+	Default cTextoLog		:= ""
+
+	// atribuo valor as variaveis
+	aArea			:= GetArea()
+	cQueryInsert	:= ""
+	lRetorno		:= .T.
+	nStatus			:= 0
+	nInsert			:= 0
+
+	cQueryInsert := " INSERT INTO " + cAliasTab + " "
+
+	// monta a query de insert da SX2
+	if "SX2" $ cAliasTab
+
+		cQueryInsert += " (X2_CHAVE, "
+		cQueryInsert += " X2_PATH, "
+		cQueryInsert += " X2_ARQUIVO, "
+		cQueryInsert += " X2_NOME, "
+		cQueryInsert += " X2_NOMESPA, "
+		cQueryInsert += " X2_NOMEENG, "
+		cQueryInsert += " X2_ROTINA, "
+		cQueryInsert += " X2_MODO, "
+		cQueryInsert += " X2_MODOUN,"
+		cQueryInsert += " X2_MODOEMP,"
+		cQueryInsert += " X2_DELET, "
+		cQueryInsert += " X2_TTS, "
+		cQueryInsert += " X2_UNICO,"
+		cQueryInsert += " X2_PYME, "
+		cQueryInsert += " X2_MODULO,"
+		cQueryInsert += " X2_DISPLAY,"
+		cQueryInsert += " X2_SYSOBJ, "
+		cQueryInsert += " X2_USROBJ, "
+		cQueryInsert += " X2_POSLGT, "
+		cQueryInsert += " X2_CLOB, "
+		cQueryInsert += " X2_AUTREC,"
+		cQueryInsert += " X2_TAMFIL, "
+		cQueryInsert += " X2_TAMUN, "
+		cQueryInsert += " X2_TAMEMP, "
+		cQueryInsert += " PR_E_C_N_O,"
+		cQueryInsert += " PF_L_A_G, "
+		cQueryInsert += " PM_0_E_M_P, "
+		cQueryInsert += " ID_PACKAGE, "
+		cQueryInsert += " D_E_L_E_T_, "
+		cQueryInsert += " R_E_C_N_O_, "
+		cQueryInsert += " R_E_C_D_E_L_) "
+
+	elseIf "SX3" $ cAliasTab //  monta a query de insert da SX3
+
+		cQueryInsert += " (X3_ARQUIVO,
+		cQueryInsert += " X3_ORDEM,
+		cQueryInsert += " X3_CAMPO,
+		cQueryInsert += " X3_TIPO,
+		cQueryInsert += " X3_TAMANHO,
+		cQueryInsert += " X3_DECIMAL,
+		cQueryInsert += " X3_TITULO,
+		cQueryInsert += " X3_TITSPA,
+		cQueryInsert += " X3_TITENG,
+		cQueryInsert += " X3_DESCRIC,
+		cQueryInsert += " X3_DESCSPA,
+		cQueryInsert += " X3_DESCENG,
+		cQueryInsert += " X3_PICTURE,
+		cQueryInsert += " X3_VALID,
+		cQueryInsert += " X3_USADO,
+		cQueryInsert += " X3_RELACAO,
+		cQueryInsert += " X3_F3,
+		cQueryInsert += " X3_NIVEL,
+		cQueryInsert += " X3_RESERV,
+		cQueryInsert += " X3_CHECK,
+		cQueryInsert += " X3_TRIGGER,
+		cQueryInsert += " X3_PROPRI,
+		cQueryInsert += " X3_BROWSE,
+		cQueryInsert += " X3_VISUAL,
+		cQueryInsert += " X3_CONTEXT,
+		cQueryInsert += " X3_OBRIGAT,
+		cQueryInsert += " X3_VLDUSER,
+		cQueryInsert += " X3_CBOX,
+		cQueryInsert += " X3_CBOXSPA,
+		cQueryInsert += " X3_CBOXENG,
+		cQueryInsert += " X3_PICTVAR,
+		cQueryInsert += " X3_WHEN,
+		cQueryInsert += " X3_INIBRW,
+		cQueryInsert += " X3_GRPSXG,
+		cQueryInsert += " X3_FOLDER,
+		cQueryInsert += " X3_PYME,
+		cQueryInsert += " X3_CONDSQL,
+		cQueryInsert += " X3_CHKSQL,
+		cQueryInsert += " X3_IDXSRV,
+		cQueryInsert += " X3_ORTOGRA,
+		cQueryInsert += " X3_IDXFLD,
+		cQueryInsert += " X3_TELA,
+		cQueryInsert += " X3_PICBRV,
+		cQueryInsert += " X3_AGRUP,
+		cQueryInsert += " X3_POSLGT,
+		cQueryInsert += " X3_MODAL,
+		cQueryInsert += " PR_E_C_N_O,
+		cQueryInsert += " PF_L_A_G,
+		cQueryInsert += " PM_0_E_M_P,
+		cQueryInsert += " ID_PACKAGE,
+		cQueryInsert += " D_E_L_E_T_,
+		cQueryInsert += " R_E_C_N_O_,
+		cQueryInsert += " R_E_C_D_E_L_)"
+
+	elseIf "SIX" $ cAliasTab //  monta a query de insert da SIX
+
+		cQueryInsert += " (INDICE,
+		cQueryInsert += " ORDEM,
+		cQueryInsert += " CHAVE,
+		cQueryInsert += " DESCRICAO,
+		cQueryInsert += " DESCSPA,
+		cQueryInsert += " DESCENG,
+		cQueryInsert += " PROPRI,
+		cQueryInsert += " F3,
+		cQueryInsert += " NICKNAME,
+		cQueryInsert += " SHOWPESQ,
+		cQueryInsert += " IX_VIRTUAL,
+		cQueryInsert += " IX_VIRCUST,
+		cQueryInsert += " PR_E_C_N_O,
+		cQueryInsert += " PF_L_A_G,
+		cQueryInsert += " PM_0_E_M_P,
+		cQueryInsert += " ID_PACKAGE,
+		cQueryInsert += " D_E_L_E_T_,
+		cQueryInsert += " R_E_C_N_O_,
+		cQueryInsert += " R_E_C_D_E_L_)"
+
+	elseif "SX7" $ cAliasTab //  monta a query de insert da SX7
+
+		cQueryInsert += " (X7_CAMPO, "
+		cQueryInsert += " X7_SEQUENC, "
+		cQueryInsert += " X7_REGRA, "
+		cQueryInsert += " X7_CDOMIN, "
+		cQueryInsert += " X7_TIPO, "
+		cQueryInsert += " X7_SEEK, "
+		cQueryInsert += " X7_ALIAS, "
+		cQueryInsert += " X7_ORDEM, "
+		cQueryInsert += " X7_CHAVE, "
+		cQueryInsert += " X7_CONDIC, "
+		cQueryInsert += " X7_PROPRI, "
+		cQueryInsert += " PR_E_C_N_O, "
+		cQueryInsert += " PF_L_A_G, "
+		cQueryInsert += " PM_0_E_M_P, "
+		cQueryInsert += " ID_PACKAGE, "
+		cQueryInsert += " D_E_L_E_T_, "
+		cQueryInsert += " R_E_C_N_O_, "
+		cQueryInsert += " R_E_C_D_E_L_)"
+
+	elseif "SXA" $ cAliasTab //  monta a query de insert da SXA
+
+		cQueryInsert += " (XA_ALIAS, "
+		cQueryInsert += " XA_ORDEM, "
+		cQueryInsert += " XA_DESCRIC, "
+		cQueryInsert += " XA_DESCSPA, "
+		cQueryInsert += " XA_DESCENG, "
+		cQueryInsert += " XA_PROPRI, "
+		cQueryInsert += " XA_AGRUP, "
+		cQueryInsert += " XA_TIPO, "
+		cQueryInsert += " PR_E_C_N_O, "
+		cQueryInsert += " PF_L_A_G, "
+		cQueryInsert += " PM_0_E_M_P, "
+		cQueryInsert += " ID_PACKAGE, "
+		cQueryInsert += " D_E_L_E_T_, "
+		cQueryInsert += " R_E_C_N_O_, "
+		cQueryInsert += " R_E_C_D_E_L_) "
+
+	elseif "SXB" $ cAliasTab //  monta a query de insert da SXB
+
+		cQueryInsert += " (XB_ALIAS, "
+		cQueryInsert += " XB_TIPO, "
+		cQueryInsert += " XB_SEQ, "
+		cQueryInsert += " XB_COLUNA, "
+		cQueryInsert += " XB_DESCRI, "
+		cQueryInsert += " XB_DESCSPA, "
+		cQueryInsert += " XB_DESCENG, "
+		cQueryInsert += " XB_CONTEM, "
+		cQueryInsert += " XB_WCONTEM, "
+		cQueryInsert += " PR_E_C_N_O, "
+		cQueryInsert += " PF_L_A_G, "
+		cQueryInsert += " PM_0_E_M_P, "
+		cQueryInsert += " ID_PACKAGE, "
+		cQueryInsert += " D_E_L_E_T_, "
+		cQueryInsert += " R_E_C_N_O_, "
+		cQueryInsert += " R_E_C_D_E_L_) "
+
+	elseif "SXG" $ cAliasTab //  monta a query de insert da SXG
+
+		cQueryInsert += " (XG_GRUPO, "
+		cQueryInsert += " XG_DESCRI, "
+		cQueryInsert += " XG_DESSPA, "
+		cQueryInsert += " XG_DESENG, "
+		cQueryInsert += " XG_SIZEMAX, "
+		cQueryInsert += " XG_SIZEMIN, "
+		cQueryInsert += " XG_SIZE, "
+		cQueryInsert += " XG_PICTURE, "
+		cQueryInsert += " XG_CHECK1, "
+		cQueryInsert += " XG_CHECK2, "
+		cQueryInsert += " PR_E_C_N_O, "
+		cQueryInsert += " PF_L_A_G, "
+		cQueryInsert += " PM_0_E_M_P, "
+		cQueryInsert += " ID_PACKAGE, "
+		cQueryInsert += " D_E_L_E_T_, "
+		cQueryInsert += " R_E_C_N_O_, "
+		cQueryInsert += " R_E_C_D_E_L_) "
+
+	endIf
+
+	// verifico se a variavel esta preenchida
+	if !empty(cQueryInsert)
+
+		cQueryInsert += "VALUES("
+
+		For nInsert := 1 To Len(aDadosInsert)
+			cQueryInsert += " " + ConvertString(aDadosInsert[nInsert]) + ", "
+		Next nInsert
+
+		cQueryInsert += " '1', " // PF_L_A_G
+		cQueryInsert += " ' ', " // PM_0_E_M_P
+		cQueryInsert += " '" + cProjeto + "', " // ID_PACKAGE
+		cQueryInsert += " ' ', " // D_E_L_E_T_
+		cQueryInsert += " (SELECT ISNULL(MAX(R_E_C_N_O_)+1, 0) FROM "+ cAliasTab +")," // R_E_C_N_O_
+		cQueryInsert += " 0); " // R_E_C_D_E_L_
+
+	endIf
+
+	BEGIN TRANSACTION
+
+		// pego o status para incluir um novo registro no banco
+		nStatus	:= TCSqlExec(cQueryInsert)
+
+		// caso o status da transacao for menor que zero, significa erro
+		if (nStatus < 0)
+			lRetorno := .F.
+			cTextoLog += "TCSQLError() " + TCSQLError() + CRLF
+			DisarmTransaction()
+		else
+			cTextoLog += "Insert feito com sucesso na tabela " + cAliasTab + "!" + CRLF
+		endif
+
+		// atualizo o chace do alias
+		TCRefresh(cAliasTab)
+
+	END TRANSACTION
+
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ConvertString
+Converto o conteudo 
+@type function
+@version 1.0 
+@author g.sampaio
+@since 25/01/2021
+@param xConteudo, param_type, conteudo
+@return Characteracter, retorna a srtring
+/*/
+Static Function ConvertString(xConteudo)
+
+	Local cRetorno	As Character
+
+	Default xConteudo	:= Nil
+
+	// atribui valor as variveis
+	cRetorno	:= ""
+
+	Do Case
+	Case AllTrim(ValType(xConteudo)) == "D"
+		cRetorno := "'" + DtoC( StoD( xConteudo ) ) + "'"
+
+	Case AllTrim(ValType(xConteudo)) == "N"
+		cRetorno := "" + AllTrim( Str( xConteudo ) ) + ""
+
+	Case "'" $ xConteudo
+		cRetorno := "'" + StrTran(xConteudo,"'",'"') + "'"
+
+	Case xConteudo == Nil
+		cRetorno :=  "' '"
+
+	Otherwise
+		cRetorno := "'" + xConteudo + "'"
+
+	EndCase
+
+Return(cRetorno)
+
+/*/{Protheus.doc} ValProjeto
+Validacao do preenchimento do projeto
+@type function
+@version 1.0
+@author g.sampaio
+@since 29/01/2021
+@return logical, retorna se o projeto foi devidamente preenchido
+/*/
+Static Function ValProjeto()
+
+	Local lRetorno As Logical
+
+	// atribuo valor as variaveis
+	lRetorno	:= .T.
+
+	if Empty(cProjeto)
+		lRetorno	:= .F.
+		MsgAlert("Preenche o código do projeto!")
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} LimpaProjeto
+fucncao para limpar os dados do projeto 
+existente
+@type function
+@version 1.0  
+@author g.sampaio
+@since 02/02/2021
+@param cAliasTab, Characteracter, param_description
+@param cProjeto, Characteracter, param_description
+@param cTextoLog, Characteracter, param_descriptions
+/*/
+Static Function LimpaProjeto(cAliasTab, cProjeto, cTextoLog)
+
+	Local aArea			As Array
+	Local cQueryDelete 	As Character
+
+	Default cAliasTab 	:= ""
+	Default cProjeto	:= ""
+
+	// atribuo valor a varivel
+	aArea			:= GetArea()
+	cQueryDelete 	:= ""
+
+	cQueryDelete := " DELETE FROM " + cAliasTab + " WHERE ID_PACKAGE = '" + cProjeto + "'"
+
+	BEGIN TRANSACTION
+
+		// pego o status para incluir um novo registro no banco
+		nStatus	:= TCSqlExec(cQueryDelete)
+
+		// caso o status da transacao for menor que zero, significa erro
+		if (nStatus < 0)
+			cTextoLog += "TCSQLError() " + TCSQLError() + CRLF
+			DisarmTransaction()
+		else
+			cTextoLog += "Registro do projeto " + cProjeto + " deletados com sucesso da tabela " + cAliasTab + "!" + CRLF
+		endif
+
+		// atualizo o cache do alias
+		TCRefresh(cAliasTab)
+
+	END TRANSACTION
+
+	RestArea(aArea)
+
+Return(Nil)

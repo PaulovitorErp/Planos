@@ -1,0 +1,447 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} VirtusLimpaBase
+Programa de Apoio a implantacao para limpeza da base
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/11/2023
+/*/
+User Function UVIRA001()//VirtusLimpaBase()
+
+	Local cArquivoTabelas   As Character
+	Local cArquivoLog     	As Character
+	Local cImgArq		    As Character
+	Local cImgFileHover	    As Character
+	Local cOwner            As Character
+	Local cTableSpace       As Character
+	Local nComboBo1         As Numeric
+	Local nComboBo2         As Numeric
+	Local oComboBo1         As Object
+	Local oComboBo2			As Object
+	Local oButton1          As Object
+	Local oButton2          As Object
+	Local oGet1             As Object
+	Local oGet2             As Object
+	Local oGet3             As Object
+	Local oGet4             As Object
+	Local oGroup1           As Object
+	Local oBtnOrig          As Object
+	Local oBtnDest          As Object
+	Local oSay1             As Object
+	Local oSay2             As Object
+	Local oSay3             As Object
+	Local oSay4             As Object
+	Local oSay5             As Object
+	Local oSay6				As Object
+	Local oSay              As Object
+	Local oDlgLimpa         As Object
+
+	Private aParam          As Array
+	Private nHdlLog			As Numeric
+
+	// define valor para as variaveis
+	aParam          := {}
+	cArquivoTabelas := space(250)
+	cArquivoLog    	:= space(250)
+	cImgArq		    := "icone_file.png"
+	cImgFileHover	:= "icone_file_foco.png"
+	cOwner          := Space(20)
+	cTableSpace     := Space(20)
+
+	DEFINE MSDIALOG oDlgLimpa TITLE "Lista Parametros" FROM 000, 000  TO 400, 600 COLORS 0, 16777215 PIXEL
+
+	@ 004, 003 GROUP oGroup1 TO 194, 296 PROMPT "Selecione" OF oDlgLimpa COLOR 0, 16777215 PIXEL
+
+	@ 024, 017 SAY oSay1 PROMPT "Arquivo de Tabelas" SIZE 057, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 022, 098 MSGET oGet1 VAR cArquivoTabelas  SIZE 178, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL HASBUTTON
+
+	// busco o diretorio de origem
+	oBtnOrig	:= TButton():New(019,275,"" , oDlgLimpa, {|| cArquivoTabelas := cGetFile("Descrição |*.txt", "Titulo") },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	@ 039, 017 SAY oSay2 PROMPT "Diretório de Log" SIZE 066, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 037, 098 MSGET oGet2 VAR cArquivoLog SIZE 177, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL HASBUTTON
+
+	// busco o diretorio de destino
+	oBtnDest	:= TButton():New(034,275,"" , oDlgLimpa, {|| cArquivoLog := cGetFile( '*.txt' , 'Selecione o diretorio do Log', 16, , .F., nOr( GETF_LOCALHARD, GETF_RETDIRECTORY ),.F., .T. ) },22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	@ 054, 017 SAY oSay3 PROMPT "Banco de Dados" SIZE 066, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 052, 098 MSCOMBOBOX oComboBo1 VAR nComboBo1 ITEMS {"SQL Server","Oracle"} SIZE 072, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+
+	@ 069, 017 SAY oSay4 PROMPT "Owner" SIZE 066, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 067, 098 MSGET oGet3 VAR cOwner WHEN oComboBo1:nAT==2 SIZE 060, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+
+	@ 084, 017 SAY oSay5 PROMPT "Table Space" SIZE 066, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 082, 098 MSGET oGet4 VAR cTableSpace WHEN oComboBo1:nAT==2 SIZE 060, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+
+	@ 099, 017 SAY oSay6 PROMPT "Considera Filial Logada?" SIZE 090, 007 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+	@ 097, 098 MSCOMBOBOX oComboBo2 VAR nComboBo2 ITEMS {"Sim","Nao"} SIZE 072, 010 OF oDlgLimpa COLORS 0, 16777215 PIXEL
+
+	@ 176, 208 BUTTON oButton2 PROMPT "Processar" SIZE 037, 012 OF oDlgLimpa PIXEL ACTION FWMsgRun(,{|| ValidaArquivo( AllTrim(cArquivoTabelas), AllTrim(cArquivoLog), Alltrim(cOwner), AllTrim(cTableSpace), oComboBo1:nAT,  oSay, oComboBo2:nAT ) },;
+		'Aguarde...', 'Fazendo a limpeza da base de dados...')
+	@ 176, 251 BUTTON oButton1 PROMPT "Cancelar" SIZE 037, 012 OF oDlgLimpa PIXEL ACTION oDlgLimpa:End()
+
+	// estilo css dos botões
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnOrig:SetCss(cCSSBtnFile)    // botão de origem
+	oBtnDest:SetCss(cCSSBtnFile)    // botão de destino
+
+	ACTIVATE MSDIALOG oDlgLimpa CENTERED
+
+Return(Nil)
+
+Static Function ValidaArquivo(cArquivoTabelas As Character,;
+		cArquivoLog As Character,;
+		cOwner As Character,;
+		cTableSpace As Character,;
+		nOpcaoBanco As Numeric,;
+		oSay As Object,;
+		nFilialLogada As Numeric)
+
+	Local aFile         As Array
+	Local aTabelas      As Array
+	Local aTabBanco		As Array
+	Local cPulaLinha	As Character
+	Local lContinua     As Logical
+	Local nLinha        As Numeric
+	Local nTabela       As Numeric
+	Local oFile         As Object
+
+	Default cArquivoTabelas     := ""
+	Default cDiretorioDestino   := ""
+	Default cOwner              := ""
+	Default cTableSpace         := ""
+	Default nOpcaoBanco         := 0
+	Default nFilialLogada		:= 0
+
+	// atribui valor as variaveis
+	aTabBanco	:= {}
+	cPulaLinha	:= Chr(13) + Chr(10)
+	lContinua   := .T.
+
+	// faco a validacao do arquivo de log
+	lContinua := LogValidaArquivo(cArquivoLog)
+
+	if lContinua
+
+		fWrite(nHdlLog , "#########  INICIO - LOG DO TRATAMENTO NO BANCO DE DADOS  #############")
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Data Inicio: " + DTOC( Date() ) )
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Hora Inicio: " + Time() )
+		fWrite(nHdlLog , cPulaLinha )
+
+		If lContinua .And. nOpcaoBanco == 2 // se for oracle
+
+			If Empty(cOwner) .Or. Empty(cTableSpace)
+				lContinua := .F.
+				MsgAlert("Preencha as informacoes do Owner ou da Table Space do Banco de dados Oracle!", "Atencao")
+			EndIf
+
+		EndIf
+
+		If lContinua
+
+			// atribui valor as variaveis
+			cPulaLinha	:= Chr(13) + Chr(10)
+
+			// abro o arquivo utilizando a classe FWFileReader
+			oFile := FWFileReader():New(Lower(cArquivoTabelas))
+
+			// verifico se abriu o arquivo
+			if (oFile:Open())
+
+				// retorna as linhas do arquivo em um array
+				aFile := oFile:getAllLines()
+
+				// verifico se ja leu o arquivo inteiro
+				For nLinha := 1 To Len( aFile )
+
+					aTabelas := {}
+					aTabelas := StrToKarr(aFile[nLinha],";")
+
+					If Len(aTabelas) > 0
+
+						// deleto as tabelas vazias do sistema
+						DeletaTabelasVazias( nOpcaoBanco, cOwner, cTableSpace, @aTabBanco, nFilialLogada)
+
+						fWrite(nHdlLog , "# EXCLUINDO TABELAS PASSADAS NO ARQUIVO")
+						fWrite(nHdlLog , cPulaLinha )
+
+						For nTabela := 1 To Len(aTabelas)
+							If ValidaTabelaBanco(aTabelas[nTabela], aTabBanco)
+								DeletaTabelasBanco(aTabelas[nTabela], nFilialLogada)
+							EndIf
+						Next nTabela
+
+					EndIf
+
+				Next nLinha
+
+			EndIf
+
+		EndIf
+
+		fWrite(nHdlLog , " >> Data Fim: " + DTOC( Date() ) )
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , " >> Hora Fim: " + Time() )
+		fWrite(nHdlLog , cPulaLinha )
+		fWrite(nHdlLog , "#########  FIM - LOG DO TRATAMENTO NO BANCO DE DADOS  #############")
+		fWrite(nHdlLog , cPulaLinha )
+
+		//verifico se arquivo de log existe
+		if nHdlLog > 0
+
+			// fecho o arquivo de log
+			fClose(nHdlLog)
+
+		endif
+
+	EndIf
+
+Return(Nil)
+
+Static Function DeletaTabelasBanco(cTabela As Character, nFilialLogada)
+
+	Local cPulaLinha	As Character
+	Local cPrefAlias 	As Character
+
+	Default cTabela			:= ""
+	Default nFilialLogada	:= 1
+
+	cPulaLinha	:= Chr(13) + Chr(10)
+
+	If !Empty(cTabela)
+
+		If nFilialLogada == 1
+
+			If Substr(cTabela,1,1) == "S"
+				cPrefAlias := Substr(cTabela,2)
+			Else
+				cPrefAlias := cTabela
+			EndIf
+
+			TCSQLEXEC("DELETE FROM " + RetSQLName(cTabela) + " WHERE D_E_L_E_T_ = ' ' AND "+ AllTrim(cPrefAlias) + "_FILIAL = '" + xFilial(cTabela) + "'" )
+
+			fWrite(nHdlLog , " >> Limpando registros deletados da tabela: " + AllTrim(cTabela) )
+			fWrite(nHdlLog , cPulaLinha )
+
+		Else
+
+			TCSQLEXEC("DROP TABLE " + RetSQLName(cTabela) )
+
+			fWrite(nHdlLog , " >> Excluindo Tabela: " + cTabela )
+			fWrite(nHdlLog , cPulaLinha )
+
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+Static Function DeletaTabelasVazias(nOpcaoBanco As Numeric,;
+		cOwner As Character,;
+		cTableSpace As Character,;
+		aTabBanco As Array,;
+		nFilialLogada As Numeric)
+
+	Local cQuery 		As Character
+	Local cPulaLinha	As Character
+	Local cPrefAlias 	As Character
+
+	Default nOpcaoBanco		:= 0
+	Default cOwner      	:= ""
+	Default cTableSpace 	:= ""
+	Default aTabBanco		:= {}
+	Default nFilialLogada	:= 1
+
+	// atribui valor as variaveis
+	cPulaLinha	:= Chr(13) + Chr(10)
+
+	If nFilialLogada == 1
+
+		TCSQLEXEC("UPDATE SA1"+cEmpAnt+"0 SET A1_NROCOM = 0, A1_MSALDO = 0, A1_PRICOM = ' ', A1_ULTCOM = ' ' WHERE D_E_L_E_T_ = ' ' AND A1_FILIAL = '" + xFilial("SA1") + "' ")
+		TCSQLEXEC("UPDATE SA2"+cEmpAnt+"0 SET A2_NROCOM = 0, A2_MSALDO = 0, A2_PRICOM = ' ', A2_ULTCOM = ' ',A2_MATR = 0, A2_SALDUP = 0 WHERE D_E_L_E_T_ = ' ' AND A2_FILIAL = '" + xFilial("SA2") + "'")
+		TCSQLEXEC("UPDATE SA6"+cEmpAnt+"0 SET A6_SALATU = 0 WHERE D_E_L_E_T_ = ' ' AND A6_FILIAL = '" + xFilial("SA6") + "'")
+
+	Else
+
+		TCSQLEXEC("UPDATE SA1"+cEmpAnt+"0 SET A1_NROCOM = 0, A1_MSALDO = 0, A1_PRICOM = ' ', A1_ULTCOM = ' '")
+		TCSQLEXEC("UPDATE SA2"+cEmpAnt+"0 SET A2_NROCOM = 0, A2_MSALDO = 0, A2_PRICOM = ' ', A2_ULTCOM = ' ',A2_MATR = 0, A2_SALDUP = 0")
+		TCSQLEXEC("UPDATE SA6"+cEmpAnt+"0 SET A6_SALATU = 0")
+
+	Endif
+
+	If nOpcaoBanco == 1 // SQL Server
+
+		cQuery := "Select NAME TABLE_NAME from sys.all_objects where type = 'U' and SCHEMA_ID = 1 ORDER BY 1"
+
+	ElseIf nOpcaoBanco == 2 .And. !Empty(cOwner) .And. !Empty(cTableSpace) // Oracle
+
+		cQuery := " SELECT TABLE_NAME FROM all_tables "
+		cQuery += " WHERE tablespace_name = '"+Upper(AllTrim(cTableSpace))+"' AND OWNER = '"+Upper(AllTrim(cOwner))+"' ORDER BY TABLE_NAME" //AND NUM_ROWs = 0 "
+
+	EndIf
+
+	If !Empty(cQuery)
+
+		dbUseArea(.T.,"TOPCONN", TCGenQry(,,cQuery), '__TABELAS', .F., .T.)
+
+		While __TABELAS->( !Eof() )
+
+			if 'TOP' $ (__TABELAS->TABLE_NAME) .or. !( Substr(__TABELAS->TABLE_NAME,4,1) $ '1/2/3/4/5/6/7/8/9/0/' ) .or. Len( Alltrim(__TABELAS->TABLE_NAME) ) <> 6 .Or. "SX" $ Substr(__TABELAS->TABLE_NAME,1,2) .Or. "XA" $ Substr(__TABELAS->TABLE_NAME,1,2)
+				__TABELAS->( DbSkip() )
+				Loop
+			endif
+
+			If nOpcaoBanco <> 2
+
+				If "DRE" + cEmpAnt + "0" $ AllTrim(__TABELAS->TABLE_NAME)
+					cQuery := "SELECT COUNT(*) NREC, 1 NDELETE FROM " + AllTrim(__TABELAS->TABLE_NAME)
+				Else
+					cQuery := "SELECT COUNT(*) NREC, SUM( (case when D_E_L_E_T_ = ' ' then 0 else 1 end) ) NDELETE FROM " + AllTrim(__TABELAS->TABLE_NAME)
+				EndIf
+
+				//MPSysOpenQuery( _sQry, '_TBL' )
+				dbUseArea(.T.,"TOPCONN", TCGenQry(,,cQuery), '_TBL', .F., .T.)
+
+				_xRecs	 := _TBL->nRec
+				_xDelete := _TBL->nDelete
+				_TBL->( DbCloseArea() )
+			Else
+				//Valida quantidade de registro da tabela
+				//cQry := " SELECT COUNT(*) NLINHAS FROM " + AllTrim(__TABELAS->TABLE_NAME)  + " WHERE D_E_L_E_T_<> '*'"
+				cQuery := "SELECT COUNT(*) NREC, SUM( (case when D_E_L_E_T_ = ' ' then 0 else 1 end) ) NDELETE FROM " + AllTrim(__TABELAS->TABLE_NAME)
+
+				if Select("QORA")>0
+					QORA->(DbCLoseArea())
+				Endif
+
+				//MPSysOpenQuery( cQry, 'QORA' )
+				dbUseArea(.T.,"TOPCONN", TCGenQry(,,cQuery), 'QORA', .F., .T.)
+
+				_xRecs 		:= QORA->NREC
+				_xDelete 	:= QORA->NDELETE
+
+			EndIf
+
+			if _xRecs == 0 //.or. "_BKP" $ __TABELAS->TABLE_NAME
+				_xRecs := 0
+				TCSQLEXEC("DROP TABLE " + AllTrim(__TABELAS->TABLE_NAME) )
+
+				fWrite(nHdlLog , " >> Excluindo Tabela Sem Dados: " + AllTrim(__TABELAS->TABLE_NAME) )
+				fWrite(nHdlLog , cPulaLinha )
+
+			elseif _xDelete > 0
+
+				If nFilialLogada == 1
+
+					If Substr(AllTrim(__TABELAS->TABLE_NAME),1,1) == "S"
+						cPrefAlias := Substr(AllTrim(__TABELAS->TABLE_NAME),2,2)
+					Else
+						cPrefAlias := Substr(AllTrim(__TABELAS->TABLE_NAME),1,3)
+					EndIf
+
+					TCSQLEXEC("DELETE FROM " + AllTrim(__TABELAS->TABLE_NAME) + " WHERE D_E_L_E_T_ = '*' AND " + cPrefAlias + "_FILIAL = '" + xFilial(Substr(AllTrim(__TABELAS->TABLE_NAME),1,3)) + "' ")
+
+				Else
+
+					TCSQLEXEC("DELETE FROM " + AllTrim(__TABELAS->TABLE_NAME)+ " WHERE D_E_L_E_T_ = '*' " )
+
+				EndIf
+
+				fWrite(nHdlLog , " >> Limpando registros deletados da tabela: " + AllTrim(__TABELAS->TABLE_NAME) )
+				fWrite(nHdlLog , cPulaLinha )
+
+				// verifico se a tabela ainda tem dados
+				cQuery := "SELECT COUNT(*) NREC FROM " + __TABELAS->TABLE_NAME
+
+				if Select("_TBL")>0
+					_TBL->(DbCLoseArea())
+				Endif
+
+				//MPSysOpenQuery( _sQry, '_TBL' )
+				dbUseArea(.T.,"TOPCONN", TCGenQry(,,cQuery), '_TBL', .F., .T.)
+
+				_xRecs	 := _TBL->nRec
+				_TBL->( DbCloseArea() )
+
+				// se registros igual zero
+				if _xRecs == 0
+					_xRecs := 0
+					TCSQLEXEC("DROP TABLE "+AllTrim(__TABELAS->TABLE_NAME) )
+
+					fWrite(nHdlLog , " >> Excluindo Tabela Sem Dados: " + AllTrim(__TABELAS->TABLE_NAME) )
+					fWrite(nHdlLog , cPulaLinha )
+				endif
+
+			Else
+				Aadd(aTabBanco, Substr(AllTrim(__TABELAS->TABLE_NAME),1,3))
+			endif
+
+			__TABELAS->( DbSkip() )
+
+		EndDo
+
+	EndIf
+
+Return(Nil)
+
+Static Function ValidaTabelaBanco(cTabela As Character, aTabBanco As Array)
+
+	Local lRetorno		As Logical
+	Local nPosTabela 	As Numeric
+
+	Default cTabela := ""
+
+	lRetorno	:= .F.
+
+	nPosTabela	:= aScan( aTabBanco, { |x| AllTrim( x ) == AllTrim(cTabela)} )
+
+	If nPosTabela > 0
+		lRetorno := .T.
+	EndIf
+
+Return(lRetorno)
+
+Static Function LogValidaArquivo(cArquivoLog As Character)
+
+	Local lRetorno	As Logical
+	Local cArquivo	As Character
+
+	Default cArquivoLog	:= ""
+
+	// atribui valor as variaveis
+	lRetorno := .T.
+
+	cArquivo := "loglimpatabelas_" + CriaTrab(, .F.) + ".txt"
+
+	cArquivoLog := cArquivoLog + iif( substr(alltrim(cArquivoLog),len(alltrim(cArquivoLog))) == iif(IsSrvUnix(),"/","\"),  cArquivo, iif(IsSrvUnix(),"/","\") + cArquivo )
+
+	if !Empty(cArquivoLog)
+
+		//crio arquivo de relatorio do processamento da importacao
+		nHdlLog := MsfCreate(cArquivoLog, 0)
+
+		if nHdlLog < 0
+
+			lRetorno := .F.
+			Help(,,'Help',,"Não foi possivel criar o arquivo de relatorio de importacao, favor o diretorio selecionado!",1,0)
+
+		endif
+
+	Else
+		lRetorno := .F.
+	endif
+
+Return(lRetorno)
