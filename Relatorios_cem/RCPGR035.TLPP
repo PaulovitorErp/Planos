@@ -1,0 +1,221 @@
+#include "topconn.ch"
+#include "totvs.ch"
+#include "tbiconn.ch"
+#include "rwmake.ch"
+
+#define CRLF CHR(13)+CHR(10)
+
+/*/{Protheus.doc} RCPGR035
+Relatorio de contratos cancelados
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/02/2021
+/*/
+User Function RCPGR035()
+	Local oReport
+
+	oReport:= ReportDef()
+	oReport:PrintDialog()
+
+Return(Nil)
+
+/*/{Protheus.doc} ReportDef
+Na seção de definição do relatório, função ReportDef(), 
+devem ser criados os componentes de impressão, as seções 
+e as células, os totalizadores e demais componentes que 
+o usuário poderá personalizar no relatório.
+
+@type function
+@version 1.0 
+@author g.sampaio
+@since 07/02/2021
+@return object, objeto de impressao
+/*/
+Static Function ReportDef()
+	Local oReport       := Nil
+	Local oContrato     := Nil
+	Local cTitle    	:= "Relatório de Contratos Cancelados"
+
+	Private cPerg		:= "RCPGR035"
+
+	oReport	:= TReport():New("RCPGR035",cTitle,"RCPGR035",{|oReport| PrintReport(oReport, oContrato)},"Este relatório apresenta a relação de contratos cancelados com o valor pago até o cancelamento.")
+	oReport:SetLandscape()			// Orientação paisagem
+	oReport:HideParamPage()			// Inibe impressão da pagina de parametros
+	oReport:SetUseGC( .F. ) 		// Desabilita o botão <Gestao Corporativa> do relatório
+
+	AjustaSX1(cPerg) // cria as perguntas para gerar o relatorio
+	Pergunte(oReport:GetParam(),.F.)
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	oContrato 	:= TRSection():New(oReport,"Contratos",{"QRYCONT"})//,{"Por Contrato","Por Cod. Cliente","Por Nome Cliente"}/*Ordens do Relatório*/,/*Campos do SX3*/,/*Campos do SIX*/)
+
+	TRCell():New(oContrato, "FILIAL"	            , "QRYCONT", "Filial"               ,	PesqPict("U00","U00_FILIAL"	)   , TamSX3("U00_FILIAL"	)[1]+1)
+	TRCell():New(oContrato, "CONTRATO"	            , "QRYCONT", "Contrato"	            ,	PesqPict("U00","U00_CODIGO"	)   , TamSX3("U00_CODIGO"	)[1]+1)
+	TRCell():New(oContrato, "FORMA_AQUISICAO"	    , "QRYCONT", "Forma Aquisição"      ,	PesqPict("U00","U00_FAQUIS"	)   , TamSX3("U00_FAQUIS"	)[1]+1)	
+	TRCell():New(oContrato, "TITULAR"		        , "QRYCONT", "Titular"		        ,	PesqPict("U00","U00_NOMCLI"	)   , TamSX3("U00_NOMCLI"	)[1]+1)
+	TRCell():New(oContrato, "DATA_ATIVACAO"	        , "QRYCONT", "Data Ativação"        ,	PesqPict("U00","U00_DTATIV"	)   , TamSX3("U00_DTATIV"	)[1]+3)
+	TRCell():New(oContrato, "DATA_CANCELAMENTO"		, "QRYCONT", "Data Cancelamento"    ,	PesqPict("U00","U00_DTCANC"	)   , TamSX3("U00_DTCANC"	)[1]+3)
+    TRCell():New(oContrato, "MOTIVO_CANCELAMENTO"	, "QRYCONT", "Motivo do Canc."      ,	PesqPict("U00","U00_MOTCAN"	)   , TamSX3("U00_MOTCAN"	)[1]+3)
+	TRCell():New(oContrato, "TOTAL_RECEBIDO"		, "QRYCONT", "Total Recebido"       ,	PesqPict("U00","U00_VALOR"	)   , TamSX3("U00_VALOR"	)[1]+3)
+
+Return(oReport)
+
+/*/{Protheus.doc} PrintReport
+Funcao para impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 07/02/2021
+@param oReport, object, objeto de impressao
+@param oContrato, object, objeto do contrato
+@param oDetalhe, object, objeto do detalhe
+@param oTotalGer, object, objeto de total
+/*/
+Static Function PrintReport(oReport, oContrato)
+
+	Local cPlano        As Character	
+	Local cQuery        As Character	
+	Local cFormaArquis	As Character
+	Local dDataDe       As Date
+	Local dDataAte      As Date
+	Local nFormaArquis  As Numeric	
+
+	// atribuo valor para as variaveis
+	cQuery 			:= "" //Query de busca
+	cPlano      	:= ""	
+	cFormaArquis	:= ""	
+
+	// trata para os parametros
+	cPlano          := MV_PAR01
+	dDataDe         := MV_PAR02
+	dDataAte        := MV_PAR03
+	nFormaArquis    := MV_PAR04
+
+	oContrato:Init()
+
+	If Select("QRYCONT") > 0
+		QRYCONT->(DbCloseArea())
+	Endif
+
+	cQuery := " SELECT "
+	cQuery += " U00.U00_FILIAL FILIAL, "
+	cQuery += " U00.U00_CODIGO CONTRATO, "
+	cQuery += " U00.U00_FAQUIS FORMA_AQUISICAO, "
+	cQuery += " U00.U00_NOMCLI TITULAR, "
+	cQuery += " U00.U00_DTATIV DATA_ATIVACAO, "
+	cQuery += " U00.U00_DTCANC DATA_CANCELAMENTO, "
+	cQuery += " U00.U00_MOTCAN MOTIVO_CANCELAMENTO, "
+	cQuery += " BAIXAS_CONTRATO.VALOR_RECEBIDO TOTAL_RECEBIDO "
+    cQuery += " FROM " + RetSqlName("U00") + " U00 "
+    cQuery += " LEFT JOIN ( "
+	cQuery += " SELECT SE1.E1_FILIAL FILIAL, SE1.E1_XCONTRA CONTRATO, SUM(E5_VALOR) VALOR_RECEBIDO "
+    cQuery += " FROM " + RetSqlName("SE1") + " SE1 "
+	cQuery += " INNER JOIN " + RetSqlName("SE5") + " SE5 ON SE5.D_E_L_E_T_ = '' "
+	cQuery += " AND SE5.E5_FILIAL = SE1.E1_FILIAL "
+	cQuery += " AND SE5.E5_PREFIXO = SE1.E1_PREFIXO " 
+	cQuery += " AND SE5.E5_NUMERO = SE1.E1_NUM "
+	cQuery += " AND SE5.E5_PARCELA = SE1.E1_PARCELA "
+	cQuery += " AND SE5.E5_CLIFOR = SE1.E1_CLIENTE "
+	cQuery += " AND SE5.E5_LOJA = SE1.E1_LOJA "
+	cQuery += " AND SE5.E5_TIPODOC <> 'ES' "
+	cQuery += " AND SE5.E5_RECPAG = 'R' "
+	cQuery += " AND SE5.E5_SITUACA <> 'C' "
+	cQuery += " WHERE SE1.D_E_L_E_T_ = ' ' "	
+	cQuery += " AND SE5.E5_RECPAG = 'R'  "
+    cQuery += " AND SE5.E5_SITUACA <> 'C' "
+    cQuery += " AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) "
+	cQuery += " OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+    cQuery += " AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQuery += " GROUP BY SE1.E1_FILIAL, SE1.E1_XCONTRA ) AS BAIXAS_CONTRATO ON BAIXAS_CONTRATO.FILIAL = U00.U00_FILIAL "
+    cQuery += " AND BAIXAS_CONTRATO.CONTRATO = U00.U00_CODIGO "
+    cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+    cQuery += " AND U00.U00_STATUS = 'C' "
+
+    // plano
+    if !Empty(AllTrim(cPlano))
+        cQuery += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(MV_PAR01),";" ) + " "
+    endIf
+
+    // data de/ate
+    if !Empty(dDataAte)
+        cQuery += " 	AND U00.U00_DTCANC 	BETWEEN '" + DtoS(dDataDe) + "' AND '" + DtoS(dDataAte) + "' "
+    endIf
+
+	if nFormaArquis == 2 // forma de aquisicao
+		cQuery += " 	AND U00.U00_FAQUIS = 'I' "
+	elseIf nFormaArquis == 3 // forma de aquisicao
+		cQuery += " 	AND U00.U00_FAQUIS = 'P' "
+	endIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "QRYCONT"
+
+	oReport:SetMeter(QRYCONT->(LastRec()))
+
+	While !oReport:Cancel() .And. QRYCONT->(!EOF())
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		if QRYCONT->FORMA_AQUISICAO == "I"
+			cFormaArquis	:= "Imediato"
+		elseIf QRYCONT->FORMA_AQUISICAO == "P"
+			cFormaArquis	:= "Preventivo"
+		endIf
+
+		oContrato:Cell("FILIAL"):SetValue(QRYCONT->FILIAL)
+		oContrato:Cell("CONTRATO"):SetValue(QRYCONT->CONTRATO)
+		oContrato:Cell("FORMA_AQUISICAO"):SetValue(cFormaArquis)		
+		oContrato:Cell("TITULAR"):SetValue(QRYCONT->TITULAR)
+		oContrato:Cell("DATA_ATIVACAO"):SetValue(StoD(QRYCONT->DATA_ATIVACAO))
+		oContrato:Cell("DATA_CANCELAMENTO"):SetValue(StoD(QRYCONT->DATA_CANCELAMENTO))
+		oContrato:Cell("MOTIVO_CANCELAMENTO"):SetValue( AllTrim(MOTIVO_CANCELAMENTO) )
+        oContrato:Cell("TOTAL_RECEBIDO"):SetValue(QRYCONT->TOTAL_RECEBIDO)
+
+		oContrato:PrintLine()
+		oReport:SkipLine()	//Pula uma linha		
+
+		QRYCONT->(dbSkip())
+	EndDo
+
+	oContrato:Finish()
+
+	QRYCONT->(dbCloseArea())
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Funcao para criar o grupo de perguntas
+na SX1
+@type function
+@version 1.0 
+@author g.sampaio
+@since 07/02/2021
+@param cPerg, character, grupo de perguntas
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs		:= {}
+
+	Default cPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','Plano'          ,'','','mv_ch1','C', 99   	                    , 0, 0,'G','','mv_par01','','','','','','U05MRK'})
+		aAdd(aRegs,{cPerg,'02','Data de '       ,'','','mv_ch2','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par02','','','','','',''})
+		aAdd(aRegs,{cPerg,'03','Data ate'       ,'','','mv_ch3','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par03','','','','','',''})
+		aAdd(aRegs,{cPerg,'04','Tipo Aquisição' ,'','','mv_ch4','N', 1                          , 0, 1,'N','','mv_par04','Ambos','Imediato','Preventivo','','',''})		
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)

@@ -1,0 +1,352 @@
+#include "topconn.ch"
+#include "totvs.ch"
+#include "tbiconn.ch"
+#include "rwmake.ch"
+
+#define CRLF CHR(13)+CHR(10)
+
+/*/{Protheus.doc} RCPGR041
+Relatorio de Taxa de Manutencao
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/01/2021
+/*/
+User Function RCPGR041()
+	Local oReport
+
+	oReport:= ReportDef()
+	oReport:PrintDialog()
+
+Return(Nil)
+
+/*/{Protheus.doc} ReportDef
+Na seção de definição do Relatorio, função ReportDef(), 
+devem ser criados os componentes de impressão, as seções 
+e as células, os totalizadores e demais componentes que 
+o usuário poderá personalizar no Relatorio.
+
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/01/2021
+@return object, objeto de impressao
+/*/
+Static Function ReportDef()
+	Local oReport       	:= Nil
+	Local oTaxaManut     	:= Nil
+	Local oTotalManutencao 	:= Nil
+	Local cTitle    		:= "Relatorio de Taxas de Manutencao - Analitico"
+
+	Private cPerg		:= "RCPGR041"
+
+	oReport	:= TReport():New("RCPGR041",cTitle,"RCPGR041",{|oReport| PrintReport(oReport,oTaxaManut,oTotalManutencao)},"Este Relatorio apresenta a relacao de taxas de manutencao emitidas pelo contrato.")
+	oReport:SetLandscape()			// Orientação paisagem
+	oReport:HideParamPage()			// Inibe impressão da pagina de parametros
+	oReport:SetUseGC( .F. ) 		// Desabilita o botão <Gestao Corporativa> do Relatorio
+
+	AjustaSX1(cPerg) // cria as perguntas para gerar o relatorio
+	Pergunte(oReport:GetParam(),.F.)
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	oTaxaManut 	:= TRSection():New(oReport,"Contratos",{"TRBMAN"})//,{"Por Contrato","Por Cod. Cliente","Por Nome Cliente"}/*Ordens do Relatorio*/,/*Campos do SX3*/,/*Campos do SIX*/)
+
+	TRCell():New(oTaxaManut, "CONTRATO"	        , "TRBMAN", "Contrato"          ,	PesqPict("U00","U00_CODIGO"	)   , 13 )
+	TRCell():New(oTaxaManut, "DATACAD"			, "TRBMAN", "Cadastro"    		,	PesqPict("U00","U00_DATA"	)   , TamSX3("U00_DATA")[1]+15)
+	TRCell():New(oTaxaManut, "NOME_CESSIONARIO"	, "TRBMAN", "Cessionario"       ,	PesqPict("U00","U00_NOMCLI"	)   , TamSX3("U00_NOMCLI")[1]+15)
+	TRCell():New(oTaxaManut, "MANUT_CONTRATO"	, "TRBMAN", "Taxa Contrato(R$)" ,	PesqPict("U00","U00_TXMANU"	)	, TamSX3("U00_TXMANU")[1]+3)
+	TRCell():New(oTaxaManut, "STATUS_CONTRA" 	, "TRBMAN", "Status Contra."    ,	"@!"   						   	, 20 )
+	TRCell():New(oTaxaManut, "REGRA"	        , "TRBMAN", "Regra"			    ,	PesqPict("U00","U00_REGRA" )   	, TamSX3("U00_REGRA")[1]+3)
+	TRCell():New(oTaxaManut, "DESCRI_REGRA"	    , "TRBMAN", "Descri.Regra"  	,	PesqPict("U79","U79_DESCRI" )   , TamSX3("U79_DESCRI")[1]+15)
+	TRCell():New(oTaxaManut, "FORPG_MANUTENCAO"	, "TRBMAN", "Forma.Pag."		,	PesqPict("U00","U00_FPTAXA" )   , TamSX3("U00_FPTAXA")[1]+3)
+	TRCell():New(oTaxaManut, "MANUTENCAO"	    , "TRBMAN", "Manutencao"        ,	PesqPict("U26","U26_CODIGO" ) 	, 10)
+	TRCell():New(oTaxaManut, "DATA_MANUTENCAO"	, "TRBMAN", "Data Manut."    	,	PesqPict("U26","U26_DATA" )	    , TamSX3("U26_DATA")[1]+10)
+	TRCell():New(oTaxaManut, "VALOR_MANUTENCAO"	, "TRBMAN", "Valor Manut.(R$)"  ,	PesqPict("U26","U26_TAXA" )		, TamSX3("U26_TAXA")[1]+3)
+	TRCell():New(oTaxaManut, "PROX_MANUTENCAO"	, "TRBMAN", "Prox.Manut."  		,	PesqPict("U26","U26_PROMAN" )	, TamSX3("U26_PROMAN")[1]+3)
+	TRCell():New(oTaxaManut, "IND_MANUTENCAO"	, "TRBMAN", "Indice"    		,	PesqPict("U22","U22_DESC")		, 15 )
+	TRCell():New(oTaxaManut, "STATUS_MANUTENCAO", "TRBMAN", "Status Manut."	    ,	PesqPict("U26","U26_STATUS" )   , 30 )
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	oTotalManutencao := TRSection():New(oReport,"Total Geral",{}) //TRSection():New(oReport,"Total Geral",{},,,,,,,,,,,.T.,,,,,1)
+	oTotalManutencao:SetHeaderPage(.F.) //Define que imprime cabeçalho das células no topo da página. (Parâmetro) Se verdadeiro, aponta que imprime o cabeçalho no topo da página
+	oTotalManutencao:SetHeaderSection(.T.) //Define que imprime cabeçalho das células na quebra de seção.(Parâmetro) Se verdadeiro, aponta que imprime cabeçalho na quebra da seção
+	oTotalManutencao:SetTotalInLine(.T.) //Define que a impressão dos totalizadores será em linha. (Parâmetro) Se verdadeiro, imprime os totalizadores em linha
+
+	TRCell():New(oTotalManutencao,"nTotalContrato", , " ", "@!", 100)
+	TRCell():New(oTotalManutencao,"nValorTaxa", , " ", "@!", 200)
+
+Return(oReport)
+
+/*/{Protheus.doc} PrintReport
+Funcao para impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/01/2021
+@param oReport, object, objeto de impressao
+@param oTaxaManut, object, objeto do contrato
+@param oDetalhe, object, objeto do detalhe
+@param oTotalManutencao, object, objeto de total
+/*/
+Static Function PrintReport(oReport, oTaxaManut, oTotalManutencao)
+
+	Local cQuery            As Character
+	Local cProdutos         As Character
+	Local cContratoDe       As Character
+	Local cContratoAte      As Character
+	Local cRegra            As Character
+	Local cIndice           As Character
+	Local cStatusContra		As Character
+	Local cStatusManut		As Character
+	Local dDataDe           As Date
+	Local dDataAte          As Date
+	Local dDataUtilizacao   As Date
+	Local lContinua			As Logical
+	Local nData             As Numeric
+	Local nManutenaoStatus	As Numeric
+	Local nStatusContrato	As Numeric
+	Local nCont				As Numeric
+	Local nTotalContrato	As Numeric
+	Local nValorTaxa		As Numeric
+
+	// atribuo valor para as variaveis
+	cQuery 			:= "" // Query de busca
+	cProdutos      	:= ""
+	cContratoDe	    := ""
+	cContratoAte    := ""
+	cIndice         := ""
+	cRegra          := ""
+	cStatusContra	:= ""
+	cStatusManut	:= ""
+	dDataDe			:= StoD("")
+	dDataAte		:= StoD("")
+	dDataUtilizacao := StoD("")
+	lContinua		:= .T.
+	nData           := 0
+	nManutenaoStatus:= 0
+	nStatusContrato	:= 0
+	nCont			:= 0
+	nTotalContrato	:= 0
+	nValorTaxa		:= 0
+
+	// trata para os parametros
+	cContratoDe     := MV_PAR01
+	cContratoAte    := MV_PAR02
+	nContratoStatus := MV_PAR03
+	nManutenaoStatus:= MV_PAR04
+	cProdutos       := MV_PAR05
+	cIndice         := MV_PAR06
+	cRegra          := MV_PAR07
+	nData           := MV_PAR08
+	dDataDe         := MV_PAR09
+	dDataAte        := MV_PAR10
+
+	oTaxaManut:Init()
+
+	If Select("TRBMAN") > 0
+		TRBMAN->(DbCloseArea())
+	Endif
+
+	cQuery := " SELECT "
+	cQuery += " 	U26.U26_CONTRA  CONTRATO, "
+	cQuery += " 	U26.U26_DATA    DATA_EMISSAO, "
+	cQuery += " 	U00.U00_CLIENT	CLIENTE, "
+	cQuery += " 	U00.U00_LOJA    LOJA, "
+	cQuery += " 	U00.U00_NOMCLI  NOMECLIENTE, "
+	cQuery += " 	U00.U00_PLANO   PRODUTO, "
+	cQuery += " 	U00.U00_DESCPL  DESC_PRODUTOS, "
+	cQuery += " 	U00.U00_STATUS  STATUS_CONTRA, "
+	cQuery += " 	U00.U00_CGC  	CPF_CESSIONARIO, "
+	cQuery += "     U00.U00_FPTAXA  FORMAPAGAMENTO, "
+	cQuery += "     U00.U00_DATA 	DATACAD, "
+	cQuery += " 	U26.U26_REGRA   REGRA, "
+	cQuery += " 	U79.U79_DESCRI  DESCREGRA, "
+	cQuery += " 	U26.U26_PROMAN  PROXIMA_MANUTENCAO, "
+	cQuery += " 	(U00.U00_TXMANU + U00.U00_ADIMNT)  TAXACONTRA, "
+	cQuery += " 	U26.U26_TAXA    TAXATUAL, "
+	cQuery += " 	U26.U26_DATA    DATAMANUT, "
+	cQuery += " 	(SELECT U22.U22_DESC FROM " + RetSqlName("U22") + " U22 WHERE U22.D_E_L_E_T_ = ' ' AND U22.U22_CODIGO = U00.U00_INDMAN)  INDICE, "
+	cQuery += " 	U22.U22_DESC    DESCINDICE, "
+	cQuery += " 	U26.U26_STATUS  STATUS_MANUT, "
+	cQuery += "     U26.U26_CODIGO  CODIGO "
+	cQuery += " FROM " + RetSqlName("U26") + " U26 "
+	cQuery += " INNER JOIN " + RetSqlName("U00") + " U00 ON U00.D_E_L_E_T_ = '' "
+	cQuery += " 	AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+	cQuery += "     AND U00.U00_CODIGO = U26.U26_CONTRA "
+
+	If nContratoStatus == 1 // todos
+		cQuery += "     AND U00.U00_STATUS IN ('A','S') "
+	ElseIf nContratoStatus == 2 // ativos
+		cQuery += "     AND U00.U00_STATUS = 'A' "
+	ElseIf nContratoStatus == 3 // suspensos
+		cQuery += "     AND U00.U00_STATUS = 'S'
+	EndIf
+
+	cQuery += " INNER JOIN " + RetSqlName("U79") + " U79 ON U79.D_E_L_E_T_ = '' "
+	cQuery += " 	AND U79.U79_FILIAL = '" + xFilial("U79") + "' "
+	cQuery += "     AND U79.U79_CODIGO = U26.U26_REGRA "
+	cQuery += " INNER JOIN " + RetSqlName("U22") + " U22 ON U22.D_E_L_E_T_ = '' "
+	cQuery += " 	AND U22.U22_FILIAL = '" + xFilial("U22") + "' "
+	cQuery += "     AND U22.U22_CODIGO = U00.U00_INDMAN "
+	cQuery += " WHERE U26.D_E_L_E_T_ = '' "
+	cQuery += " AND U26.U26_FILIAL = '" + xFilial("U26") + "' "
+
+	if !Empty(cContratoAte)
+		cQuery += " AND U26.U26_CONTRA BETWEEN '" + cContratoDe + "' AND '" + cContratoAte + "' "
+	endIf
+
+	if !Empty(cProdutos)
+		cQuery += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(cProdutos), ";" )
+	endIf
+
+	if !Empty(cIndice)
+		cQuery += " AND (U26.U26_TPINDI = '" + cIndice + "' OR U00.U00_INDMAN = '" + cIndice + "')"
+	endIf
+
+	if !Empty(cRegra)
+		cQuery += " AND U26.U26_REGRA = '" + cRegra + "' "
+	endIf
+
+	If nData == 1 // data de proxima manuencao (Manutencao do Mes)
+		
+		cQuery += " AND U26.U26_STATUS  <> '3' "
+		cQuery += " AND SUBSTRING(U26.U26_PROMAN,3,4) + SUBSTRING(U26.U26_PROMAN,1,2)  <= '" + AnoMes(dDataBase) + "'  "
+
+	ElseIf nData == 2 // data de/ate
+
+		If nManutenaoStatus == 2 // provisionado
+			cQuery += "     AND U26.U26_STATUS  = '1' "
+		ElseIf nManutenaoStatus == 3 // efetivadas
+			cQuery += "     AND U26.U26_STATUS  = '2' "
+		ElseIf nManutenaoStatus == 4 // finalizado
+			cQuery += "     AND U26.U26_STATUS  = '3' "
+		endIf
+
+		cQuery += " AND U26.U26_DATA BETWEEN '" + DtoS(dDataDe) + "' AND '" + DtoS(dDataAte) + "' "
+
+	EndIf
+
+	cQuery += " ORDER BY U26.U26_DATA, U26.U26_CONTRA "
+
+	cQuery := ChangeQuery(cQuery)
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, 'TRBMAN' )
+
+	TRBMAN->(dbEval({|| nCont++}))
+	TRBMAN->(dbGoTop())
+
+	oReport:SetMeter(nCont)
+
+	While !oReport:Cancel() .And. TRBMAN->(!EOF())
+
+		// reinicio o conteudo da variavel
+		lContinua	  := .T.
+		nDiasEmAtraso := 0
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			lContinua := .F.
+			Exit
+		EndIf
+
+		if lContinua
+
+			// pego o status do contrato
+			if AllTrim(TRBMAN->STATUS_CONTRA) == "A"
+				cStatusContra := "ATIVO"
+			elseIf AllTrim(TRBMAN->STATUS_CONTRA) == "S"
+				cStatusContra := "SUSPENSO"
+			endIf
+
+			// pego o status da manutenco
+			if AllTrim(TRBMAN->STATUS_MANUT) == "1"
+				cStatusManut := "PROVISIONADA"
+			elseIf AllTrim(TRBMAN->STATUS_MANUT) == "2"
+				cStatusManut := "EFETIVADA"
+			elseIf AllTrim(TRBMAN->STATUS_MANUT) == "3"
+				cStatusManut := "FINALIZADA"
+			endIf
+
+			oTaxaManut:Cell("CONTRATO"):SetValue(AllTrim(TRBMAN->CONTRATO))
+			oTaxaManut:Cell("DATACAD"):SetValue(StoD(TRBMAN->DATACAD))
+			oTaxaManut:Cell("NOME_CESSIONARIO"):SetValue(TRBMAN->NOMECLIENTE)
+			oTaxaManut:Cell("MANUT_CONTRATO"):SetValue(TRBMAN->TAXACONTRA)
+			oTaxaManut:Cell("STATUS_CONTRA"):SetValue(cStatusContra)
+			oTaxaManut:Cell("REGRA"):SetValue(TRBMAN->REGRA)
+			oTaxaManut:Cell("DESCRI_REGRA"):SetValue(TRBMAN->DESCREGRA)
+			oTaxaManut:Cell("FORPG_MANUTENCAO"):SetValue(TRBMAN->FORMAPAGAMENTO)
+			oTaxaManut:Cell("MANUTENCAO"):SetValue(TRBMAN->CODIGO)
+			oTaxaManut:Cell("DATA_MANUTENCAO"):SetValue( StoD(TRBMAN->DATAMANUT) )
+			oTaxaManut:Cell("VALOR_MANUTENCAO"):SetValue(TRBMAN->TAXATUAL)
+			oTaxaManut:Cell("PROX_MANUTENCAO"):SetValue( TRBMAN->PROXIMA_MANUTENCAO )
+			oTaxaManut:Cell("IND_MANUTENCAO"):SetValue( TRBMAN->INDICE )
+			oTaxaManut:Cell("STATUS_MANUTENCAO"):SetValue( cStatusManut )
+
+			oTaxaManut:PrintLine()
+
+			nTotalContrato++
+			nValorTaxa+=TRBMAN->TAXACONTRA
+
+			oReport:SkipLine()	//Pula uma linha
+
+		endIf
+
+		TRBMAN->(dbSkip())
+	EndDo
+
+	oTotalManutencao:Init()
+	oTotalManutencao:Cell("nTotalContrato"):SetValue( "Total de Contratos: " +  AllTrim(Transform(nTotalContrato, "@E 999999")) )
+	oTotalManutencao:Cell("nValorTaxa"):SetValue( "Valor Total em Taxa de Manutencao: R$ " + AllTrim(Transform(nValorTaxa,PesqPict("SE1","E1_VALOR"))) )
+
+	oTotalManutencao:PrintLine()
+	oTotalManutencao:SetTotalText(" ")
+	oTotalManutencao:Finish()
+
+	oTotalManutencao:SetPageBreak(.T.)
+
+	oTaxaManut:Finish()
+
+	If Select("TRBMAN") > 0
+		TRBMAN->(DbCloseArea())
+	Endif
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Funcao para criar o grupo de perguntas
+na SX1
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/01/2021
+@param cPerg, character, grupo de perguntas
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs		:= {}
+
+	Default cPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','Contrato de'   	 		,'','','mv_ch1','C', TamSx3("U00_CODIGO")[1]    , 0, 1,'G','','mv_par01','','','','','',''})
+		aAdd(aRegs,{cPerg,'02','Contrato ate'   		,'','','mv_ch2','C', TamSx3("U00_CODIGO")[1]    , 0, 1,'G','','mv_par02','','','','','',''})
+		aAdd(aRegs,{cPerg,'03','Status Contrato'  		,'','','mv_ch3','N', 1                          , 0, 1,'N','','mv_par03','1=Ambos','2=Ativo','3=Suspenso','','',''})
+		aAdd(aRegs,{cPerg,'04','Status Manutenacao'     ,'','','mv_ch4','N', 1                          , 0, 1,'N','','mv_par04','1=Ambos','2=Provisionada','3=Efetivada','4=Finalizada','',''})
+		aAdd(aRegs,{cPerg,'05','Produtos'       		,'','','mv_ch5','C', 99   	                    , 0, 0,'G','','mv_par05','','','','','','U05MRK'})
+		aAdd(aRegs,{cPerg,'06','Indice'       		    ,'','','mv_ch6','C', TamSx3("U00_INDICE")[1]    , 0, 0,'G','','mv_par06','','','','','','U22'})
+		aAdd(aRegs,{cPerg,'07','Regra'       		    ,'','','mv_ch7','C', TamSx3("U00_REGRA")[1]   	, 0, 0,'G','','mv_par07','','','','','','U79'})
+		aAdd(aRegs,{cPerg,'08','Considera Data?'   		,'','','mv_ch8','N', 1    						, 0, 1,'N','','mv_par08','1=Manut.Mes','2=Data de Emissao','','','',''})
+		aAdd(aRegs,{cPerg,'09','Data de '       		,'','','mv_ch9','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par09','','','','','',''})
+		aAdd(aRegs,{cPerg,'10','Data ate'       		,'','','mv_cha','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par10','','','','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)

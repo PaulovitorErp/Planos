@@ -1,0 +1,390 @@
+#include "topconn.ch"
+#include "totvs.ch"
+#include "tbiconn.ch"
+#include "rwmake.ch"
+
+#define CRLF CHR(13)+CHR(10)
+
+/*/{Protheus.doc} RCPGR040
+Relatório de PDD - Analitico
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/01/2021
+/*/
+User Function RCPGR040()
+	Local oReport
+
+	oReport:= ReportDef()
+	oReport:PrintDialog()
+
+Return(Nil)
+
+/*/{Protheus.doc} ReportDef
+Na seção de definição do relatório, função ReportDef(), 
+devem ser criados os componentes de impressão, as seções 
+e as células, os totalizadores e demais componentes que 
+o usuário poderá personalizar no relatório.
+
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/01/2021
+@return object, objeto de impressao
+/*/
+Static Function ReportDef()
+	Local oReport       	:= Nil
+	Local oContrato     	:= Nil
+	Local oTotalContratos 	:= Nil
+	Local cTitle    		:= "Relatório de Provisão de Devedores Duvidosos - Analitico"
+
+	Private cPerg		:= "RCPGR040"
+
+	oReport	:= TReport():New("RCPGR040",cTitle,"RCPGR040",{|oReport| PrintReport(oReport,oContrato,oTotalContratos)},"Este relatório apresenta a relação de contratos para provsião de devedores duvidosos.")
+	oReport:SetLandscape()			// Orientação paisagem
+	oReport:HideParamPage()			// Inibe impressão da pagina de parametros
+	oReport:SetUseGC( .F. ) 		// Desabilita o botão <Gestao Corporativa> do relatório
+
+	AjustaSX1(cPerg) // cria as perguntas para gerar o relatorio
+	Pergunte(oReport:GetParam(),.F.)
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	oContrato 	:= TRSection():New(oReport,"Contratos",{"TRBPDD"})//,{"Por Contrato","Por Cod. Cliente","Por Nome Cliente"}/*Ordens do Relatório*/,/*Campos do SX3*/,/*Campos do SIX*/)
+
+	TRCell():New(oContrato, "CONTRATO"	    , "TRBPDD", "Contrato"          ,	PesqPict("U00","U00_CODIGO"	)   , TamSX3("U00_CODIGO")[1]+1)
+	TRCell():New(oContrato, "TALONARIO"	    , "TRBPDD", "Talonario"	        ,	PesqPict("U00","U00_TALONA"	)   , TamSX3("U00_TALONA")[1]+5)
+	TRCell():New(oContrato, "STATUS"	    , "TRBPDD", "Status"            ,	"@!"                            , 13 )
+	TRCell():New(oContrato, "CESSIONARIO"	, "TRBPDD", "Cessionario"		,	PesqPict("U00","U00_NOMCLI"	)   , TamSX3("U00_NOMCLI")[1]+1)
+	TRCell():New(oContrato, "ATIVACAO"		, "TRBPDD", "Emissão"           ,	PesqPict("U00","U00_DTATIV"	)   , TamSX3("U00_DTATIV")[1]+15)
+	TRCell():New(oContrato, "DIASEMATRASO"	, "TRBPDD", "Dias em Atraso"    ,	"@E 99999" 			 			, 10)
+	TRCell():New(oContrato, "PREFIXO"		, "TRBPDD", "Prefixo"    		,	PesqPict("SE1","E1_PREFIXO" )	, TamSX3("E1_PREFIXO")[1]+3)
+	TRCell():New(oContrato, "NUMERO"		, "TRBPDD", "Numero"    		,	PesqPict("SE1","E1_NUM"	)		, TamSX3("E1_NUM")[1]+3)
+	TRCell():New(oContrato, "PARCELA"		, "TRBPDD", "Parcela"    		,	PesqPict("SE1","E1_PARCELA"	)	, TamSX3("E1_PARCELA")[1]+3)
+	TRCell():New(oContrato, "TIPO"			, "TRBPDD", "Tipo"    			,	PesqPict("SE1","E1_TIPO")		, TamSX3("E1_TIPO")[1]+3)
+	TRCell():New(oContrato, "VENCIMENTO"	, "TRBPDD", "Vencimento"     	,	PesqPict("SE1","E1_VENCTO" )   	, TamSX3("E1_VENCTO")[1]+15)
+	TRCell():New(oContrato, "VALOR"		    , "TRBPDD", "Valor(R$)"			,	PesqPict("SE1","E1_VALOR" )   	, TamSX3("E1_VALOR")[1]+3)
+	TRCell():New(oContrato, "VALORPDD"	    , "TRBPDD", "PDD(R$)"			,	PesqPict("SE1","E1_VALOR" )   	, TamSX3("E1_VALOR")[1]+3)
+	TRCell():New(oContrato, "MULTA"	    	, "TRBPDD", "Multa(R$)"			,	PesqPict("SE1","E1_VALOR" )   	, TamSX3("E1_VALOR")[1]+3)
+	TRCell():New(oContrato, "JUROS"	    	, "TRBPDD", "Juros(R$)"			,	PesqPict("SE1","E1_VALOR" )   	, TamSX3("E1_VALOR")[1]+3)
+	TRCell():New(oContrato, "UTILIZADO"		, "TRBPDD", "Utilizado"         ,	"@!"                            , 10 )
+	TRCell():New(oContrato, "DTUTILIZACAO"	, "TRBPDD", "Dt.Utilização"     ,	PesqPict("UJV","UJV_DATA" )   	, TamSX3("UJV_DATA")[1]+15)
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	oTotalContratos := TRSection():New(oReport,"Total Geral",{}) //TRSection():New(oReport,"Total Geral",{},,,,,,,,,,,.T.,,,,,1)
+	oTotalContratos:SetHeaderPage(.F.) //Define que imprime cabeçalho das células no topo da página. (Parâmetro) Se verdadeiro, aponta que imprime o cabeçalho no topo da página
+	oTotalContratos:SetHeaderSection(.T.) //Define que imprime cabeçalho das células na quebra de seção.(Parâmetro) Se verdadeiro, aponta que imprime cabeçalho na quebra da seção
+	oTotalContratos:SetTotalInLine(.T.) //Define que a impressão dos totalizadores será em linha. (Parâmetro) Se verdadeiro, imprime os totalizadores em linha
+
+	TRCell():New(oTotalContratos,"nTotalAberto", , " ", "@!", 100)
+	TRCell():New(oTotalContratos,"nTotalPDD", , " ", "@!", 200)
+
+Return(oReport)
+
+/*/{Protheus.doc} PrintReport
+Funcao para impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 30/01/2021
+@param oReport, object, objeto de impressao
+@param oContrato, object, objeto do contrato
+@param oDetalhe, object, objeto do detalhe
+@param oTotalContratos, object, objeto de total
+/*/
+Static Function PrintReport(oReport, oContrato, oTotalContratos)
+
+	Local cQuery            As Character
+	Local cProdutos         As Character
+	Local cContratoDe       As Character
+	Local cContratoAte      As Character
+	Local cStatus           As Character
+	Local cUtilizado        As Character
+	Local dDataDe           As Date
+	Local dDataAte          As Date
+	Local dDataUtilizacao   As Date
+	Local lContinua			As Logical
+	Local nVP               As Numeric
+	Local nVF               As Numeric
+	Local nTaxa             As Numeric
+	Local nParc             As Numeric
+	Local nTotalAberto    	As Numeric
+	Local nTotalPDD         As Numeric
+	Local nCont             As Numeric
+	Local nUtilizado		As Numeric
+	Local nDiasEmAtraso 	As Numeric
+	Local nMulta			As Numeric
+	Local nJuros			As Numeric
+	Local nValorPDD			As Numeric
+	Local oVirtusFin		As object
+
+	// atribuo valor para as variaveis
+	cQuery 			:= "" // Query de busca
+	cProdutos      	:= ""
+	cContratoDe	    := ""
+	cContratoAte    := ""
+	cStatus         := ""
+	cUtilizado      := ""
+	dDataDe			:= StoD("")
+	dDataAte		:= StoD("")
+	dDataUtilizacao := StoD("")
+	lContinua		:= .T.
+	nVP		        := 0
+	nVF		        := 0
+	nTaxa			:= 0
+	nParc			:= 0
+	nTotalAberto	:= 0
+	nTotalPDD		:= 0
+	nCont           := 0
+	nDiasEmAtraso	:= 0
+	nMulta			:= 0
+	nJuros			:= 0
+	nValorPDD		:= 0
+	oVirtusFin		:= Nil
+
+	// trata para os parametros
+	dDataDe         := MV_PAR01
+	dDataAte        := MV_PAR02
+	cProdutos       := MV_PAR03
+	cContratoDe     := MV_PAR04
+	cContratoAte    := MV_PAR05
+	nUtilizado		:= MV_PAR06	// 1=Ambos;2=Sim;3=Não
+
+	oContrato:Init()
+
+	If Select("TRBPDD") > 0
+		TRBPDD->(DbCloseArea())
+	Endif
+
+	cQuery := " SELECT
+	cQuery+= " 	U00.U00_CODIGO 	CONTRATOCEM,
+	cQuery+= " 	U00.U00_TALONA 	TALONARIO,
+	cQuery+= " 	U00.U00_STATUS 	STATUS,
+	cQuery+= " 	U00.U00_NOMCLI 	CESSIONARIO,
+	cQuery+= " 	U00.U00_DESCPL 	DESCRIPRODUTO,
+	cQuery+= " 	U00.U00_DTATIV 	EMISSAO,
+	cQuery+= " 	PDD.PREFIXO PREFIXO,
+	cQuery+= " 	PDD.NUMERO NUMERO,
+	cQuery+= " 	PDD.PARCELA PARCELA,
+	cQuery+= " 	PDD.TIPO TIPO,
+	cQuery+= " 	PDD.VENCIMENTO VENCIMENTO,
+	cQuery+= " 	PDD.COMJUROS  	VALOR,
+	cQuery+= " 	PDD.VALOR_PDD 	VALORPDD,
+	cQuery+= " 	PDD.MULTA MULTA,
+	cQuery+= " 	PDD.JUROS JUROS,
+	cQuery+= "  PDD.RECSE1 RECSE1,"
+	cQuery+= " 	ISNULL((SELECT MAX(DATAUTILIZACAO) FROM
+	cQuery+= " 	(SELECT U04.U04_DATA DATAUTILIZACAO
+	cQuery+= " 	FROM " + RetSQLName("U04") + " U04 "
+	cQuery+= " 	WHERE U04.D_E_L_E_T_ = ' '
+	cQuery+= " 	AND U04.U04_CODIGO = U00.U00_CODIGO
+	cQuery+= " 	UNION ALL SELECT U30.U30_DTUTIL DATAUTILIZACAO
+	cQuery+= " 	FROM " + RetSQLName("U30") + " U30 "
+	cQuery+= " 	WHERE U30.D_E_L_E_T_ = ' '
+	cQuery+= " 	AND U30.U30_CODIGO = U00.U00_CODIGO ) ENDERECAMENTO),'') DTUTILIZACAO
+	cQuery+= " FROM " + RetSQLName("U00") + " U00
+	cQuery+= " INNER JOIN
+	cQuery+= " ( SELECT
+	cQuery+= " 			SE1.E1_XCONTRA CONTRATO,
+	cQuery+= " 			SE1.E1_SALDO SALDO,
+	cQuery+= " 			SE1.E1_MOEDA MOEDA,
+	cQuery+= " 			SE1.E1_PREFIXO PREFIXO,
+	cQuery+= " 			SE1.E1_NUM NUMERO,
+	cQuery+= " 			SE1.E1_PARCELA PARCELA,
+	cQuery+= " 			SE1.E1_TIPO TIPO,
+	cQuery+= " 			SE1.E1_CLIENTE CLIENTE,
+	cQuery+= " 			SE1.E1_LOJA LOJA,
+	cQuery+= " 			SE1.E1_VENCREA VENCIMENTO,
+	cQuery+= " 			SE1.E1_EMIS1 EMISSAO,
+	cQuery+= " 			SE1.E1_VALOR + SE1.E1_ACRESC COMJUROS,
+	cQuery+= " 			SE1.E1_MULTA MULTA,
+	cQuery+= " 			SE1.E1_JUROS JUROS,
+	cQuery+= " 			SE1.R_E_C_N_O_ RECSE1,
+	cQuery+= " 			SUM(FIA.FIA_VALOR) VALOR_PDD
+	cQuery+= " 		FROM " + RetSQLName("SE1") + " SE1
+	cQuery+= " 			LEFT JOIN " + RetSQLName("FIA") + " FIA ON FIA_FILIAL = '" + xFilial("FIA") + "' "
+	cQuery+= " 			  				AND FIA.FIA_CLIENT	= SE1.E1_CLIENTE
+	cQuery+= " 			  				AND FIA.FIA_LOJA	= SE1.E1_LOJA
+	cQuery+= " 			  				AND FIA.FIA_PREFIX	= SE1.E1_PREFIXO
+	cQuery+= " 			  				AND FIA.FIA_NUM		= SE1.E1_NUM
+	cQuery+= " 			  				AND FIA.FIA_PARCEL	= SE1.E1_PARCELA
+	cQuery+= " 			  				AND FIA.FIA_TIPO	= SE1.E1_TIPO
+	cQuery+= " 				WHERE SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQuery+= " 		  		AND  SE1.D_E_L_E_T_ = ' '
+	cQuery+= " 				AND SE1.E1_XCONTRA <> ' '
+	cQuery+= " 				AND SE1.E1_SALDO > 0
+	cQuery+= " 			GROUP BY SE1.E1_XCONTRA,
+	cQuery+= " SE1.E1_SALDO,
+	cQuery+= " SE1.E1_MOEDA,
+	cQuery+= " SE1.E1_PREFIXO,
+	cQuery+= " SE1.E1_NUM,
+	cQuery+= " SE1.E1_PARCELA,
+	cQuery+= " SE1.E1_TIPO,
+	cQuery+= " SE1.E1_CLIENTE,
+	cQuery+= " SE1.E1_LOJA,
+	cQuery+= " SE1.E1_VENCREA,
+	cQuery+= " SE1.E1_EMIS1,
+	cQuery+= " (SE1.E1_VALOR + SE1.E1_ACRESC),
+	cQuery+= " SE1.E1_MULTA,
+	cQuery+= " SE1.E1_JUROS,
+	cQuery+= " SE1.R_E_C_N_O_	) AS PDD ON PDD.CONTRATO = U00.U00_CODIGO
+	cQuery+= " 	WHERE U00.D_E_L_E_T_ = ' '
+	cQuery+= " 	AND U00.U00_STATUS IN ('A','S')
+
+	if !Empty(dDataAte)
+		cQuery += " AND U00.U00_DTATIV >= '" + DtoS(dDataDe) + "' AND U00.U00_DTATIV <= '" + DtoS(dDataAte) + "' "
+	endIf
+
+	if !Empty(cContratoAte)
+		cQuery += " AND U00.U00_CODIGO >= '" + cContratoDe + "' AND U00.U00_CODIGO <= '" + cContratoAte + "' "
+	endIf
+
+	if !Empty(cProdutos)
+		cQuery += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(cProdutos),";" ) + " "
+	endIf
+
+	cQuery += " ORDER BY CONTRATOCEM, PREFIXO, NUMERO, PARCELA, TIPO "
+
+	cQuery := ChangeQuery(cQuery)
+
+	TcQuery cQuery New Alias "TRBPDD"
+
+	TRBPDD->(dbEval({|| nCont++}))
+	TRBPDD->(dbGoTop())
+
+	oReport:SetMeter(nCont)
+
+	While !oReport:Cancel() .And. TRBPDD->(!EOF())
+
+		// reinicio o conteudo da variavel
+		lContinua	  := .T.
+		nDiasEmAtraso := 0
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		if nUtilizado == 2 // sim - utilizado
+			if Empty(TRBPDD->DTUTILIZACAO)
+				lContinua := .F.
+			endIf
+		elseIf nUtilizado == 3 // nao - não utilizado
+			if !Empty(TRBPDD->DTUTILIZACAO)
+				lContinua := .F.
+			endIf
+		endIf
+
+		if lContinua
+
+			if Stod(TRBPDD->VENCIMENTO) < dDatabase
+				nDiasEmAtraso := DateDiffDay(Stod(TRBPDD->VENCIMENTO), dDatabase)
+			endIf
+
+			// pego o status do contrato
+			if TRBPDD->STATUS == "A"
+				cStatus := "ATIVO"
+			elseIf TRBPDD->STATUS == "S"
+				cStatus := "SUSPENSO"
+			endIf
+
+			// verifico se o contrato esta ativo
+			if !Empty(TRBPDD->DTUTILIZACAO)
+				cUtilizado := "SIM"
+			else
+				cUtilizado := "NÃO"
+			endIf
+
+			if TRBPDD->VALORPDD > 0 
+				nValorPDD := TRBPDD->VALORPDD
+			else
+				nValorPDD := TRBPDD->VALOR * 0.01
+			endIf
+
+			SE1->(DBGoTo(TRBPDD->RECSE1))
+
+			// chamamos a classe financeira do VIRTUS ERP
+			oVirtusFin := VirtusFin():New()
+
+			nMulta := oVirtusFin:RetMultaTitulo()
+
+			nJuros := oVirtusFin:RetJurosTitulo()
+
+			oContrato:Cell("CONTRATO"):SetValue(TRBPDD->CONTRATOCEM)
+			oContrato:Cell("TALONARIO"):SetValue(TRBPDD->TALONARIO)
+			oContrato:Cell("STATUS"):SetValue(AllTrim(cStatus))
+			oContrato:Cell("CESSIONARIO"):SetValue(TRBPDD->CESSIONARIO)
+			oContrato:Cell("ATIVACAO"):SetValue( Stod(TRBPDD->EMISSAO) )
+			oContrato:Cell("DIASEMATRASO"):SetValue(nDiasEmAtraso)
+			oContrato:Cell("PREFIXO"):SetValue(TRBPDD->PREFIXO)
+			oContrato:Cell("NUMERO"):SetValue(TRBPDD->NUMERO)
+			oContrato:Cell("PARCELA"):SetValue(TRBPDD->PARCELA)
+			oContrato:Cell("TIPO"):SetValue(TRBPDD->TIPO)
+			oContrato:Cell("VENCIMENTO"):SetValue( StoD(TRBPDD->VENCIMENTO) )
+			oContrato:Cell("VALOR"):SetValue(TRBPDD->VALOR)
+			oContrato:Cell("VALORPDD"):SetValue( nValorPDD )
+			oContrato:Cell("MULTA"):SetValue( nMulta )
+			oContrato:Cell("JUROS"):SetValue( nJuros )
+			oContrato:Cell("UTILIZADO"):SetValue( cUtilizado )
+			oContrato:Cell("DTUTILIZACAO"):SetValue( Stod(TRBPDD->DTUTILIZACAO) )
+
+			oContrato:PrintLine()
+
+			nTotalAberto	+= TRBPDD->VALOR
+			nTotalPDD       += nValorPDD
+
+			oReport:SkipLine()	//Pula uma linha
+
+		endIf
+
+		TRBPDD->(dbSkip())
+	EndDo
+
+	oTotalContratos:Init()
+	oTotalContratos:Cell("nTotalAberto"):SetValue( "Valor Total em Aberto: R$ " +  Transform(nTotalAberto,PesqPict("SE1","E1_VALOR") ) )
+	oTotalContratos:Cell("nTotalPDD"):SetValue( "Valor Total PDD: R$ " + Transform(nTotalPDD,PesqPict("SE1","E1_VALOR") ) )
+
+	oTotalContratos:PrintLine()
+	oTotalContratos:SetTotalText(" ")
+	oTotalContratos:Finish()
+
+	oTotalContratos:SetPageBreak(.T.)
+
+	oContrato:Finish()
+
+	TRBPDD->(dbCloseArea())
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Funcao para criar o grupo de perguntas
+na SX1
+@type function
+@version 1.0 
+@author g.sampaio
+@since 30/01/2021
+@param cPerg, character, grupo de perguntas
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs		:= {}
+
+	Default cPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','Data de '       		,'','','mv_ch1','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par01','','','','','',''})
+		aAdd(aRegs,{cPerg,'02','Data ate'       		,'','','mv_ch2','D', TamSx3("U00_DTATIV")[1]    , 0, 0,'G','','mv_par02','','','','','',''})
+		aAdd(aRegs,{cPerg,'03','Produtos'       		,'','','mv_ch3','C', 99   	                    , 0, 0,'G','','mv_par03','','','','','','U05MRK'})
+		aAdd(aRegs,{cPerg,'04','Contrato de'   	 		,'','','mv_ch4','C', TamSx3("U00_CODIGO")[1]    , 0, 1,'G','','mv_par04','','','','','',''})
+		aAdd(aRegs,{cPerg,'05','Contrato ate'   		,'','','mv_ch5','C', TamSx3("U00_CODIGO")[1]    , 0, 1,'G','','mv_par05','','','','','',''})
+		aAdd(aRegs,{cPerg,'06','Utilizado?'   			,'','','mv_ch6','N', 1    						, 0, 1,'N','','mv_par06','1=Ambos','2=Sim','3=Não','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)

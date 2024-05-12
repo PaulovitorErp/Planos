@@ -1,0 +1,822 @@
+#INCLUDE "PROTHEUS.CH"
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+#INCLUDE "RWMAKE.CH"
+
+/*/{Protheus.doc} RCPGR036
+Relatório de Inadimplência Cemitério
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 07/07/2021
+/*/
+User Function RCPGR036()
+	Local oReport := Nil
+	Local cPerg := "RCPGR036"
+	Local cTitle := "Visão Inadimplência"
+	Local nTipoRelatorio := 1
+	Local nQuebraPor := 1
+
+	AjustaSX1(cPerg)
+	If Pergunte(cPerg, .T., cTitle)
+
+		nTipoRelatorio := MV_PAR10
+		nQuebraPor := MV_PAR09
+
+		If nTipoRelatorio == 1 .And. nQuebraPor == 1 // Sintetico Por Natureza
+			oReport := ReportDefSintNat()
+			oReport:PrintDialog()
+		ElseIf nTipoRelatorio == 1 .And. nQuebraPor == 2 // Sintetico Por Produto
+			oReport := ReportDefSintProduto()
+			oReport:PrintDialog()
+		ElseIf nTipoRelatorio == 2 .And. nQuebraPor == 1 // Analítico Por Natureza
+			oReport := ReportDefAnalitNat()
+			oReport:PrintDialog()
+		ElseIf nTipoRelatorio == 2 .And. nQuebraPor == 2 // Analítico Por Produto
+			oReport := ReportDefAnalitProduto()
+			oReport:PrintDialog()
+		EndIf
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ReportDefSintNat
+Definição do relatório sintético por natureza
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 07/07/2021
+@return object, oReport
+/*/
+Static Function ReportDefSintNat()
+	Local oReport := Nil
+	Local oSection1 := Nil
+	Local dDataRefDe := MV_PAR01
+	Local dDataRefAte := MV_PAR02
+	Local cPeriodo := "(" + DTOC(dDataRefDe) + ' - ' + DTOC(dDataRefAte) + ")"
+	Local cTitle := "Visão Inadimplência Por Natureza Sintético " + cPeriodo
+	Local cHelp := "Relatório apresenta dados de inadimplência por natureza financeira de forma sintética."
+
+	oReport	:= TReport():New("RCPGR036",cTitle,"RCPGR036",{|oReport| PrintRptSN(oReport, oSection1)},cHelp)
+	oReport:SetLandscape()	// Orientação paisagem
+	oReport:HideParamPage()	// Inibe impressão da pagina de parametros
+	oReport:SetUseGC(.F.) // Desabilita o botão <Gestao Corporativa> do relatório
+
+	oSection1 	:= TRSection():New(oReport,"Visão Inadimplência Por Natureza Sintético " + cPeriodo,{"TMPU00"})
+	oSection1:SetAutoSize(.T.)
+
+	TRCell():New(oSection1, "COD_NATUREZA"	      , "TMPU00", "Código Natureza"   ,	PesqPict("SED","ED_CODIGO"	), TamSX3("ED_CODIGO" )[1] )
+	TRCell():New(oSection1, "DESC_NATUREZA"	      , "TMPU00", "Descrição Natureza",	PesqPict("SED","ED_DESCRIC"	), TamSX3("ED_DESCRIC")[1] )
+	TRCell():New(oSection1, "TOTAL_VENCTO"	      , "TMPU00", "Total Vencto"      ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECEBIDO"      , "TMPU00", "Total Recebido"    ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_INADIMPLENTE"  , "TMPU00", "Total Inadimplente",	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECUPERADO"	  , "TMPU00", "Total Recuperado"  ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_ANTECIPADO"	  , "TMPU00", "Total Antecipado"  ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECEBIDO_GERAL", "TMPU00", "Total Recebimentos",	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+
+	TRFunction():New(oSection1:Cell("TOTAL_VENCTO"),/* cID */,"SUM",/*oBreak*/,"Total Vencto",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECEBIDO"),/* cID */,"SUM",/*oBreak*/,"Total Recebido",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_INADIMPLENTE"),/* cID */,"SUM",/*oBreak*/,"Total Inadimplente",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECUPERADO"),/* cID */,"SUM",/*oBreak*/,"Total Recuperado",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_ANTECIPADO"),/* cID */,"SUM",/*oBreak*/,"Total Antecipado",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECEBIDO_GERAL"),/* cID */,"SUM",/*oBreak*/,"Total Recebimentos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+
+Return oReport
+
+/*/{Protheus.doc} PrintRptSN
+Impresão do relatório sintético por natureza
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 07/07/2021
+@param oReport, object, oReport
+@param oSection1, object, oSection1
+/*/
+Static Function PrintRptSN(oReport, oSection1)
+	Local cQry := ""
+	Local cTipo := SuperGetMv("MV_XTIPOMN", .F., "MNT")
+	Local aSX2SED := FwSX2Util():GetSX2data("SED", {"X2_MODO", "X2_MODOUN", "X2_MODOEMP"})
+	Local lSEDEx := (aSX2SED[1,2] == "E" .Or. aSX2SED[2,2] == "E" .Or. aSX2SED[3,2] == "E")
+
+	// Parâmetros
+	Local dDataRefDe := MV_PAR01
+	Local dDataRefAte := MV_PAR02
+	Local dDataAtivDe := MV_PAR03
+	Local dDataAtivAte := MV_PAR04
+	Local cNaturezaDe := MV_PAR05
+	Local cNaturezaAte := MV_PAR06
+	Local cProdutos := MV_PAR07
+	Local nTipoParcela := MV_PAR08
+
+	oSection1:Init()
+
+	cQry := "SELECT COD_NATUREZA, "
+	cQry += "	DESC_NATUREZA, "
+	cQry += "	TOTAL_VENCTO, "
+	cQry += "	TOTAL_RECEBIDO, "
+	cQry += "	(TOTAL_VENCTO - TOTAL_RECEBIDO) TOTAL_INADIMPLENTE, "
+	cQry += "	TOTAL_RECUPERADO, "
+	cQry += "	TOTAL_ANTECIPADO, "
+	cQry += "	TOTAL_RECEBIDO_GERAL "
+	cQry += "FROM ( "
+	cQry += "SELECT SED.ED_CODIGO COD_NATUREZA, "
+	cQry += "	SED.ED_DESCRIC DESC_NATUREZA, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_VENCORI BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND SE1.E1_NUMLIQ = '' THEN (SE1.E1_VALOR + SE1.E1_ACRESC) ELSE 0 END) TOTAL_VENCTO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND SE1.E1_NUMLIQ = '') THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECEBIDO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI < '"+ DTOS(dDataRefDe) +"' OR SE1.E1_NUMLIQ <> '') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"')) THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECUPERADO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI > '"+ DTOS(dDataRefAte) +"' AND SE1.E1_NUMLIQ = '') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"')) THEN SE5.E5_VALOR ELSE 0 END) TOTAL_ANTECIPADO, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECEBIDO_GERAL "
+	cQry += "FROM "+ RetSqlName("U00") +" U00 (NOLOCK) "
+	cQry += "INNER JOIN  "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+	cQry += "	ON SE1.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE1.E1_FILIAL = U00.U00_FILIAL "
+	cQry += "	AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+	cQry += "	AND SE1.E1_CLIENTE = U00.U00_CLIENT "
+	cQry += "	AND SE1.E1_LOJA = U00.U00_LOJA "
+	cQry += "LEFT JOIN "+ RetSqlName("SE5") +" SE5 (NOLOCK) "
+	cQry += "    ON SE5.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SE5.E5_FILIAL = SE1.E1_FILIAL "
+	cQry += "    AND SE5.E5_PREFIXO = SE1.E1_PREFIXO "
+	cQry += "    AND SE5.E5_TIPO = SE1.E1_TIPO "
+	cQry += "    AND SE5.E5_NUMERO = SE1.E1_NUM "
+	cQry += "    AND SE5.E5_PARCELA = SE1.E1_PARCELA "
+	cQry += "    AND SE5.E5_CLIFOR = SE1.E1_CLIENTE "
+	cQry += "    AND SE5.E5_LOJA = SE1.E1_LOJA "
+	cQry += "    AND SE5.E5_RECPAG = 'R' "
+	cQry += "    AND SE5.E5_SITUACA <> 'C' "
+	cQry += "    AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQry += "    AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQry += "LEFT JOIN  "+ RetSqlName("SED") +" SED (NOLOCK) "
+	cQry += "	ON SED.D_E_L_E_T_ <> '*' "
+	If lSEDEx
+		cQry += "	AND SED.ED_FILIAL = SE1.E1_FILIAL "
+	EndIf
+	cQry += "	AND SED.ED_CODIGO = SE1.E1_NATUREZ "
+	cQry += "WHERE U00.D_E_L_E_T_ <> '*' "
+	cQry += "	AND U00.U00_FILIAL = '"+ xFilial("U00") +"' "
+	If !Empty(dDataAtivDe) .Or. !Empty(dDataAtivAte)
+		cQry += "	AND U00.U00_DTATIV BETWEEN '"+ DTOS(dDataAtivDe) +"' AND '"+ DTOS(dDataAtivAte) +"'  " // Intervalo Data de Ativação de Contrato
+	EndIf
+	If !Empty(cProdutos)
+		cQry += "	AND U00.U00_PLANO IN "+ FormatIn( AllTrim(cProdutos),";") +" " // Multiseleção Planos
+	EndIf
+	If !Empty(cNaturezaDe) .Or. !Empty(cNaturezaAte)
+		cQry += "	AND SE1.E1_NATUREZ BETWEEN '"+ cNaturezaDe +"' AND '"+ cNaturezaAte +"'  " // Intervalo de Natureza
+	EndIf
+	If nTipoParcela == 1
+		cQry += "	AND SE1.E1_TIPO <> '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	ElseIf nTipoParcela == 2
+		cQry += "	AND SE1.E1_TIPO = '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	EndIf
+	cQry += "GROUP BY SED.ED_CODIGO, SED.ED_DESCRIC) AS SINTETICO_POR_NATUREZA  "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("TMPU00") > 0
+		TMPU00->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry New Alias "TMPU00"
+
+	oReport:SetMeter(TMPU00->(LastRec()))
+
+	While !oReport:Cancel() .And. TMPU00->(!EOF())
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		oSection1:Cell("COD_NATUREZA"):SetValue(TMPU00->COD_NATUREZA)
+		oSection1:Cell("DESC_NATUREZA"):SetValue(TMPU00->DESC_NATUREZA)
+		oSection1:Cell("TOTAL_VENCTO"):SetValue(TMPU00->TOTAL_VENCTO)
+		oSection1:Cell("TOTAL_RECEBIDO"):SetValue(TMPU00->TOTAL_RECEBIDO)
+		oSection1:Cell("TOTAL_INADIMPLENTE"):SetValue(TMPU00->TOTAL_INADIMPLENTE)
+		oSection1:Cell("TOTAL_RECUPERADO"):SetValue(TMPU00->TOTAL_RECUPERADO)
+		oSection1:Cell("TOTAL_ANTECIPADO"):SetValue(TMPU00->TOTAL_ANTECIPADO)
+		oSection1:Cell("TOTAL_RECEBIDO_GERAL"):SetValue(TMPU00->TOTAL_RECEBIDO_GERAL)
+
+		oSection1:PrintLine()
+		oReport:SkipLine()
+
+		TMPU00->(dbSkip())
+	EndDo
+
+	oSection1:Finish()
+
+	TMPU00->(dbCloseArea())
+
+Return
+
+/*/{Protheus.doc} ReportDefSintProduto
+Definição do relatório sintético por produto
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@return object, oReport
+/*/
+Static Function ReportDefSintProduto()
+	Local oReport := Nil
+	Local oSection1 := Nil
+	Local dDataRefDe := MV_PAR01
+	Local dDataRefAte := MV_PAR02
+	Local cPeriodo := "(" + DTOC(dDataRefDe) + ' - ' + DTOC(dDataRefAte) + ")"
+	Local cTitle := "Visão Inadimplência Por Produto Sintético " + cPeriodo
+	Local cHelp := "Relatório apresenta dados de inadimplência por produto de forma sintética."
+
+	oReport	:= TReport():New("RCPGR036",cTitle,"RCPGR036",{|oReport| PrintRptSP(oReport, oSection1)},cHelp)
+	oReport:SetLandscape()	// Orientação paisagem
+	oReport:HideParamPage()	// Inibe impressão da pagina de parametros
+	oReport:SetUseGC(.F.) // Desabilita o botão <Gestao Corporativa> do relatório
+
+	oSection1 	:= TRSection():New(oReport,"Visão Inadimplência Por Produto Sintético " + cPeriodo,{"TMPU00"})
+	oSection1:SetAutoSize(.T.)
+
+	TRCell():New(oSection1, "COD_PRODUTO"	      , "TMPU00", "Cod Produto"       ,	PesqPict("U00","U00_PLANO"	), TamSX3("U00_PLANO" )[1] )
+	TRCell():New(oSection1, "DESC_PRODUTO"	      , "TMPU00", "Desc Produto"      ,	PesqPict("U00","U00_DESCPL"	), TamSX3("U00_DESCPL")[1] )
+	TRCell():New(oSection1, "TOTAL_VENCTO"	      , "TMPU00", "Total Vencto"      ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECEBIDO"      , "TMPU00", "Total Recebido"    ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_INADIMPLENTE"  , "TMPU00", "Total Inadimplente",	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECUPERADO"	  , "TMPU00", "Total Recuperado"  ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_ANTECIPADO"	  , "TMPU00", "Total Antecipado"  ,	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "TOTAL_RECEBIDO_GERAL", "TMPU00", "Total Recebimentos",	PesqPict("SE1","E1_VALOR"	), TamSX3("E1_VALOR"  )[1] )
+
+	TRFunction():New(oSection1:Cell("TOTAL_VENCTO"),/* cID */,"SUM",/*oBreak*/,"Total Vencto",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECEBIDO"),/* cID */,"SUM",/*oBreak*/,"Total Recebido",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_INADIMPLENTE"),/* cID */,"SUM",/*oBreak*/,"Total Inadimplente",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECUPERADO"),/* cID */,"SUM",/*oBreak*/,"Total Recuperado",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_ANTECIPADO"),/* cID */,"SUM",/*oBreak*/,"Total Antecipado",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("TOTAL_RECEBIDO_GERAL"),/* cID */,"SUM",/*oBreak*/,"Total Recebimentos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+
+Return oReport
+
+/*/{Protheus.doc} PrintRptSP
+Impresão do relatório sintético por produto
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@param oReport, object, oReport
+@param oSection1, object, oSection1
+/*/
+Static Function PrintRptSP(oReport, oSection1)
+	Local cQry := ""
+	Local cTipo := SuperGetMv("MV_XTIPOMN", .F., "MNT")
+
+	// Parâmetros
+	Local dDataRefDe := MV_PAR01
+	Local dDataRefAte := MV_PAR02
+	Local dDataAtivDe := MV_PAR03
+	Local dDataAtivAte := MV_PAR04
+	Local cNaturezaDe := MV_PAR05
+	Local cNaturezaAte := MV_PAR06
+	Local cProdutos := MV_PAR07
+	Local nTipoParcela := MV_PAR08
+
+	oSection1:Init()
+
+	cQry := "SELECT COD_PRODUTO, "
+	cQry += "	DESC_PRODUTO, "
+	cQry += "	TOTAL_VENCTO, "
+	cQry += "	TOTAL_RECEBIDO, "
+	cQry += "	(TOTAL_VENCTO - TOTAL_RECEBIDO) TOTAL_INADIMPLENTE, "
+	cQry += "	TOTAL_RECUPERADO, "
+	cQry += "	TOTAL_ANTECIPADO, "
+	cQry += "	TOTAL_RECEBIDO_GERAL "
+	cQry += "FROM ( "
+	cQry += "SELECT U00.U00_PLANO COD_PRODUTO, "
+	cQry += "	U00.U00_DESCPL DESC_PRODUTO, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_VENCORI BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND SE1.E1_NUMLIQ = '' THEN (SE1.E1_VALOR + SE1.E1_ACRESC) ELSE 0 END) TOTAL_VENCTO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') AND SE1.E1_NUMLIQ = '') THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECEBIDO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI < '"+ DTOS(dDataRefDe) +"' OR SE1.E1_NUMLIQ <> '') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"')) THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECUPERADO, "
+	cQry += "	SUM(CASE WHEN ((SE1.E1_VENCORI > '"+ DTOS(dDataRefAte) +"' AND SE1.E1_NUMLIQ = '') AND (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"')) THEN SE5.E5_VALOR ELSE 0 END) TOTAL_ANTECIPADO, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA BETWEEN '"+ DTOS(dDataRefDe) +"' AND '"+ DTOS(dDataRefAte) +"') THEN SE5.E5_VALOR ELSE 0 END) TOTAL_RECEBIDO_GERAL "
+	cQry += "FROM "+ RetSqlName("U00") +" U00 (NOLOCK) "
+	cQry += "INNER JOIN  "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+	cQry += "	ON SE1.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE1.E1_FILIAL = U00.U00_FILIAL "
+	cQry += "	AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+	cQry += "	AND SE1.E1_CLIENTE = U00.U00_CLIENT "
+	cQry += "	AND SE1.E1_LOJA = U00.U00_LOJA "
+	cQry += "    AND SE5.E5_RECPAG = 'R' "
+	cQry += "    AND SE5.E5_SITUACA <> 'C' "
+	cQry += "    AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQry += "    AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQry += "LEFT JOIN "+ RetSqlName("SE5") +" SE5 (NOLOCK) "
+	cQry += "    ON SE5.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SE5.E5_FILIAL = SE1.E1_FILIAL "
+	cQry += "    AND SE5.E5_PREFIXO = SE1.E1_PREFIXO "
+	cQry += "    AND SE5.E5_TIPO = SE1.E1_TIPO "
+	cQry += "    AND SE5.E5_NUMERO = SE1.E1_NUM "
+	cQry += "    AND SE5.E5_PARCELA = SE1.E1_PARCELA "
+	cQry += "    AND SE5.E5_CLIFOR = SE1.E1_CLIENTE "
+	cQry += "    AND SE5.E5_LOJA = SE1.E1_LOJA "
+	cQry += "WHERE U00.D_E_L_E_T_ <> '*' "
+	cQry += "	AND U00.U00_FILIAL = '"+ xFilial("U00") +"' "
+	If !Empty(dDataAtivDe) .Or. !Empty(dDataAtivAte)
+		cQry += "	AND U00.U00_DTATIV BETWEEN '"+ DTOS(dDataAtivDe) +"' AND '"+ DTOS(dDataAtivAte) +"'  " // Intervalo Data de Ativação de Contrato
+	EndIf
+	If !Empty(cProdutos)
+		cQry += "	AND U00.U00_PLANO IN "+ FormatIn( AllTrim(cProdutos),";") +" " // Multiseleção Planos
+	EndIf
+	If !Empty(cNaturezaDe) .Or. !Empty(cNaturezaAte)
+		cQry += "	AND SE1.E1_NATUREZ BETWEEN '"+ cNaturezaDe +"' AND '"+ cNaturezaAte +"'  " // Intervalo de Natureza
+	EndIf
+	If nTipoParcela == 1
+		cQry += "	AND SE1.E1_TIPO <> '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	ElseIf nTipoParcela == 2
+		cQry += "	AND SE1.E1_TIPO = '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	EndIf
+	cQry += "GROUP BY U00.U00_PLANO, U00.U00_DESCPL) AS SINTETICO_POR_PRODUTO "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("TMPU00") > 0
+		TMPU00->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry New Alias "TMPU00"
+
+	oReport:SetMeter(TMPU00->(LastRec()))
+
+	While !oReport:Cancel() .And. TMPU00->(!EOF())
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		oSection1:Cell("COD_PRODUTO"):SetValue(TMPU00->COD_PRODUTO)
+		oSection1:Cell("DESC_PRODUTO"):SetValue(TMPU00->DESC_PRODUTO)
+		oSection1:Cell("TOTAL_VENCTO"):SetValue(TMPU00->TOTAL_VENCTO)
+		oSection1:Cell("TOTAL_RECEBIDO"):SetValue(TMPU00->TOTAL_RECEBIDO)
+		oSection1:Cell("TOTAL_INADIMPLENTE"):SetValue(TMPU00->TOTAL_INADIMPLENTE)
+		oSection1:Cell("TOTAL_RECUPERADO"):SetValue(TMPU00->TOTAL_RECUPERADO)
+		oSection1:Cell("TOTAL_ANTECIPADO"):SetValue(TMPU00->TOTAL_ANTECIPADO)
+		oSection1:Cell("TOTAL_RECEBIDO_GERAL"):SetValue(TMPU00->TOTAL_RECEBIDO_GERAL)
+
+		oSection1:PrintLine()
+		oReport:SkipLine()
+
+		TMPU00->(dbSkip())
+	EndDo
+
+	oSection1:Finish()
+
+	TMPU00->(dbCloseArea())
+
+Return
+
+/*/{Protheus.doc} ReportDefAnalitNat
+Definição do relatório analítico por natureza
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@return object, oReport
+/*/
+Static Function ReportDefAnalitNat()
+	Local oReport := Nil
+	Local oSection1 := Nil
+	Local oBreak1 := Nil
+	Local cReferencia := "(" + DTOC(dDatabase) + ")"
+	Local cTitle := "Visão Inadimplência Por Natureza Analítico " + cReferencia
+	Local cHelp := "Relatório apresenta dados de inadimplência por natureza financeira de forma analítica."
+
+	oReport	:= TReport():New("RCPGR036",cTitle,"RCPGR036",{|oReport| PrintRptAN(oReport, oSection1)},cHelp)
+	oReport:SetLandscape()	// Orientação paisagem
+	oReport:HideParamPage()	// Inibe impressão da pagina de parametros
+	oReport:SetUseGC(.F.) // Desabilita o botão <Gestao Corporativa> do relatório
+
+	oSection1 	:= TRSection():New(oReport,"Visão Inadimplência Por Natureza Analítico " + cReferencia,{"TMPU00"})
+	oSection1:SetAutoSize(.T.)
+
+	TRCell():New(oSection1, "CONTRATO"	          , "TMPU00", "Contrato"            , PesqPict("U00","U00_CODIGO"), TamSX3("U00_CODIGO")[1] )
+	TRCell():New(oSection1, "COD_CLIENTE"	      , "TMPU00", "Cod Cliente"         , PesqPict("U00","U00_CLIENT"), TamSX3("U00_CLIENT")[1] )
+	TRCell():New(oSection1, "NOME_CLIENTE"	      , "TMPU00", "Nome Cliente"        , PesqPict("U00","U00_NOMCLI"), TamSX3("U00_NOMCLI")[1] )
+	TRCell():New(oSection1, "DATA_ATIVACAO"       , "TMPU00", "Data Ativação"       , PesqPict("U00","U00_DTATIV"), TamSX3("U00_DTATIV")[1] )
+	TRCell():New(oSection1, "COD_NATUREZA"        , "TMPU00", "Cod Natureza"        , PesqPict("SED","ED_CODIGO" ), TamSX3("ED_CODIGO" )[1] )
+	TRCell():New(oSection1, "DESC_NATUREZA"	      , "TMPU00", "Descrição Natureza"  , PesqPict("SED","ED_DESCRIC"), TamSX3("ED_DESCRIC")[1] )
+	TRCell():New(oSection1, "TELEFONE"	          , "TMPU00", "Telefone"            , PesqPict("SE1","U00_TEL"   ), TamSX3("U00_TEL"   )[1] )
+	TRCell():New(oSection1, "VALOR_PAGO"          , "TMPU00", "Valor Pago"          , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "QTD_PARCELAS_PAGAS"  , "TMPU00", "Qtd Parc Pagas"      , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "VALOR_ABERTO"        , "TMPU00", "Valor Aberto"        , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "QTD_PARCELAS_ABERTAS", "TMPU00", "Qtd Parc Abertas"    , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "STATUS"              , "TMPU00", "Status"              , PesqPict("U00","U00_STATUS"), TamSX3("U00_STATUS")[1] )
+	TRCell():New(oSection1, "DIAS_VENCIDOS"       , "TMPU00", "Dias Vencidos"       , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "STATUS_SERVICO"      , "TMPU00", "Stts Serviço"        , PesqPict("U00","U00_STATUS"), TamSX3("U00_STATUS")[1] )
+	TRCell():New(oSection1, "SALDO_QUITACAO"      , "TMPU00", "Saldo Quitação"      , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+
+	oBreak1 := TRBreak():New(oSection1,{|| oSection1:Cell('COD_NATUREZA'):uPrint },'Sub-Total',.F.)
+
+	TRFunction():New(oSection1:Cell("VALOR_PAGO"),/* cID */,"SUM",oBreak1,"Total Valores Pagos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("QTD_PARCELAS_PAGAS"),/* cID */,"SUM",oBreak1,"Total Parcelas Pagas",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("VALOR_ABERTO"),/* cID */,"SUM",oBreak1,"Total Valores Abertos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("QTD_PARCELAS_ABERTAS"),/* cID */,"SUM",oBreak1,"Total Parcelas Abertas",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("SALDO_QUITACAO"),/* cID */,"SUM",oBreak1,"Total Saldo Quitação",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+
+Return oReport
+
+/*/{Protheus.doc} PrintRptAN
+Impresão do relatório analítico por natureza
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@param oReport, object, oReport
+@param oSection1, object, oSection1
+/*/
+Static Function PrintRptAN(oReport, oSection1)
+	Local cQry := ""
+	Local cTipo := SuperGetMv("MV_XTIPOMN", .F., "MNT")
+	Local aSX2SED := FwSX2Util():GetSX2data("SED", {"X2_MODO", "X2_MODOUN", "X2_MODOEMP"})
+	Local lSEDEx := (aSX2SED[1,2] == "E" .Or. aSX2SED[2,2] == "E" .Or. aSX2SED[3,2] == "E")
+
+	// Parâmetros
+	Local dDataAtivDe := MV_PAR03
+	Local dDataAtivAte := MV_PAR04
+	Local cNaturezaDe := MV_PAR05
+	Local cNaturezaAte := MV_PAR06
+	Local cProdutos := MV_PAR07
+	Local nTipoParcela := MV_PAR08
+
+	oSection1:Init()
+
+	cQry := "SELECT U00.U00_CODIGO CONTRATO, "
+	cQry += "	U00.U00_CLIENT COD_CLIENTE, "
+	cQry += "	U00.U00_NOMCLI NOME_CLIENTE, "
+	cQry += "	U00.U00_DTATIV DATA_ATIVACAO, "
+	cQry += "	SED.ED_CODIGO COD_NATUREZA, "
+	cQry += "	SED.ED_DESCRIC DESC_NATUREZA, "
+	cQry += "	U00.U00_TEL TELEFONE, "
+	cQry += "	U00.U00_STATUS STATUS, "
+	cQry += "	SUM(CASE WHEN SE1.E1_BAIXA <> '' THEN SE5.E5_VALOR ELSE 0 END) VALOR_PAGO, "
+	cQry += "	SUM(CASE WHEN SE1.E1_BAIXA <> '' THEN 1 ELSE 0 END) QTD_PARCELAS_PAGAS, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN SE1.E1_SALDO ELSE 0 END) VALOR_ABERTO, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN 1 ELSE 0 END) QTD_PARCELAS_ABERTAS, "
+	cQry += "	DATEDIFF(DAY, CAST(MIN(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN SE1.E1_VENCORI ELSE NULL END) AS DATE), CAST('"+ DTOS(dDatabase) +"' AS DATE)) DIAS_VENCIDOS, "
+	cQry += "	CASE WHEN (COUNT(FIRST_U04.CONTRATO) > 0 OR COUNT(FIRST_U30.CONTRATO) > 0) THEN 'SIM' ELSE 'NAO' END STATUS_SERVICO, "
+	cQry += "	SUM(SE1.E1_SALDO) SALDO_QUITACAO "
+	cQry += "FROM "+ RetSqlName("U00") +" U00 (NOLOCK) "
+	cQry += "INNER JOIN  "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+	cQry += "	ON SE1.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE1.E1_FILIAL = U00.U00_FILIAL "
+	cQry += "	AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+	cQry += "	AND SE1.E1_CLIENTE = U00.U00_CLIENT "
+	cQry += "	AND SE1.E1_LOJA = U00.U00_LOJA "
+	cQry += "LEFT JOIN "+ RetSqlName("SE5") +" SE5 (NOLOCK) "
+	cQry += "    ON SE5.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SE5.E5_FILIAL = SE1.E1_FILIAL "
+	cQry += "    AND SE5.E5_PREFIXO = SE1.E1_PREFIXO "
+	cQry += "    AND SE5.E5_TIPO = SE1.E1_TIPO "
+	cQry += "    AND SE5.E5_NUMERO = SE1.E1_NUM "
+	cQry += "    AND SE5.E5_PARCELA = SE1.E1_PARCELA "
+	cQry += "    AND SE5.E5_CLIFOR = SE1.E1_CLIENTE "
+	cQry += "    AND SE5.E5_LOJA = SE1.E1_LOJA "
+	cQry += "    AND SE5.E5_RECPAG = 'R' "
+	cQry += "    AND SE5.E5_SITUACA <> 'C' "
+	cQry += "    AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQry += "    AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQry += "LEFT JOIN  "+ RetSqlName("SED") +" SED (NOLOCK) "
+	cQry += "	ON SED.D_E_L_E_T_ <> '*' "
+	If lSEDEx
+		cQry += "	AND SED.ED_FILIAL = SE1.E1_FILIAL "
+	EndIf
+	cQry += "	AND SED.ED_CODIGO = SE1.E1_NATUREZ "
+	cQry += "LEFT JOIN "
+	cQry += "   (SELECT MAX(U04.U04_ITEM) ITEM, "
+	cQry += "       U04.U04_CODIGO CONTRATO "
+	cQry += "       FROM "+ RetSqlName("U04") +" U04 (NOLOCK) "
+	cQry += "       WHERE U04.D_E_L_E_T_ <> '*' "
+	cQry += "       AND U04.U04_FILIAL = '"+ xFilial("U00") +"' "
+	cQry += "       GROUP BY U04.U04_CODIGO "
+	cQry += "   ) FIRST_U04 "
+	cQry += "   ON U00.U00_CODIGO = FIRST_U04.CONTRATO "
+	cQry += "LEFT JOIN "
+	cQry += "   (SELECT MAX(U30.U30_ITEM) ITEM, "
+	cQry += "   	U30.U30_CODIGO CONTRATO "
+	cQry += "   	FROM "+ RetSqlName("U30") +" U30 (NOLOCK) "
+	cQry += "   	WHERE U30.D_E_L_E_T_ <> '*' "
+	cQry += "   	AND U30.U30_FILIAL = '"+ xFilial("U00") +"' "
+	cQry += "   	GROUP BY U30.U30_CODIGO "
+    cQry += "   ) FIRST_U30 "
+	cQry += "   ON U00.U00_CODIGO = FIRST_U30.CONTRATO "
+	cQry += "WHERE U00.D_E_L_E_T_ <> '*' "
+	cQry += "	AND U00.U00_FILIAL = '"+ xFilial("U00") +"' "
+	If !Empty(dDataAtivDe) .Or. !Empty(dDataAtivAte)
+		cQry += "	AND U00.U00_DTATIV BETWEEN '"+ DTOS(dDataAtivDe) +"' AND '"+ DTOS(dDataAtivAte) +"'  " // Intervalo Data de Ativação de Contrato
+	EndIf
+	If !Empty(cProdutos)
+		cQry += "	AND U00.U00_PLANO IN "+ FormatIn( AllTrim(cProdutos),";") +" " // Multiseleção Planos
+	EndIf
+	If !Empty(cNaturezaDe) .Or. !Empty(cNaturezaAte)
+		cQry += "	AND SE1.E1_NATUREZ BETWEEN '"+ cNaturezaDe +"' AND '"+ cNaturezaAte +"'  " // Intervalo de Natureza
+	EndIf
+	If nTipoParcela == 1
+		cQry += "	AND SE1.E1_TIPO <> '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	ElseIf nTipoParcela == 2
+		cQry += "	AND SE1.E1_TIPO = '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	EndIf
+	cQry += "GROUP BY SED.ED_CODIGO, SED.ED_DESCRIC, U00.U00_CODIGO, U00.U00_CLIENT, "
+	cQry += "	U00.U00_NOMCLI, U00.U00_DTATIV, U00.U00_TEL, U00.U00_STATUS "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("TMPU00") > 0
+		TMPU00->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry New Alias "TMPU00"
+
+	oReport:SetMeter(TMPU00->(LastRec()))
+
+	While !oReport:Cancel() .And. TMPU00->(!EOF())
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		oSection1:Cell("CONTRATO"):SetValue(TMPU00->CONTRATO)
+		oSection1:Cell("COD_CLIENTE"):SetValue(TMPU00->COD_CLIENTE)
+		oSection1:Cell("NOME_CLIENTE"):SetValue(TMPU00->NOME_CLIENTE)
+		oSection1:Cell("DATA_ATIVACAO"):SetValue( DTOC(STOD(TMPU00->DATA_ATIVACAO)) )
+		oSection1:Cell("COD_NATUREZA"):SetValue(TMPU00->COD_NATUREZA)
+		oSection1:Cell("DESC_NATUREZA"):SetValue(TMPU00->DESC_NATUREZA)
+		oSection1:Cell("TELEFONE"):SetValue(TMPU00->TELEFONE)
+		oSection1:Cell("VALOR_PAGO"):SetValue(TMPU00->VALOR_PAGO)
+		oSection1:Cell("QTD_PARCELAS_PAGAS"):SetValue(TMPU00->QTD_PARCELAS_PAGAS)
+		oSection1:Cell("VALOR_ABERTO"):SetValue(TMPU00->VALOR_ABERTO)
+		oSection1:Cell("QTD_PARCELAS_ABERTAS"):SetValue(TMPU00->QTD_PARCELAS_ABERTAS)
+		oSection1:Cell("STATUS"):SetValue( BuscarStatus(TMPU00->STATUS) )
+		oSection1:Cell("DIAS_VENCIDOS"):SetValue(TMPU00->DIAS_VENCIDOS)
+		oSection1:Cell("STATUS_SERVICO"):SetValue(TMPU00->STATUS_SERVICO)
+		oSection1:Cell("SALDO_QUITACAO"):SetValue(TMPU00->SALDO_QUITACAO)
+
+		oSection1:PrintLine()
+		oReport:SkipLine()
+
+		TMPU00->(dbSkip())
+	EndDo
+
+	oSection1:Finish()
+
+	TMPU00->(dbCloseArea())
+
+Return
+
+/*/{Protheus.doc} ReportDefAnalitProduto
+Definição do relatório analítico por produto
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@return object, oReport
+/*/
+Static Function ReportDefAnalitProduto()
+	Local oReport := Nil
+	Local oSection1 := Nil
+	Local oBreak1 := Nil
+	Local cReferencia := "(" + DTOC(dDatabase) + ")"
+	Local cTitle := "Visão Inadimplência Por Produto Analítico " + cReferencia
+	Local cHelp := "Relatório apresenta dados de inadimplência por produto de forma analítica."
+
+	oReport	:= TReport():New("RCPGR036",cTitle,"RCPGR036",{|oReport| PrintRptAP(oReport, oSection1)},cHelp)
+	oReport:SetLandscape()	// Orientação paisagem
+	oReport:HideParamPage()	// Inibe impressão da pagina de parametros
+	oReport:SetUseGC(.F.) // Desabilita o botão <Gestao Corporativa> do relatório
+
+	oSection1 	:= TRSection():New(oReport,"Visão Inadimplência Por Produto Analítico " + cReferencia,{"TMPU00"})
+	oSection1:SetAutoSize(.T.)
+
+	TRCell():New(oSection1, "CONTRATO"	          , "TMPU00", "Contrato"            , PesqPict("U00","U00_CODIGO"), TamSX3("U00_CODIGO")[1] )
+	TRCell():New(oSection1, "COD_CLIENTE"	      , "TMPU00", "Cod Cliente"         , PesqPict("U00","U00_CLIENT"), TamSX3("U00_CLIENT")[1] )
+	TRCell():New(oSection1, "NOME_CLIENTE"	      , "TMPU00", "Nome Cliente"        , PesqPict("U00","U00_NOMCLI"), TamSX3("U00_NOMCLI")[1] )
+	TRCell():New(oSection1, "DATA_ATIVACAO"       , "TMPU00", "Data Ativação"       , PesqPict("U00","U00_DTATIV"), TamSX3("U00_DTATIV")[1] )
+	TRCell():New(oSection1, "COD_PRODUTO"         , "TMPU00", "Cod Produto"         , PesqPict("U00","U00_PLANO" ), TamSX3("U00_PLANO" )[1] )
+	TRCell():New(oSection1, "DESC_PRODUTO"	      , "TMPU00", "Desc Produto"        , PesqPict("U00","U00_DESCPL"), TamSX3("U00_DESCPL")[1] )
+	TRCell():New(oSection1, "TELEFONE"	          , "TMPU00", "Telefone"            , PesqPict("SE1","U00_TEL"   ), TamSX3("U00_TEL"   )[1] )
+	TRCell():New(oSection1, "VALOR_PAGO"          , "TMPU00", "Valor Pago"          , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "QTD_PARCELAS_PAGAS"  , "TMPU00", "Qtd Parc Pagas"      , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "VALOR_ABERTO"        , "TMPU00", "Valor Aberto"        , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "QTD_PARCELAS_ABERTAS", "TMPU00", "Qtd Parc Abertas"    , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "STATUS"              , "TMPU00", "Status"              , PesqPict("U00","U00_STATUS"), TamSX3("U00_STATUS")[1] )
+	TRCell():New(oSection1, "DIAS_VENCIDOS"       , "TMPU00", "Dias Vencidos"       , "@E 999999999999"           , TamSX3("E1_VALOR"  )[1] )
+	TRCell():New(oSection1, "STATUS_SERVICO"      , "TMPU00", "Stts Serviço"        , PesqPict("U00","U00_STATUS"), TamSX3("U00_STATUS")[1] )
+	TRCell():New(oSection1, "SALDO_QUITACAO"      , "TMPU00", "Saldo Quitação"      , PesqPict("SE1","E1_VALOR"  ), TamSX3("E1_VALOR"  )[1] )
+
+	oBreak1 := TRBreak():New(oSection1,{|| oSection1:Cell('COD_PRODUTO'):uPrint },'Sub-Total',.F.)
+
+	TRFunction():New(oSection1:Cell("VALOR_PAGO"),/* cID */,"SUM",oBreak1,"Total Valores Pagos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("QTD_PARCELAS_PAGAS"),/* cID */,"SUM",oBreak1,"Total Parcelas Pagas",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("VALOR_ABERTO"),/* cID */,"SUM",oBreak1,"Total Valores Abertos",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("QTD_PARCELAS_ABERTAS"),/* cID */,"SUM",oBreak1,"Total Parcelas Abertas",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+	TRFunction():New(oSection1:Cell("SALDO_QUITACAO"),/* cID */,"SUM",oBreak1,"Total Saldo Quitação",/*cPicture*/,/*uFormula*/,.T. /*lEndSection*/,.F. /*lEndReport*/,/*lEndPage*/)
+
+Return oReport
+
+/*/{Protheus.doc} PrintRptAP
+Impresão do relatório analítico por produto
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@param oReport, object, oReport
+@param oSection1, object, oSection1
+/*/
+Static Function PrintRptAP(oReport, oSection1)
+	Local cQry := ""
+	Local cTipo := SuperGetMv("MV_XTIPOMN", .F., "MNT")
+
+	// Parâmetros
+	Local dDataAtivDe := MV_PAR03
+	Local dDataAtivAte := MV_PAR04
+	Local cNaturezaDe := MV_PAR05
+	Local cNaturezaAte := MV_PAR06
+	Local cProdutos := MV_PAR07
+	Local nTipoParcela := MV_PAR08
+
+	oSection1:Init()
+
+	cQry := "SELECT U00.U00_CODIGO CONTRATO, "
+	cQry += "	U00.U00_CLIENT COD_CLIENTE, "
+	cQry += "	U00.U00_NOMCLI NOME_CLIENTE, "
+	cQry += "	U00.U00_DTATIV DATA_ATIVACAO, "
+	cQry += "	U00.U00_PLANO COD_PRODUTO, "
+	cQry += "	U00.U00_DESCPL DESC_PRODUTO, "
+	cQry += "	U00.U00_TEL TELEFONE, "
+	cQry += "	U00.U00_STATUS STATUS, "
+	cQry += "	SUM(CASE WHEN SE1.E1_BAIXA <> '' THEN SE5.E5_VALOR ELSE 0 END) VALOR_PAGO, "
+	cQry += "	SUM(CASE WHEN SE1.E1_BAIXA <> '' THEN 1 ELSE 0 END) QTD_PARCELAS_PAGAS, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN SE1.E1_SALDO ELSE 0 END) VALOR_ABERTO, "
+	cQry += "	SUM(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN 1 ELSE 0 END) QTD_PARCELAS_ABERTAS, "
+	cQry += "	DATEDIFF(DAY, CAST(MIN(CASE WHEN (SE1.E1_BAIXA = '' AND SE1.E1_VENCORI < '"+ DTOS(dDatabase) +"') THEN SE1.E1_VENCORI ELSE NULL END) AS DATE), CAST('"+ DTOS(dDatabase) +"' AS DATE)) DIAS_VENCIDOS, "
+	cQry += "	CASE WHEN (COUNT(FIRST_U04.CONTRATO) > 0 OR COUNT(FIRST_U30.CONTRATO) > 0) THEN 'SIM' ELSE 'NAO' END STATUS_SERVICO, "
+	cQry += "	SUM(SE1.E1_SALDO) SALDO_QUITACAO "
+	cQry += "FROM "+ RetSqlName("U00") +" U00 (NOLOCK) "
+	cQry += "INNER JOIN  "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+	cQry += "	ON SE1.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE1.E1_FILIAL = U00.U00_FILIAL "
+	cQry += "	AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+	cQry += "	AND SE1.E1_CLIENTE = U00.U00_CLIENT "
+	cQry += "	AND SE1.E1_LOJA = U00.U00_LOJA "
+	cQry += "LEFT JOIN "+ RetSqlName("SE5") +" SE5 (NOLOCK) "
+	cQry += "    ON SE5.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SE5.E5_FILIAL = SE1.E1_FILIAL "
+	cQry += "    AND SE5.E5_PREFIXO = SE1.E1_PREFIXO "
+	cQry += "    AND SE5.E5_TIPO = SE1.E1_TIPO "
+	cQry += "    AND SE5.E5_NUMERO = SE1.E1_NUM "
+	cQry += "    AND SE5.E5_PARCELA = SE1.E1_PARCELA "
+	cQry += "    AND SE5.E5_CLIFOR = SE1.E1_CLIENTE "
+	cQry += "    AND SE5.E5_LOJA = SE1.E1_LOJA "
+	cQry += "    AND SE5.E5_RECPAG = 'R' "
+	cQry += "    AND SE5.E5_SITUACA <> 'C' "
+	cQry += "    AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQry += "    AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQry += "LEFT JOIN "
+	cQry += "   (SELECT MAX(U04.U04_ITEM) ITEM, "
+	cQry += "       U04.U04_CODIGO CONTRATO "
+	cQry += "       FROM "+ RetSqlName("U04") +" U04 (NOLOCK) "
+	cQry += "       WHERE U04.D_E_L_E_T_ <> '*' "
+	cQry += "       AND U04.U04_FILIAL = '"+ xFilial("U00") +"' "
+	cQry += "       GROUP BY U04.U04_CODIGO "
+	cQry += "   ) FIRST_U04 "
+	cQry += "   ON U00.U00_CODIGO = FIRST_U04.CONTRATO "
+	cQry += "LEFT JOIN "
+	cQry += "   (SELECT MAX(U30.U30_ITEM) ITEM, "
+	cQry += "   	U30.U30_CODIGO CONTRATO "
+	cQry += "   	FROM "+ RetSqlName("U30") +" U30 (NOLOCK) "
+	cQry += "   	WHERE U30.D_E_L_E_T_ <> '*' "
+	cQry += "   	AND U30.U30_FILIAL = '"+ xFilial("U00") +"' "
+	cQry += "   	GROUP BY U30.U30_CODIGO "
+    cQry += "   ) FIRST_U30 "
+	cQry += "   ON U00.U00_CODIGO = FIRST_U30.CONTRATO "
+	cQry += "WHERE U00.D_E_L_E_T_ <> '*' "
+	cQry += "	AND U00.U00_FILIAL = '"+ xFilial("U00") +"' "
+	If !Empty(dDataAtivDe) .Or. !Empty(dDataAtivAte)
+		cQry += "	AND U00.U00_DTATIV BETWEEN '"+ DTOS(dDataAtivDe) +"' AND '"+ DTOS(dDataAtivAte) +"'  " // Intervalo Data de Ativação de Contrato
+	EndIf
+	If !Empty(cProdutos)
+		cQry += "	AND U00.U00_PLANO IN "+ FormatIn( AllTrim(cProdutos),";") +" " // Multiseleção Planos
+	EndIf
+	If !Empty(cNaturezaDe) .Or. !Empty(cNaturezaAte)
+		cQry += "	AND SE1.E1_NATUREZ BETWEEN '"+ cNaturezaDe +"' AND '"+ cNaturezaAte +"'  " // Intervalo de Natureza
+	EndIf
+	If nTipoParcela == 1
+		cQry += "	AND SE1.E1_TIPO <> '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	ElseIf nTipoParcela == 2
+		cQry += "	AND SE1.E1_TIPO = '"+ cTipo +"' " // Tipo de Parcela (Parcelas do Contrato ou Taxa de Manutenção)
+	EndIf
+	cQry += "GROUP BY U00.U00_PLANO, U00.U00_DESCPL, U00.U00_CODIGO, U00.U00_CLIENT, "
+	cQry += "	U00.U00_NOMCLI, U00.U00_DTATIV, U00.U00_TEL, U00.U00_STATUS "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("TMPU00") > 0
+		TMPU00->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry New Alias "TMPU00"
+
+	oReport:SetMeter(TMPU00->(LastRec()))
+
+	While !oReport:Cancel() .And. TMPU00->(!EOF())
+
+		oReport:IncMeter()
+
+		If oReport:Cancel()
+			Exit
+		EndIf
+
+		oSection1:Cell("CONTRATO"):SetValue(TMPU00->CONTRATO)
+		oSection1:Cell("COD_CLIENTE"):SetValue(TMPU00->COD_CLIENTE)
+		oSection1:Cell("NOME_CLIENTE"):SetValue(TMPU00->NOME_CLIENTE)
+		oSection1:Cell("DATA_ATIVACAO"):SetValue( DTOC(STOD(TMPU00->DATA_ATIVACAO)) )
+		oSection1:Cell("COD_PRODUTO"):SetValue(TMPU00->COD_PRODUTO)
+		oSection1:Cell("DESC_PRODUTO"):SetValue(TMPU00->DESC_PRODUTO)
+		oSection1:Cell("TELEFONE"):SetValue(TMPU00->TELEFONE)
+		oSection1:Cell("VALOR_PAGO"):SetValue(TMPU00->VALOR_PAGO)
+		oSection1:Cell("QTD_PARCELAS_PAGAS"):SetValue(TMPU00->QTD_PARCELAS_PAGAS)
+		oSection1:Cell("VALOR_ABERTO"):SetValue(TMPU00->VALOR_ABERTO)
+		oSection1:Cell("QTD_PARCELAS_ABERTAS"):SetValue(TMPU00->QTD_PARCELAS_ABERTAS)
+		oSection1:Cell("STATUS"):SetValue( BuscarStatus(TMPU00->STATUS) )
+		oSection1:Cell("DIAS_VENCIDOS"):SetValue(TMPU00->DIAS_VENCIDOS)
+		oSection1:Cell("STATUS_SERVICO"):SetValue(TMPU00->STATUS_SERVICO)
+		oSection1:Cell("SALDO_QUITACAO"):SetValue(TMPU00->SALDO_QUITACAO)
+
+		oSection1:PrintLine()
+		oReport:SkipLine()
+
+		TMPU00->(dbSkip())
+	EndDo
+
+	oSection1:Finish()
+
+	TMPU00->(dbCloseArea())
+
+Return
+
+/*/{Protheus.doc} BuscarStatus
+Busca nome do status
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 09/07/2021
+@param cStatus, character, cStatus
+@return character, cStatusNome
+/*/
+Static Function BuscarStatus(cStatus)
+	Local cStatusNome := ""
+
+	Do Case
+	Case cStatus == "P"
+		cStatusNome := "Pré-Cadastro"
+	Case cStatus == "A"
+		cStatusNome := "Ativo"
+	Case cStatus == "S"
+		cStatusNome := "Suspenso"
+	Case cStatus == "C"
+		cStatusNome := "Cancelado"
+	Case cStatus == "F"
+		cStatusNome := "Finalizado"
+	EndCase
+
+Return cStatusNome
+
+/*/{Protheus.doc} AjustaSX1
+Cria/Atualiza perguntas na tabela SX1
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 07/07/2021
+@param cPerg, character, cPerg
+/*/
+Static Function AjustaSX1(cPerg)
+	Local aRegs := {}
+	Default cPerg := ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	If !Empty(cPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','Dt Referencia de ','','','mv_ch1','D', TamSx3("E1_VENCTO")[1], 0, 0,'G','','mv_par01','','','','','',''})
+		aAdd(aRegs,{cPerg,'02','Dt Referencia ate ','','','mv_ch2','D', TamSx3("E1_VENCTO")[1], 0, 0,'G','','mv_par02','','','','','',''})
+		aAdd(aRegs,{cPerg,'03','Dt Ativacao de ','','','mv_ch3','D', TamSx3("U00_DTATIV")[1], 0, 0,'G','','mv_par03','','','','','',''})
+		aAdd(aRegs,{cPerg,'04','Dt Ativacao ate','','','mv_ch4','D', TamSx3("U00_DTATIV")[1], 0, 0,'G','','mv_par04','','','','','',''})
+		aAdd(aRegs,{cPerg,'05','Naturez de','','','mv_ch5','C', TamSx3("ED_CODIGO")[1], 0, 0,'G','','mv_par05','','','','','','SED'})
+		aAdd(aRegs,{cPerg,'06','Naturez ate','','','mv_ch6','C', TamSx3("ED_CODIGO")[1], 0, 0,'G','','mv_par06','','','','','','SED'})
+		aAdd(aRegs,{cPerg,'07','Produtos','','','mv_ch7','C', 99, 0, 0,'G','','mv_par07','','','','','','U05MRK'})
+		aAdd(aRegs,{cPerg,'08','Tipo Parcela','','','mv_ch8','C', 1, 0, 0,'C','','mv_par08','1-Contrato','2-Tx Manutenção','3-Ambos','','',''})
+		aAdd(aRegs,{cPerg,'09','Quebra Por','','','mv_ch9','C', 1, 0, 0,'C','','mv_par09','1-Natureza','2-Produto','','','',''})
+		aAdd(aRegs,{cPerg,'10','Tipo Relatorio','','','mv_ch10','C', 1, 0, 0,'C','','mv_par10','1-Sintético','2-Analítico','','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	EndIf
+
+Return

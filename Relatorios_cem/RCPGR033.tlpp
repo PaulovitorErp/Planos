@@ -1,0 +1,555 @@
+#include "totvs.ch"
+#include "topconn.ch"
+#include "fwprintsetup.ch"
+#include "fileio.ch"
+#include "rptdef.ch"
+
+// defines
+#define DMPAPER_A4 9    // A4 210 x 297 mm
+
+/*/{Protheus.doc} RCPGR033
+Relatorio de Serviços Executados
+Impressao(FWMSPrinter()) e Excel
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+/*/
+User Function RCPGR033()
+
+	Local cParam            As Character
+	Local oBtnSair          As Object
+	Local oBtnImprimir      As Object
+	Local oBtnPlanilha      As Object
+	Local oBtnParametros    As Object
+	Local oGroupRel         As Object
+	Local oSayRel           As Object
+	Local oDlgRel           As Object
+
+	// atribuo valor as variaveis
+	cParam := "RCPGR033"
+
+	// crio os parametros
+	AjustaSX1(cParam)
+
+	// abro os parametros
+	Pergunte(cParam,.F.)
+
+	DEFINE MSDIALOG oDlgRel TITLE "Impressão de Relatório - Serviços Executados" FROM 000, 000  TO 200, 455 COLORS 0, 16777215 PIXEL
+
+	@ 003, 003 GROUP oGroupRel TO 095, 227 PROMPT "Impressão de Relatório - Serviços Executados" OF oDlgRel COLOR 0, 16777215 PIXEL
+
+	@ 023, 014 SAY oSayRel PROMPT "Este relatório tem como intuito a impressão dos serviços executados conforme os parametros preenchidos." SIZE 205, 025 OF oDlgRel COLORS 0, 16777215 PIXEL
+
+	// botoes da rotina
+	@ 065, 005 BUTTON oBtnParametros    PROMPT "Parametros"      SIZE 050, 020 OF oDlgRel PIXEL ACTION(Pergunte(cParam,.T.))
+	@ 065, 060 BUTTON oBtnPlanilha      PROMPT "Gerar Planilha"  SIZE 050, 020 OF oDlgRel PIXEL ACTION(ValidParam(1))
+	@ 065, 115 BUTTON oBtnImprimir      PROMPT "Imprimir"        SIZE 050, 020 OF oDlgRel PIXEL ACTION(ValidParam(2))
+	@ 065, 170 BUTTON oBtnSair          PROMPT "Sair"            SIZE 050, 020 OF oDlgRel PIXEL ACTION(oDlgRel:End())
+
+	ACTIVATE MSDIALOG oDlgRel CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidParam
+Funcao para validar os parametros preenchidos
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param nTipoImpressao, numeric, tipo de impressao 1=Planilha e 2=Impressao
+/*/
+Static Function ValidParam(nTipoImpressao)
+
+	Local aDados			As Array
+	Local aInformacao		As Array
+	Local aTitulo			As Array
+	Local aParam 			As Array
+	Local cContratoDe 		As Character
+	Local cContratoAte	 	As Character
+	Local cPlano			As Character
+	Local cServico			As Character
+	Local cRelatorio		As Character
+	Local dDataDe			As Date
+	Local dDataAte			As Date
+	Local nPedidoVenda		As Numeric
+	Local lContinua			As Logical
+
+	Default nTipoImpressao := 0
+
+	// atribuo valor as variaveis
+	aDados 			:= {}
+	aParam			:= {}
+	aInformacao		:= {}
+	aTitulo 		:= {"Serviço","Tipo Endereço","Apontamento","Data","Falecido","Endereço","Contrato","Cessionario","Pedido de Vendas","Nota Fiscal","Valor(R$)"}
+	cRelatorio		:= "Serviços Executados"
+	lContinua		:= .T.
+
+	// parametros
+	dDataDe			:= MV_PAR01
+	dDataAte		:= MV_PAR02
+	cContratoDe		:= MV_PAR03
+	cContratoAte	:= MV_PAR04
+	cPlano			:= MV_PAR05
+	cServico		:= MV_PAR06
+	nPedidoVenda	:= MV_PAR07
+
+	// caso o parametro de data ate estiver vazio, considero a data base
+	if Empty(dDataDe) .And. Empty(dDataAte)
+		dDataAte	:= dDatabase
+	endIf
+
+	// caso o contrato ate estiver vazio, considero todos "ZZZZZZ"
+	if Empty(cContratoDe) .And. Empty(cContratoAte)
+		cContratoAte	:= Replicate("Z",TamSX3("U00_CODIGO")[1])
+	endIf
+
+	// valido o preenchimento dos dados de data
+	if !Empty(dDataDe) .And. Empty(dDataAte)
+		lContinua := .F.
+		MsgAlert("O parametro 'Data Ate' deve ser preenchido, pois o Parametro 'Data de' está preenchido.")
+	endIf
+
+	// valido o preenchimento dos dados de contrato
+	if !Empty(cContratoDe) .And. !Empty(cContratoAte)
+		lContinua := .F.
+		MsgAlert("O parametro 'Contrato Ate' deve ser preenchido, pois o Parametro 'Contrato de' está preenchido.")
+	endIf
+
+	// array de parametros
+	Aadd( aParam, dDataDe)			// [1] Data de
+	Aadd( aParam, dDataAte)			// [2] Data Ate
+	Aadd( aParam, cContratoDe)		// [3] Contrato de
+	Aadd( aParam, cContratoAte)		// [4] Contrato Ate
+	Aadd( aParam, cPlano)			// [5] Planos
+	Aadd( aParam, cServico)			// [6] Servicos
+	Aadd( aParam, nPedidoVenda)		// [7] Pedido de Vendas
+
+	// caso estiver tudo certo com os parametros do relatorio
+	if lContinua
+
+		// funcao para gerar os dados
+		aInformacao := GeraDados(aParam)
+
+		// verifico se tem dados para serem impressos
+		if Len(aInformacao) > 0
+
+			// faco tratamento dos dados
+			aDados := U_UTrataDados(aTitulo, aInformacao)
+
+			// verifico se tenho dados para a impressao
+			if Len(aDados) > 0
+
+				if nTipoImpressao == 1 // Planilha
+					VirtusRelPlanilha(cRelatorio, aTitulo, aDados, aParam)
+				elseIf nTipoImpressao == 2 // Relatorio em Tela
+					GeraRelatorio(cRelatorio, aTitulo, aDados, aParam)
+				endIf
+
+			endIf
+
+		else
+
+			MsgAlert("Não existem dados para a impressão do relatório!")
+
+		endIf
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraDados
+Funcao para gerar os dados 
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@return array, retorna array com os dados para o relatorio
+/*/
+Static Function GeraDados(aParam)
+
+	Local aRetorno			As Array		// array de retorno
+	Local aAuxiliar			As Array		// array auxiliar para o array de retorno
+	Local cQuery 			As Character			// variavel para montagem da query
+	Local cWhere			As Character			// variavel do where para a query
+	Local cEndereco			As Character			// variavel do endereco do servico executado
+	Local dDataDe			As Date
+	Local dDataAte			As Date
+	Local cContratoDe		As Character
+	Local cContratoAte		As Character
+	Local cPlano			As Character
+	Local cServico			As Character
+	Local nPedidoVenda		As Numeric
+
+	Default aParam			:= {}
+
+	// verifico se o array de parametros tem informacoes
+	if Len(aParam) > 0
+		dDataDe			:= aParam[1]
+		dDataAte		:= aParam[2]
+		cContratoDe		:= aParam[3]
+		cContratoAte	:= aParam[4]
+		cPlano			:= aParam[5]
+		cServico		:= aParam[6]
+		nPedidoVenda	:= aParam[7]
+	endif
+
+	// atribuo valor das variaveis
+	aRetorno	:= {}
+	aAuxiliar	:= {}
+	cQuery 		:= ""
+	cServico	:= ""
+	cEndereco	:= ""
+	cWhere		:= MontaWhere(dDataDe, dDataAte, cContratoDe, cContratoAte, cPlano, nPedidoVenda)
+
+	// fecho o alias temporario caso estiver sendo usado
+	if Select("TRBREL") > 0
+		TRBREL->(DbCloseArea())
+	endIf
+
+	cQuery	:= " SELECT "
+	cQuery	+= " UJV.UJV_CODIGO APONTAMENTO, "
+	cQuery	+= " UJV.UJV_DTSEPU DATAAPT, "
+	cQuery	+= " UJV.UJV_NOME, "
+	cQuery	+= " UJV.UJV_SERVIC SERVICO, "
+	cQuery	+= " SB1.B1_XREQSER TIPOSERVICO,"
+	cQuery	+= " SB1.B1_DESC,"
+	cQuery	+= " UJV.UJV_CONTRA,"
+	cQuery	+= " UJV.UJV_CLIENT,"
+	cQuery	+= " UJV.UJV_LOJA,"
+	cQuery	+= " SA1.A1_NOME,"
+	cQuery	+= " UJV.UJV_QUADRA,"
+	cQuery	+= " UJV.UJV_MODULO,"
+	cQuery	+= " UJV.UJV_JAZIGO,"
+	cQuery	+= " UJV.UJV_GAVETA,"
+	cQuery	+= " UJV.UJV_CREMAT,"
+	cQuery	+= " UJV.UJV_NICHOC,"
+	cQuery	+= " UJV.UJV_OSSARI,"
+	cQuery	+= " UJV.UJV_NICHOO,"
+	cQuery	+= " UJV.UJV_CODCLI,"
+	cQuery	+= " UJV.UJV_LOJCLI,"
+	cQuery	+= " UJV.UJV_PEDIDO,"
+	cQuery	+= " SC5.C5_NOTA,"
+	cQuery	+= " CASE WHEN UJV.UJV_PEDIDO <> ' ' THEN SC6.C6_QTDVEN ELSE 1 END QTDE,"
+	cQuery	+= " CASE WHEN UJV.UJV_PEDIDO <> ' ' THEN SC6.C6_PRCVEN ELSE DA1.DA1_PRCVEN END VLUNIT,"
+	cQuery	+= " CASE WHEN UJV.UJV_PEDIDO <> ' ' THEN SC6.C6_VALOR ELSE DA1.DA1_PRCVEN END VLTOTAL"
+	cQuery	+= " FROM " + RetSqlName("UJV") + " UJV"
+
+	// vinculo apontamento com o cadastro de produtos
+	cQuery	+= " INNER JOIN " + RetSqlName("SB1") + " SB1 ON SB1.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND SB1.B1_FILIAL = '" + xFilial("SB1") + "'"
+	cQuery	+= " AND SB1.B1_COD = UJV.UJV_SERVIC"
+
+	// vinculo apontamento com a tabela de precos
+	cQuery	+= " INNER JOIN " + RetSqlName("DA1") + " DA1 ON DA1.D_E_L_E_T_ = ' '"
+	cQuery  += " AND DA1.DA1_FILIAL = '" + xFilial("DA1") + "' "
+	cQuery	+= " AND DA1.DA1_CODTAB = UJV.UJV_TABPRC"
+	cQuery	+= " AND DA1.DA1_CODPRO = UJV.UJV_SERVIC"
+
+	// vinculo apontamento com o contrato de cemiterio
+	cQuery	+= " INNER JOIN " + RetSqlName("U00") + " U00 ON U00.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+	cQuery	+= " AND U00.U00_CODIGO = UJV.UJV_CONTRA"
+
+	// vinculo o contrato de cemiterio com o cadastro de clientes
+	cQuery	+= " INNER JOIN " + RetSqlName("SA1") + " SA1 ON SA1.D_E_L_E_T_ = ' '"
+	cQuery  += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery	+= " AND SA1.A1_COD = U00.U00_CLIENT"
+	cQuery	+= " AND SA1.A1_LOJA = U00.U00_LOJA"
+
+	// vinculo(se houver) apontamento com o pedido de vendas
+	cQuery	+= " LEFT JOIN " + RetSqlName("SC5") + " SC5 ON SC5.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND SC5.C5_FILIAL = '" + xFilial("SC5") + "' "
+	cQuery	+= " AND SC5.C5_NUM = UJV.UJV_PEDIDO"
+
+	// vinculo(se houver) pedido de vendas com os itens do pedido de vendas
+	cQuery	+= " LEFT JOIN " + RetSqlName("SC6") + " SC6 ON SC6.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND SC6.C6_FILIAL = '" + xFilial("SC6") + "' "
+	cQuery	+= " AND SC6.C6_NUM = SC5.C5_NUM"
+	cQuery	+= " AND SC6.C6_PRODUTO = UJV.UJV_SERVIC"
+
+	cQuery	+= " WHERE UJV.D_E_L_E_T_ = ' '"
+	cQuery 	+= cWhere
+
+	// faco o tratamento dos servicos para os servicos adicionais
+	if !Empty(cServico)
+		cQuery += " 	AND UJV.UJV_SERVIC IN " + FormatIn( AllTrim(cServico),";") + " "
+	endif
+
+	// union com os servicos adicionais
+	cQuery	+= " UNION ALL "
+	cQuery	+= " SELECT "
+	cQuery	+= " UJV.UJV_CODIGO APONTAMENTO,"
+	cQuery	+= " UJV.UJV_DTSEPU DATAAPT,"
+	cQuery	+= " UJV.UJV_NOME,"
+	cQuery	+= " UJX.UJX_SERVIC SERVICO,"
+	cQuery	+= " SB1.B1_XREQSER TIPOSERVICO,"
+	cQuery	+= " SB1.B1_DESC,"
+	cQuery	+= " UJV.UJV_CONTRA,"
+	cQuery	+= " UJV.UJV_CLIENT,"
+	cQuery	+= " UJV.UJV_LOJA,"
+	cQuery	+= " SA1.A1_NOME,"
+	cQuery	+= " UJV.UJV_QUADRA,"
+	cQuery	+= " UJV.UJV_MODULO,"
+	cQuery	+= " UJV.UJV_JAZIGO,"
+	cQuery	+= " UJV.UJV_GAVETA,"
+	cQuery	+= " UJV.UJV_CREMAT,"
+	cQuery	+= " UJV.UJV_NICHOC,"
+	cQuery	+= " UJV.UJV_OSSARI,"
+	cQuery	+= " UJV.UJV_NICHOO,"
+	cQuery	+= " UJV.UJV_CODCLI,"
+	cQuery	+= " UJV.UJV_LOJCLI,"
+	cQuery	+= " UJV.UJV_PEDIDO,"
+	cQuery	+= " SC5.C5_NOTA,"
+	cQuery	+= " UJX.UJX_QTDE QTDE,"
+	cQuery	+= " UJX.UJX_VLUNIT VLUNIT,"
+	cQuery	+= " UJX.UJX_VALOR VLTOTAL"
+	cQuery	+= " FROM " + RetSqlName("UJV") + " UJV"
+
+	// vinculo o apontamento com os itens adicionais do apontamento
+	cQuery	+= " INNER JOIN " + RetSqlName("UJX") + " UJX ON UJX.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND UJX.UJX_FILIAL = UJV.UJV_FILIAL"
+	cQuery	+= " AND UJX.UJX_CODIGO = UJV.UJV_CODIGO"
+
+	// vinculo apontamento com o cadastro de produtos
+	cQuery	+= " INNER JOIN " + RetSqlName("SB1") + " SB1 ON SB1.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND SB1.B1_FILIAL = '" + xFilial("SB1") + "'"
+	cQuery	+= " AND SB1.B1_COD = UJV.UJV_SERVIC"
+
+	// vinculo apontamento com o contrato de cemiterio
+	cQuery	+= " INNER JOIN " + RetSqlName("U00") + " U00 ON U00.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND U00.U00_FILIAL = '" + xFilial("U00") + "' "
+	cQuery	+= " AND U00.U00_CODIGO = UJV.UJV_CONTRA"
+
+	// vinculo o contrato de cemiterio com o cadastro de clientes
+	cQuery	+= " INNER JOIN " + RetSqlName("SA1") + " SA1 ON SA1.D_E_L_E_T_ = ' '"
+	cQuery  += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQuery	+= " AND SA1.A1_COD = U00.U00_CLIENT"
+	cQuery	+= " AND SA1.A1_LOJA = U00.U00_LOJA"
+
+	// vinculo(se houver) apontamento com o pedido de vendas
+	cQuery	+= " LEFT JOIN " + RetSqlName("SC5") + " SC5 ON SC5.D_E_L_E_T_ = ' '"
+	cQuery	+= " AND SC5.C5_FILIAL = '" + xFilial("SC5") + "' "
+	cQuery	+= " AND SC5.C5_NUM = UJV.UJV_PEDIDO"
+
+	cQuery	+= " WHERE UJV.D_E_L_E_T_ = ' '"
+	cQuery 	+= cWhere
+
+	// faco o tratamento dos servicos para os servicos adicionais
+	if !Empty(cServico)
+		cQuery += " 	AND UJX.UJX_SERVIC IN " + FormatIn( AllTrim(cServico),";") + " "
+	endif
+
+	cQuery	+= "ORDER BY SERVICO ASC, DATAAPT ASC, APONTAMENTO ASC"
+
+	TcQuery cQuery New Alias "TRBREL"
+
+	while TRBREL->(!EoF())
+
+		// inicio o valor das variaveis
+		aAuxiliar	:= {}
+		cEndereco	:= ""
+
+		// preencho o endereco utilizado na ordem de servico
+		if TRBREL->TIPOSERVICO == "C" // cremacao
+			cEndereco	:= "NICHO " + TRBREL->UJV_NICHOC
+
+		elseIf TRBREL->TIPOSERVICO == "J" // jazigo
+			cEndereco	:= "QD " + TRBREL->UJV_QUADRA + " MD " + TRBREL->UJV_MODULO + " JAZ " + TRBREL->UJV_JAZIGO + " GAV " + TRBREL->UJV_GAVETA
+
+		elseIf TRBREL->TIPOSERVICO == "O" // ossario
+			cEndereco	:= "OSSARIO " + TRBREL->UJV_OSSARI + " NICHO " + TRBREL->UJV_NICHOO
+
+		endIf
+
+		// alimento os dados para o retorno
+		aAdd(aAuxiliar,TRBREL->SERVICO)
+		aAdd(aAuxiliar,TRBREL->TIPOSERVICO)
+		aAdd(aAuxiliar,TRBREL->APONTAMENTO)
+		aAdd(aAuxiliar,Stod(TRBREL->DATAAPT))
+		aAdd(aAuxiliar,TRBREL->UJV_NOME)
+		aAdd(aAuxiliar,cEndereco)
+		aAdd(aAuxiliar,TRBREL->UJV_CONTRA)
+		aAdd(aAuxiliar,TRBREL->A1_NOME)
+		aAdd(aAuxiliar,TRBREL->UJV_PEDIDO)
+		aAdd(aAuxiliar,TRBREL->C5_NOTA)
+		aAdd(aAuxiliar,TRBREL->VLTOTAL)
+
+		aAdd(aRetorno, aAuxiliar)
+
+		TRBREL->(DbSkip())
+	endDo
+
+	// fecho o alias temporario caso estiver sendo usado
+	if Select("TRBREL") > 0
+		TRBREL->(DbCloseArea())
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} VirtusRelPlanilha
+Funcao para gerar a Planilha em Excell a partir dos dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function VirtusRelPlanilha(cRelatorio, aTitulo, aDados, aParam)
+
+	Local oVirtusRelPlanilha		As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+	Default aParam		:= {}
+
+	// atribuo valor as variaveis
+	oVirtusRelPlanilha	:= Nil
+
+	// inicio a classe de geracao de planilha
+	oVirtusRelPlanilha := VirtusRelPlanilha():New()
+
+	// faco a impressao da planilha
+	oVirtusRelPlanilha:Imprimir(cRelatorio, aTitulo, aDados)
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraRelatorio
+Funcao para gerar o relatorio com o metodo 
+FWMSPrinter
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraRelatorio(cRelatorio, aTitulo, aDados, aParam)
+
+	Local aTitTot				As Array
+	Local aPosTot				As Array
+	Local nImpTot				As Numeric
+	Local nMVFont33				As Numeric
+	Local oGeraRelatorio		As Object
+	Local oPDFPrint				As Object	
+	Local oFont26				As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+	Default aParam		:= {}
+
+	// atribuo valor as variaveis
+	aTitTot			:= {"Apontamento de serviços", "Serviços executados", "Serviços para Crematorio", "Serviços para Jazigo",; 
+						"Serviços para Ossuário", "Valor total de serviços executados", "Valor total de serviços faturados"}
+	aPosTot			:= {}
+	oGeraRelatorio	:= Nil
+	oPDFPrint 		:= Nil
+	nMVFont33		:= SuperGetMV("MV_XFONT33",,1)
+
+	// inicio a classe de geracao de planilha
+	oGeraRelatorio := VirtusRelPDF():New(@oPDFPrint, cRelatorio, Nil, nMVFont33)
+
+	// array de posicao dos totalizadores
+	aPosTot			:= {oGeraRelatorio:nMargemL, 300, 600, 900, 1200, 1500, 1800}
+
+	//------------------------
+	// impresso do cabecalho
+	//------------------------
+
+	oGeraRelatorio:ImpCabecalho(@oPDFPrint, cRelatorio, aParam[1], aParam[2])
+
+	//-----------------------------
+	// impressao dos totalizadores
+	//-----------------------------
+
+	oGeraRelatorio:nLinha+=30
+
+	oPDFPrint:Say(nLinhaCol1, oGeraRelatorio:nMargemL, "Resumo de Serviços", oGeraRelatorio:oFontNConteudo )
+
+	oGeraRelatorio:nLinha+=30
+
+	// percorro os arrays de totalizadores para a impressao
+	for nImpTot := 1 to Len(aTitTot)
+
+		// impreessao do titulo do totalizador
+		oPDFPrint:Say(nLinhaCol1, aPosTot[nImpTot], aTitTot[nImpTot], oGeraRelatorio:oFontConteudo )
+
+	next nImpTot
+
+	// faco a impressao do rodape
+	oGeraRelatorio:ImpRodape(@oPDFPrint)
+
+	// faco a impressao do relatorio
+	oGeraRelatorio:Imprimir(@oPDFPrint)
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Funcao para criar e dar manuntenção no grupo de perguntas
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/12/2020
+@param cPerg, character, nome do grupo de perguntas da SX1
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs	As Array
+
+	Default cPerg	:= "RCPGR033"
+
+	// atribuo valor as variaveis
+	aRegs	:= {}
+
+	// parametros SX1
+	aAdd(aRegs,{cPerg,'01','Data De'           	,'','','mv_ch1','D', TamSX3("UJV_DTSEPU")[1]    , 0, 0,'G','','mv_par01','','','','','',''})
+	aAdd(aRegs,{cPerg,'02','Data Ate'          	,'','','mv_ch2','D', TamSX3("UJV_DTSEPU")[1]   	, 0, 0,'G','','mv_par02','','','','','',''})
+	aAdd(aRegs,{cPerg,'03','Contrato De  '     	,'','','mv_ch3','C', TamSX3("U00_CODIGO")[1]    , 0, 0,'G','','mv_par03','','','','','','U00'})
+	aAdd(aRegs,{cPerg,'04','Contrato Até '      ,'','','mv_ch4','C', TamSX3("U00_CODIGO")[1]    , 0, 0,'G','','mv_par04','','','','','','U00'})
+	aAdd(aRegs,{cPerg,'05','Plano'             	,'','','mv_ch5','C', 99    						, 0, 0,'G','','mv_par05','','','','','','U05MRK'})
+	aAdd(aRegs,{cPerg,'06','Serviço '         	,'','','mv_ch6','C', 99    						, 0, 0,'G','','mv_par06','','','','','','SRVEXE'})
+	aAdd(aRegs,{cPerg,'07','Considera Pedido? '	,'','','mv_ch7','N', 01    						, 0, 2,'N','','mv_par07','1=Sim','2=Não','','','',''})
+
+	// cria os dados da SX1
+	U_CriaSX1( aRegs )
+
+Return(Nil)
+
+/*/{Protheus.doc} MontaWhere
+funcao para montar o where da query
+@type function
+@version 1.0  
+@author g.sampaio
+@since 23/12/2020
+@param dDataDe, date, parametro de data de 
+@param dDataAte, date, parametro de data ate
+@param cContratoDe, character, parametro de contrato de
+@param cContratoAte, character, parametro de contrato ate
+@param cPlano, character, parametro de planos
+@param nPedidoVenda, numeric, parametro para se considera o pedido de vendas
+@return Character, retorna o where para a query
+/*/
+Static Function MontaWhere(dDataDe, dDataAte, cContratoDe, cContratoAte, cPlano, nPedidoVenda)
+
+	Local cRetorno	As Character
+
+	// atribuo valor das variaveis
+	cRetorno := ""
+
+	// monto o where na variavel de retorno
+	cRetorno := " AND UJV.UJV_DTSEPU BETWEEN '" + Dtos(dDataDe) + "' AND '"  + Dtos(dDataAte) + "' "
+	cRetorno += " AND UJV.UJV_CONTRA BETWEEN '" + cContratoDe + "' AND '"  + cContratoAte + "' "
+
+	// verifico se os parametros de plano estao preenchidos
+	if !Empty(cPlano)
+		cRetorno += " AND U00.U00_PLANO IN " + FormatIn( AllTrim(cPlano),";")
+	endIf
+
+	// considero pedido de vendas gerado
+	if nPedidoVenda == 1
+		cRetorno += " AND UJV.UJV_PEDIDO <> ' ' "
+	endIf
+
+Return(cRetorno)
+
