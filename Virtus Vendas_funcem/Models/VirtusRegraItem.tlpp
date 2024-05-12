@@ -1,0 +1,67 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusRegraItem
+Classe VirtusRegraItem
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusRegraItem
+Return
+
+Class VirtusRegraItem
+
+    Public Data chave_regra_item as character
+    Public Data cnpj as character
+    Public Data codigo as character
+    Public Data item as character
+    Public Data tipo_regra as character
+    Public Data tipo_beneficiario as character
+    Public Data valor_inicial as numeric
+    Public Data valor_final as numeric
+    Public Data valor_cobranca as numeric
+    Public Data individual as character
+    Public Data chave_regra as character
+    Public Data adesao_regra as numeric
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusRegraItem
+
+    ::chave_regra_item := ""
+    ::cnpj := ""
+    ::codigo := ""
+    ::item := ""
+    ::tipo_regra := ""
+    ::tipo_beneficiario := ""
+    ::valor_inicial := 0
+    ::valor_final := 0
+    ::valor_cobranca := 0
+    ::individual := ""
+    ::chave_regra := ""
+    ::adesao_regra := 0
+
+Return Self
+
+Method toJsonObject() Class VirtusRegraItem
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_regra_item"] := ::chave_regra_item
+    oJson["cnpj"] := ::cnpj
+    oJson["codigo"] := ::codigo
+    oJson["item"] := ::item
+    oJson["tipo_regra"] := ::tipo_regra
+    oJson["tipo_beneficiario"] := ::tipo_beneficiario
+    oJson["valor_inicial"] := ::valor_inicial
+    oJson["valor_final"] := ::valor_final
+    oJson["valor_cobranca"] := ::valor_cobranca
+    oJson["individual"] := ::individual
+    oJson["chave_regra"] := ::chave_regra
+    oJson["adesao_regra"] := ::adesao_regra
+
+Return oJson

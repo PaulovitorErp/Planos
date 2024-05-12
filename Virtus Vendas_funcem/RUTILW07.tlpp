@@ -1,0 +1,115 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW07
+Integracao de Itens dos Planos para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW07
+	Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+	Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+	If MsgYesNo('Deseja realmente integrar os itens dos planos da sua base ao Virtus?')
+		sendPlansItems(cCnpj)
+	EndIf
+Return
+
+/*/{Protheus.doc} getPlansItems
+Busca itens dos planos com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aPlansItems, array
+/*/
+Static Function getPlansItems(cCnpj)
+	Local cQry := ""
+	Local nQtdReg := 0
+	Local aPlansItems := {}
+	Local oVirtusPlanoItem := Nil
+
+	cQry := "SELECT UF1.UF1_CODIGO CODIGO, "
+	cQry += "    UF1.UF1_PROD PRODUTO, "
+	cQry += "    UF1.UF1_QUANT QUANTIDADE "
+	cQry += "FROM "+ RetSqlName("UF0") +" UF0 "
+	cQry += "INNER JOIN "+ RetSqlName("UF1") +" UF1 "
+	cQry += "    ON UF1.D_E_L_E_T_ <> '*' "
+	cQry += "    AND UF1.UF1_FILIAL = UF0.UF0_FILIAL "
+	cQry += "    AND UF1.UF1_CODIGO = UF0.UF0_CODIGO "
+	cQry += "WHERE UF0.D_E_L_E_T_ <> '*' "
+	cQry += "    AND UF0.UF0_FILIAL = '"+ xFilial("UF0") +"' "
+	cQry += "    AND UF0.UF0_STATUS = 'A' "
+	cQry += "    AND UF0.UF0_XSINCR = 'S' "
+	cQry += "ORDER BY UF1.UF1_CODIGO, UF1.UF1_ITEM, UF1.UF1_PROD "
+	cQry := ChangeQuery(cQry)
+
+	If Select("GETPLITM") > 0
+		GETPLITM->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "GETPLITM")
+
+	If GETPLITM->( !EOF() )
+		While GETPLITM->( !EOF() )
+			oVirtusPlanoItem := Nil
+			oVirtusPlanoItem := VirtusPlanoItem():New()
+			oVirtusPlanoItem:chave_plano := AllTrim(cCnpj + GETPLITM->CODIGO)
+			oVirtusPlanoItem:chave_produto := AllTrim(cCnpj + GETPLITM->PRODUTO)
+			oVirtusPlanoItem:cnpj := cCnpj
+			oVirtusPlanoItem:quantidade := GETPLITM->QUANTIDADE
+			AADD(aPlansItems, oVirtusPlanoItem:toJsonObject())
+
+			GETPLITM->( dbSkip() )
+		EndDo
+	EndIf
+
+	If Select("GETPLITM") > 0
+		GETPLITM->( DbCloseArea() )
+	EndIf
+
+Return(aPlansItems)
+
+/*/{Protheus.doc} sendPlansItems
+Envia itens dos planos para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendPlansItems(cCnpj)
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/planoitem/" + cCnpj
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local aPlansItems := {}
+	Local oPlansItems := JsonObject():New()
+	Local oResponse := JsonObject():New()
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	aPlansItems := getPlansItems(cCnpj)
+	oPlansItems["planosItens"] := aPlansItems
+
+	If Len(aPlansItems) > 0
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oPlansItems:toJSON() )
+
+		If oRestClient:Post(aHeadStr)
+			oResponse:fromJson(oRestClient:GetResult())
+			MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+		Else
+			MsgAlert(oRestClient:GetResult())
+		EndIf
+
+		U_GrvLogU56("UF1", oPlansItems:toJSON(), oRestClient:GetResult())
+	EndIf
+
+Return

@@ -1,0 +1,43 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusPlanoItem
+Classe VirtusPlanoItem
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusPlanoItem
+Return
+
+Class VirtusPlanoItem
+
+    Public Data chave_plano as character
+    Public Data chave_produto as character
+    Public Data cnpj as character
+    Public Data quantidade as numeric
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusPlanoItem
+
+    ::chave_plano := ""
+    ::chave_produto := ""
+    ::cnpj := ""
+    ::quantidade := 0
+
+Return Self
+
+Method toJsonObject() Class VirtusPlanoItem
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_plano"] := ::chave_plano
+    oJson["chave_produto"] := ::chave_produto
+    oJson["cnpj"] := ::cnpj
+    oJson["quantidade"] := ::quantidade
+
+Return oJson

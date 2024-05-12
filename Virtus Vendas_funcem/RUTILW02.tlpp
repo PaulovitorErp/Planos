@@ -1,0 +1,114 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW02
+Integracao de Tabelas de Preços para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW02
+	Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+	Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+	If MsgYesNo('Deseja realmente integrar as tabelas de preços da sua base ao Virtus?')
+		sendPricesTables(cCnpj)
+	EndIf
+Return
+
+/*/{Protheus.doc} getPricesTables
+Busca tabelas de precos com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aPricesTables, array
+/*/
+Static Function getPricesTables(cCnpj)
+	Local cQry := ""
+	Local nQtdReg := 0
+	Local aPricesTables := {}
+	Local oVirtusTabelaPreco := Nil
+
+	cQry := "SELECT DA1.DA1_CODTAB CODIGO, DA1.DA1_CODPRO PRODUTO, DA1.DA1_PRCVEN PRECO "
+	cQry += "FROM "+ RetSqlName("DA0") +" DA0 "
+	cQry += "INNER JOIN "+ RetSqlName("DA1") +" DA1 "
+	cQry += "    ON DA1.D_E_L_E_T_ <> '*' "
+	cQry += "    AND DA1.DA1_FILIAL = DA0.DA0_FILIAL "
+	cQry += "    AND DA1.DA1_CODTAB = DA0.DA0_CODTAB "
+	cQry += "WHERE DA0.D_E_L_E_T_ <> '*' "
+	cQry += "AND DA0.DA0_FILIAL = '"+ xFilial("DA0") +"' "
+	cQry += "AND DA0.DA0_ATIVO = '1' "
+	cQry += "AND DA0.DA0_XSINCR = 'S' "
+	cQry += "ORDER BY DA1.DA1_CODTAB, DA1.DA1_CODPRO "
+	cQry := ChangeQuery(cQry)
+
+	If Select("GETTABS") > 0
+		GETTABS->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "GETTABS")
+
+	If GETTABS->(!EOF())
+		While GETTABS->( !EOF() )
+			oVirtusTabelaPreco := Nil
+			oVirtusTabelaPreco := VirtusTabelaPreco():New()
+			oVirtusTabelaPreco:chave_tabela := AllTrim(cCnpj + GETTABS->CODIGO)
+			oVirtusTabelaPreco:cnpj := cCnpj
+			oVirtusTabelaPreco:codigo := AllTrim(GETTABS->CODIGO)
+			oVirtusTabelaPreco:preco := GETTABS->PRECO
+			oVirtusTabelaPreco:chave_produto := AllTrim(cCnpj + GETTABS->PRODUTO)
+			AADD(aPricesTables, oVirtusTabelaPreco:toJsonObject())
+
+			GETTABS->( dbSkip() )
+		EndDo
+	EndIf
+
+	If Select("GETTABS") > 0
+		GETTABS->( DbCloseArea() )
+	EndIf
+
+Return(aPricesTables)
+
+/*/{Protheus.doc} sendPricesTables
+Envia tabelas de precos para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendPricesTables(cCnpj)
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/tabelapreco/" + cCnpj
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local aPricesTables := {}
+	Local oPricesTables := JsonObject():New()
+	Local oResponse := JsonObject():New()
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	aPricesTables := getPricesTables(cCnpj)
+	oPricesTables["tabelasPrecos"] := aPricesTables
+
+	If Len(aPricesTables) > 0
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oPricesTables:toJSON() )
+
+		If oRestClient:Post(aHeadStr)
+			oResponse:fromJson(oRestClient:GetResult())
+			MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+		Else
+			MsgAlert(oRestClient:GetResult())
+		EndIf
+
+		U_GrvLogU56("DA1", oPricesTables:toJSON(), oRestClient:GetResult())
+	EndIf
+
+Return

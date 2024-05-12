@@ -1,0 +1,49 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusRegraCondicao
+Classe VirtusRegraCondicao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusRegraCondicao
+Return
+
+Class VirtusRegraCondicao
+
+    Public Data chave_regra_item as character
+    Public Data cnpj as character
+    Public Data item as character
+    Public Data tipo_condicao as character
+    Public Data valor_inicial as numeric
+    Public Data valor_final as numeric
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusRegraCondicao
+
+    ::chave_regra_item := ""
+    ::cnpj := ""
+    ::item := ""
+    ::tipo_condicao := ""
+    ::valor_inicial := 0
+    ::valor_final := 0
+
+Return Self
+
+Method toJsonObject() Class VirtusRegraCondicao
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_regra_item"] := ::chave_regra_item
+    oJson["cnpj"] := ::cnpj
+    oJson["item"] := ::item
+    oJson["tipo_condicao"] := ::tipo_condicao
+    oJson["valor_inicial"] := ::valor_inicial
+    oJson["valor_final"] := ::valor_final
+
+Return oJson

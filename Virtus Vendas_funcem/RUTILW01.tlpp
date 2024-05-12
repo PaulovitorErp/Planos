@@ -1,0 +1,109 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW01
+Integracao de Produtos para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW01
+    Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+    Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+    If MsgYesNo('Deseja realmente integrar os produtos da sua base ao Virtus?')
+        sendProducts(cCnpj)
+    EndIf
+Return
+
+/*/{Protheus.doc} getProducts
+Busca produtos com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+@param cCnpj, character
+@return aProducts, array
+/*/
+Static Function getProducts(cCnpj)
+    Local cQry := ""
+    Local nQtdReg := 0
+    Local aProducts := {}
+    Local oVirtusProduto := Nil
+
+    cQry := "SELECT B1_COD CODIGO, B1_DESC DESCRICAO, B1_XPERSON PERSON "
+    cQry += "FROM " + RetSqlName("SB1")
+    cQry += "WHERE D_E_L_E_T_ <> '*' "
+    cQry += "AND B1_FILIAL = '"+ xFilial("SB1") +"' "
+    cQry += "AND B1_XSINCRO = 'S' "
+    cQry += "ORDER BY B1_COD "
+    cQry := ChangeQuery(cQry)
+
+    If Select("GETPRODS") > 0
+        GETPRODS->( DbCloseArea() )
+    EndIf
+
+    MPSysOpenQuery(cQry, "GETPRODS")
+
+    If GETPRODS->(!EOF())
+        While GETPRODS->( !EOF() )
+            oVirtusProduto := Nil
+            oVirtusProduto := VirtusProduto():New()
+            oVirtusProduto:chave_produto := AllTrim(cCnpj + GETPRODS->CODIGO)
+            oVirtusProduto:cnpj := cCnpj
+            oVirtusProduto:codigo := AllTrim(GETPRODS->CODIGO)
+            oVirtusProduto:descricao := AllTrim(GETPRODS->DESCRICAO)
+            oVirtusProduto:personalizado := AllTrim(GETPRODS->PERSON)
+            AADD(aProducts, oVirtusProduto:toJsonObject())
+
+            GETPRODS->( dbSkip() )
+        EndDo
+    EndIf
+
+    If Select("GETPRODS") > 0
+        GETPRODS->( DbCloseArea() )
+    EndIf
+    
+Return aProducts
+
+/*/{Protheus.doc} sendProducts
+Envia produtos para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+@param cCnpj, character
+/*/
+Static Function sendProducts(cCnpj)
+    Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+    Local cPath := "/produto/" + cCnpj
+    Local aHeadStr := {}
+    Local oRestClient := Nil
+    Local aProducts := {}
+    Local oProducts := JsonObject():New()
+    Local oResponse := JsonObject():New()
+
+    AADD(aHeadStr,"Content-Type:application/json")
+
+    aProducts := getProducts(cCnpj)
+    oProducts["produtos"] := aProducts
+
+    If Len(aProducts) > 0
+        oRestClient := FWRest():New(cHost)
+        oRestClient:SetPath(cPath)
+        oRestClient:SetPostParams( oProducts:toJSON() )
+
+        If oRestClient:Post(aHeadStr)
+            oResponse:fromJson(oRestClient:GetResult())
+            MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+        Else
+            MsgAlert(oRestClient:GetResult())
+        EndIf
+
+        U_GrvLogU56("SB1", oProducts:toJSON(), oRestClient:GetResult())
+    EndIf
+
+Return

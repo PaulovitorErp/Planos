@@ -1,0 +1,46 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusProduto
+Classe VirtusProduto
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function VirtusProduto
+Return
+
+Class VirtusProduto
+
+    Public Data chave_produto as character
+    Public Data cnpj as character
+    Public Data codigo as character
+    Public Data descricao as character
+    Public Data personalizado as character
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusProduto
+
+    ::chave_produto := ""
+    ::cnpj := ""
+    ::codigo := ""
+    ::descricao := ""
+    ::personalizado := ""
+
+Return Self
+
+Method toJsonObject() Class VirtusProduto
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_produto"] := ::chave_produto
+    oJson["cnpj"] := ::cnpj
+    oJson["codigo"] := ::codigo
+    oJson["descricao"] := ::descricao
+    oJson["personalizado"] := ::personalizado
+
+Return oJson

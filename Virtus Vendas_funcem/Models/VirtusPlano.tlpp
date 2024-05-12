@@ -1,0 +1,69 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusPlano
+Classe VirtusPlano
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusPlano
+Return
+
+Class VirtusPlano
+
+    Public Data chave_plano as character
+    Public Data cnpj as character
+    Public Data codigo as character
+    Public Data descricao as character
+    Public Data vigencia_inicial as date
+    Public Data vigencia_final as date
+    Public Data status as character
+    Public Data taxa_adesao as numeric
+    Public Data adesao_valor_parcela as character
+    Public Data qrcode_link as character
+    Public Data chave_tabela as character
+    Public Data chave_regra as character
+    Public Data adesao_regra as character
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusPlano
+
+    ::chave_plano := ""
+    ::cnpj := ""
+    ::codigo := ""
+    ::descricao := ""
+    ::vigencia_inicial := STOD(Space(8))
+    ::vigencia_final := STOD(Space(8))
+    ::status := ""
+    ::taxa_adesao := 0
+    ::adesao_valor_parcela := ""
+    ::qrcode_link := ""
+    ::chave_tabela := ""
+    ::chave_regra := ""
+    ::adesao_regra := ""
+
+Return Self
+
+Method toJsonObject() Class VirtusPlano
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_plano"] := ::chave_plano
+    oJson["cnpj"] := ::cnpj
+    oJson["codigo"] := ::codigo
+    oJson["descricao"] := ::descricao
+    oJson["vigencia_inicial"] := ::vigencia_inicial
+    oJson["vigencia_final"] := ::vigencia_final
+    oJson["status"] := ::status
+    oJson["taxa_adesao"] := ::taxa_adesao
+    oJson["adesao_valor_parcela"] := ::adesao_valor_parcela
+    oJson["qrcode_link"] := ::qrcode_link
+    oJson["chave_tabela"] := ::chave_tabela
+    oJson["chave_regra"] := ::chave_regra
+    oJson["adesao_regra"] := ::adesao_regra 
+Return oJson

@@ -1,0 +1,108 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW03
+Integracao de Regras para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW03
+    Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+    Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+    If MsgYesNo('Deseja realmente integrar as regras da sua base ao Virtus?')
+        sendRules(cCnpj)
+    EndIf
+Return
+
+/*/{Protheus.doc} getRules
+Busca regras com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aRules, array
+/*/
+Static Function getRules(cCnpj)
+    Local cQry := ""
+    Local nQtdReg := 0
+    Local aRules := {}
+    Local oVirtusRegra := Nil
+
+    cQry := "SELECT UJ5_CODIGO CODIGO, UJ5_DESCRI DESCRICAO "
+    cQry += "FROM " + RetSqlName("UJ5")
+    cQry += "WHERE D_E_L_E_T_ <> '*' "
+    cQry += "AND UJ5_FILIAL = '"+ xFilial("UJ5") +"' "
+    cQry += "AND UJ5_STATUS = 'A' "
+    cQry += "AND UJ5_XSINCR = 'S' "
+    cQry := ChangeQuery(cQry)
+
+    If Select("GETRULS") > 0
+        GETRULS->( DbCloseArea() )
+    EndIf
+    
+    MPSysOpenQuery(cQry, "GETRULS")
+
+    If GETRULS->(!EOF())
+        While GETRULS->( !EOF() )
+            oVirtusRegra := Nil
+            oVirtusRegra := VirtusRegra():New()
+            oVirtusRegra:chave_regra := AllTrim(cCnpj + GETRULS->CODIGO)
+            oVirtusRegra:cnpj := cCnpj
+            oVirtusRegra:codigo := AllTrim(GETRULS->CODIGO)
+            oVirtusRegra:descricao := AllTrim(GETRULS->DESCRICAO)
+            AADD(aRules, oVirtusRegra:toJsonObject())
+
+            GETRULS->( dbSkip() )
+        EndDo
+    EndIf
+
+    If Select("GETRULS") > 0
+        GETRULS->( DbCloseArea() )
+    EndIf
+
+Return(aRules)
+
+/*/{Protheus.doc} sendRules
+Envia regras para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendRules(cCnpj)
+    Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+    Local cPath := "/regra/" + cCnpj
+    Local aHeadStr := {}
+    Local oRestClient := Nil
+    Local aRules := {}
+    Local oRules := JsonObject():New()
+    Local oResponse := JsonObject():New()
+
+    AADD(aHeadStr,"Content-Type:application/json")
+
+    aRules := getRules(cCnpj)
+    oRules["regras"] := aRules
+
+    If Len(aRules) > 0
+        oRestClient := FWRest():New(cHost)
+        oRestClient:SetPath(cPath)
+        oRestClient:SetPostParams( oRules:toJSON() )
+
+        If oRestClient:Post(aHeadStr)
+            oResponse:fromJson(oRestClient:GetResult())
+            MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+        Else
+            MsgAlert(oRestClient:GetResult())
+        EndIf
+
+        U_GrvLogU56("UJ5", oRules:toJSON(), oRestClient:GetResult())
+    EndIf
+
+Return

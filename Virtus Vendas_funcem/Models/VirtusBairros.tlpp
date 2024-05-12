@@ -1,0 +1,50 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusRegra
+Classe VirtusRegra
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusBairros
+Return
+
+Class VirtusBairros
+
+    Public Data cnpj as character
+    Public Data uf as character
+    Public Data city as character
+    Public Data city_code as character
+    Public Data description as character
+    Public Data code as character
+
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusBairros
+
+    ::cnpj := ""
+    ::uf := ""
+    ::city := ""
+    ::city_code := ""
+    ::description := ""
+    ::code := ""
+
+Return Self
+
+Method toJsonObject() Class VirtusBairros
+
+    Local oJson := JsonObject():New()
+
+    oJson["cnpj"] := ::cnpj
+    oJson["uf"] := ::uf
+    oJson["city"] := ::city
+    oJson["city_code"] := ::city_code
+    oJson["description"] := ::description
+    oJson["code"] := ::code
+
+Return oJson

@@ -1,0 +1,2932 @@
+#INCLUDE 'TOTVS.CH'
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+
+#DEFINE TIT_NUM		1	//Numero
+#DEFINE TIT_PARC	2	//Parcela
+#DEFINE TIT_VENCTO	3	//Data vencimento
+#DEFINE TIT_VALOR	4	//Valor
+#DEFINE TIT_MULTA	5	//Multa
+#DEFINE TIT_JUROS	6	//Juros
+#DEFINE TIT_DESC	7	//Desconto
+#DEFINE TIT_RECEB	8	//Valor recebido
+#DEFINE TIT_FPAGTO	9	//Forma de pagamento
+#DEFINE TIT_TROCO	10	//Valor troco
+
+/*/{Protheus.doc} RUTILE26
+Classe IntegraVendasVirtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/08/2020
+/*/
+User Function RUTILE26
+Return
+
+/*/{Protheus.doc} IntegraVendasVirtus
+Classe para Integração de Vendas do Virtus
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 17/08/2020
+/*/
+	Class IntegraVendasVirtus
+
+		Public Data aVendas as array
+		Public Data dDataAtual as date
+
+		Public Method New() Constructor
+		Static Method BuscarVendasAprovadas(cCnpj, cCodigoModulo)
+		Static Method GravarVenda(cCnpj, cCodigoModulo, cVendaId, cVendaJson)
+		Static Method EnviarStatusProcessamento(cCnpj, cId, cStatusJson)
+		Public Method gravarStatusProcessamento(cCnpj, cId, cStatus, cMensagem, cStatusJson)
+		Public Method processarVendas()
+		Public Method buscarVendasNaoProcessadas()
+		Public Method validarVendedor(oVenda)
+		Public Method validarFormaPagto(oVenda)
+		Public Method validarIdVenda(oVenda)
+		Public Method atualizarDataBase(dDataVenda)
+		Public Method cadastrarCliente(oVenda, oStatusProcessamento)
+		Public Method cadastrarContrato(oVenda, oStatusProcessamento)
+		Public Method anexarImagens(oVenda, oStatusProcessamento)
+		Public Method cadastrarRecorrencia(oVenda, oStatusProcessamento)
+		Public Method ativarContrato(oVenda, oStatusProcessamento)
+		Public Method baixarAdesao(oVenda, oStatusProcessamento)
+		Public Method baixarAdiantamento(oVenda, oStatusProcessamento)
+		Public Method finalizarProcessamento(oVenda, oStatusProcessamento)
+
+	EndClass
+
+/*/{Protheus.doc} IntegraVendasVirtus::New
+Nova Instancia da Classe
+@type method
+@version 1.0
+@author nata.queiroz
+@since 17/08/2020
+/*/
+Method New() Class IntegraVendasVirtus
+
+	::aVendas := {}
+	::dDataAtual := dDataBase
+
+Return Self
+
+/*/{Protheus.doc} IntegraVendasVirtus::BuscarVendasAprovadas
+Busca vendas aprovadas no Virtus
+@type method
+@version 1.0
+@author nata.queiroz
+@since 18/08/2020
+@param cCnpj, character, cnpj
+@param cCodigoModulo, character, codigo do modulo
+/*/
+Method BuscarVendasAprovadas(cCnpj, cCodigoModulo) Class IntegraVendasVirtus
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/vendaintegracao/" + cCnpj
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local oResponse := JsonObject():New()
+	Local nX := 0
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	oRestClient := FWRest():New(cHost)
+	oRestClient:SetPath(cPath)
+
+	If oRestClient:Get(aHeadStr)
+		oResponse:fromJson(oRestClient:GetResult())
+
+		If Len(oResponse) > 0
+			For nX := 1 To Len(oResponse)
+				IntegraVendasVirtus():GravarVenda(cCnpj, cCodigoModulo,;
+					oResponse[nX]["_id"], oResponse[nX]:toJson())
+			Next nX
+		Else
+			Help(NIL, NIL, "IntegraVendasVirtus", NIL,;
+				"Não existem vendas aprovadas para sincronização.",;
+				1, 0, NIL, NIL, NIL, NIL, NIL, {"Aguarde por novas vendas aprovadas no Virtus."})
+		EndIf
+	Else
+		Help(NIL, NIL, "IntegraVendasVirtus", NIL,;
+			oRestClient:GetResult(),;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Erro ao consultar endpoint Virtus."})
+	EndIf
+
+Return
+
+/*/{Protheus.doc} IntegraVendasVirtus::GravarVenda
+Grava json da venda em tabela intermediaria
+@type method
+@version 1.0
+@author nata.queiroz
+@since 19/08/2020
+@param cCnpj, character
+@param cCodigoModulo, character
+@param cVendaId, character
+@param cVendaJson, character
+/*/
+Method GravarVenda(cCnpj, cCodigoModulo, cVendaId, cVendaJson) Class IntegraVendasVirtus
+
+	Local aArea := GetArea()
+	Local aAreaU82 := U82->(GetArea())
+	Local cCodigo := ""
+	Local nStart := Seconds()
+	Local cMessage := ""
+	Local oStatusProcessamento := JsonObject():New()
+	Local lAdd := .F.
+
+	Default cCodigoModulo := ""
+	Default cVendaId := ""
+	Default cVendaJson := ""
+
+	cCodigo := GetSxeNum("U82","U82_CODIGO")
+
+	U82->(DbSetOrder(1)) // U82_FILIAL + U82_CODIGO
+	While U82->(MsSeek(xFilial("U82") + cCodigo))
+		U82->(ConfirmSX8())
+		cCodigo := GetSxeNum("U82","U82_CODIGO")
+	EndDo
+
+	//-- Verifica se a venda ja existe --//
+	U82->(DbSetOrder(2)) // U82_FILIAL + U82_IDVEND
+	lAdd := U82->(MsSeek(xFilial("U82") + cVendaId))
+
+	If U82->(RecLock("U82", !lAdd))
+
+		If !lAdd
+			U82->U82_CODIGO	:= cCodigo
+			U82->U82_IDVEND := cVendaId
+		EndIf
+		U82->U82_FILIAL := xFilial("U82")
+		U82->U82_MODULO	:= cCodigoModulo
+		U82->U82_DTINC	:= dDataBase
+		U82->U82_HRINC	:= SubStr(Time(),1,5)
+		U82->U82_DTPROC	:= STOD(Space(8))
+		U82->U82_HRPROC	:= ""
+		U82->U82_MSPROC	:= ""
+		U82->U82_STATUS	:= "P" // P=Pendente; C=Concluido; E=Erro
+		U82->U82_MSREC	:= cVendaJson
+		U82->U82_MSFIL	:= cFilAnt
+		U82->(MsUnLock())
+
+		If !lAdd
+			U82->(ConfirmSX8())
+		Else
+			U82->(RollBackSX8())
+		EndIf
+
+		cMessage := "[RUTILE26 - GravarVenda]"
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+		cMessage := "Venda gravada com sucesso!"
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+
+		oStatusProcessamento["status"] := "sincronizado"
+		oStatusProcessamento["processamento_erp"] := { "status": "enviado",;
+			"titulo": "Venda Enviada para ERP",;
+			"mensagem": "Aguardando processamento da venda...",;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	Else
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Enviar Venda para ERP",;
+			"mensagem": "Erro na gravação da venda na tabela intermediária U82.",;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	IntegraVendasVirtus():EnviarStatusProcessamento(cCnpj, cVendaId, oStatusProcessamento:toJson())
+
+	RestArea(aAreaU82)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} IntegraVendasVirtus::EnviarStatusProcessamento
+Envia status de processamento da venda
+@type method
+@version 1.0
+@author nata.queiroz
+@since 18/08/2020
+@param cCnpj, character
+@param cId, character
+@param cStatusJson, character
+/*/
+Method EnviarStatusProcessamento(cCnpj, cId, cStatusJson) Class IntegraVendasVirtus
+
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/vendautil/" + cCnpj + "/" + cId
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local nStart := Seconds()
+	Local cMessage := ""
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	oRestClient := FWRest():New(cHost)
+	oRestClient:SetPath(cPath)
+
+	If .Not. oRestClient:Put(aHeadStr, cStatusJson)
+		cMessage := "[RUTILE26 - enviarStatusProcessamento]"
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+		cMessage := oRestClient:GetResult()
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} IntegraVendasVirtus::gravarStatusProcessamento
+Grava status de processamento da venda
+@type method
+@version 1.0
+@author nata.queiroz
+@since 19/08/2020
+@param cCnpj, character
+@param cId, character
+@param cStatus, character
+@param cMensagem, character
+@param cStatusJson, character
+/*/
+Method gravarStatusProcessamento(cCnpj, cId, cStatus, cMensagem, cStatusJson) Class IntegraVendasVirtus
+
+	Local aArea := GetArea()
+	Local aAreaU82 := U82->( GetArea() )
+
+	U82->(DbSetOrder(2)) // U82_FILIAL + U82_IDVEND
+	If U82->(MsSeek(xFilial("U82") + cId))
+		RecLock("U82", .F.)
+		U82->U82_DTPROC := Date()
+		U82->U82_HRPROC := SubStr(Time(), 1, 5)
+		U82->U82_STATUS := iif(cStatus == "sincronizado", "C", "E")
+		U82->U82_MSPROC	:= SubStr(cMensagem, 1, 100)
+		U82->(MsUnLock())
+
+		IntegraVendasVirtus():EnviarStatusProcessamento(cCnpj, cId, cStatusJson)
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaU82)
+
+Return
+
+/*/{Protheus.doc} IntegraVendasVirtus::processarVendas
+Processa vendas no ERP criando novos contratos
+@type method
+@version 1.0
+@author nata.queiroz
+@since 19/08/2020
+/*/
+Method processarVendas() Class IntegraVendasVirtus
+
+	Local lContinua := .F.
+	Local oStatusProcessamento := JsonObject():New()
+	Local nX := 0
+
+	//----------------------------//
+	//-- Busca vendas pendentes --//
+	//----------------------------//
+	lContinua := ::buscarVendasNaoProcessadas()
+	If !lContinua
+		Return
+	EndIf
+
+	//------------------------------------------//
+	//-- Inicia processamento venda por venda --//
+	//------------------------------------------//
+	For nX := 1 To Len( ::aVendas )
+
+		//-- Data Atual --//
+		::atualizarDataBase()
+
+		//-- Valida vendedor --//
+		lContinua := ::validarVendedor( ::aVendas[nX] )
+		If !lContinua
+			Loop
+		EndIf
+
+		//-- Valida dados da forma de pagamento --//
+		lContinua := ::validarFormaPagto( ::aVendas[nX] )
+		If !lContinua
+			Loop
+		EndIf
+
+		//-- Valida se já existe contrato vinculado a venda --//
+		lContinua := ::validarIdVenda( ::aVendas[nX] )
+		If !lContinua
+			Loop
+		EndIf
+
+		//-- Atualiza data base para data da venda --//
+		::atualizarDataBase( ::aVendas[nX]:data_da_criacao_app )
+
+		//-- Inicia transação de gravação da venda --//
+		BEGIN TRANSACTION
+
+			//-- Realiza cadastro do cliente --//
+			lContinua := ::cadastrarCliente( ::aVendas[nX], @oStatusProcessamento )
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			//-- Realiza cadastro do contrato --//
+			lContinua := ::cadastrarContrato( ::aVendas[nX], @oStatusProcessamento )
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			// Anexa imagens da venda no contrato --//
+			lContinua := ::anexarImagens( ::aVendas[nX], @oStatusProcessamento)
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			//-- Cadastra dados do cliente criado na VINDI --//
+			lContinua := ::cadastrarRecorrencia( ::aVendas[nX], @oStatusProcessamento)
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			//-- Realiza ativacao do contrato criado --//
+			lContinua := ::ativarContrato( ::aVendas[nX], @oStatusProcessamento)
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			//-- Baixa parcela de adesão do contrato --//
+			lContinua := ::baixarAdesao( ::aVendas[nX], @oStatusProcessamento)
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+			//-- Baixa adiantamento de parcelas do contrato --//
+			lContinua := ::baixarAdiantamento( ::aVendas[nX], @oStatusProcessamento)
+			If !lContinua
+				DisarmTransaction()
+				BREAK
+			EndIf
+
+		END TRANSACTION
+
+		//-- Data Atual --//
+		::atualizarDataBase()
+
+		//-- Enviar status final de processamento --//
+		::finalizarProcessamento( ::aVendas[nX], @oStatusProcessamento )
+
+	Next nX
+
+	FreeObj(oStatusProcessamento)
+
+Return
+
+/*/{Protheus.doc} IntegraVendasVirtus::buscarVendasNaoProcessadas
+Busca vendas nao processadas
+@type method
+@version 1.0
+@author nata.queiroz
+@since 19/08/2020
+@return lRet, logical
+/*/
+Method buscarVendasNaoProcessadas() Class IntegraVendasVirtus
+
+	Local lRet := .F.
+	Local aArea := GetArea()
+	Local cQry := ""
+	Local nQtdReg := 0
+	Local oVirtusVenda := Nil
+
+	cQry := "SELECT TOP 50 "
+	cQry += "    U82_FILIAL FILIAL, "
+	cQry += "    U82_CODIGO CODIGO, "
+	cQry += "    U82_IDVEND IDVENDA "
+	cQry += "FROM " + RetSqlName("U82")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "    AND U82_FILIAL = '"+ xFilial("U82") +"' "
+	cQry += "    AND U82_MSFIL = '"+ cFilAnt +"' "
+	cQry += "    AND U82_STATUS = 'P' "
+	cQry += "ORDER BY U82_CODIGO "
+	cQry := ChangeQuery(cQry)
+
+	If Select("U82VENDA") > 0
+		U82VENDA->( dbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "U82VENDA")
+
+	If U82VENDA->( !Eof() )
+
+		While U82VENDA->( !EOF() )
+
+			U82->(DbSetOrder(1)) // U82_FILIAL + U82_CODIGO
+			If U82->(MsSeek(U82VENDA->FILIAL + U82VENDA->CODIGO))
+				oVirtusVenda := VirtusVenda():New()
+
+				If oVirtusVenda:fromJson(U82->U82_MSREC)
+					AADD(::aVendas, oVirtusVenda)
+				EndIf
+
+				oVirtusVenda := Nil
+			EndIf
+
+			U82VENDA->( dbSkip() )
+		EndDo
+
+		If Len(::aVendas) > 0
+			lRet := .T.
+		EndIf
+	EndIf
+
+	FreeObj(oVirtusVenda)
+
+	If Select("U82VENDA") > 0
+		U82VENDA->( dbCloseArea() )
+	EndIf
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::validarVendedor
+Valida se vendedor existe e tem caixa cadastrado
+@type method
+@version 1.0
+@author nata.queiroz
+@since 19/08/2020
+@param oVenda, object
+@return lRet, logical
+/*/
+Method validarVendedor(oVenda) Class IntegraVendasVirtus
+
+	Local aArea 				:= GetArea()
+	Local aAreaSA3 				:= SA3->( GetArea() )
+	Local cCaixaVendedor 		:= ""
+	Local lCaixaUsr 			:= SuperGetMv("MV_XCXUSR",.F.,.T.)
+	Local lRet 					:= .T.
+	Local oStatusProcessamento 	:= JsonObject():New()
+
+	DbSelectArea("SA3")
+
+	SA3->(DbSetOrder(3)) //A3_FILIAL + A3_CGC
+	If SA3->( MsSeek( xFilial("SA3") + oVenda:vendedor["codigo_externo"] ) )
+
+		//retorno o caixa do vendedor
+		if lCaixaUsr
+			cCaixaVendedor := U_UxNumCx(SA3->A3_COD)
+		else
+			cCaixaVendedor := SA3->A3_BCO1
+		endif
+
+		If Empty(cCaixaVendedor)
+
+			lRet := .F.
+			oStatusProcessamento["status"] := "erro"
+			oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+				"titulo": "Erro ao Validar Vendedor",;
+				"mensagem": EncodeUTF8("Vendedor não possui caixa cadastrado."),;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+				oStatusProcessamento["status"],;
+				oStatusProcessamento["processamento_erp"]["mensagem"],;
+				oStatusProcessamento:toJson())
+
+		EndIf
+	Else
+
+		lRet := .F.
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Validar Vendedor",;
+			"mensagem": EncodeUTF8("Vendedor não cadastrado no ERP."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+		::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+			oStatusProcessamento["status"],;
+			oStatusProcessamento["processamento_erp"]["mensagem"],;
+			oStatusProcessamento:toJson())
+
+	EndIf
+
+	SA3->(DbCloseArea())
+
+	FreeObj(oStatusProcessamento)
+
+	RestArea(aAreaSA3)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::validarFormaPagto
+Valida dados da forma de pagamento
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param oVenda, object
+@return lRet, logical
+/*/
+Method validarFormaPagto(oVenda) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaU60 := U60->( GetArea() )
+	Local oStatusProcessamento := JsonObject():New()
+
+	DbSelectArea("U60")
+
+	//-- Verifica forma de pagamento recorrencia/assinatura --//
+	U60->(DbSetOrder(2)) //-- U60_FILIAL + U60_FORPG
+	If U60->( MsSeek(xFilial("U60") + oVenda:forma_pagto_parcelas) )
+
+		If Empty(oVenda:recorrencia["idClienteVindi"])
+
+			lRet := .F.
+			oStatusProcessamento["status"] := "erro"
+			oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+				"titulo": "Erro ao Validar Forma de Pagamento",;
+				"mensagem": EncodeUTF8("Id do cliente na plataforma VINDI não informado."),;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+				oStatusProcessamento["status"],;
+				oStatusProcessamento["processamento_erp"]["mensagem"],;
+				oStatusProcessamento:toJson())
+
+		ElseIf Empty(oVenda:recorrencia["idPerfilPgto"])
+
+			lRet := .F.
+			oStatusProcessamento["status"] := "erro"
+			oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+				"titulo": "Erro ao Validar Forma de Pagamento",;
+				"mensagem": EncodeUTF8("Id do perfil de pagamento do cliente na VINDI não informado."),;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+				oStatusProcessamento["status"],;
+				oStatusProcessamento["processamento_erp"]["mensagem"],;
+				oStatusProcessamento:toJson())
+
+		ElseIf VerificarRecorrenciaPorCpfCnpj( oVenda:titular["cpfcnpj"] )
+
+			lRet := .F.
+			oStatusProcessamento["status"] := "erro"
+			oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+				"titulo": "Erro ao Validar Forma de Pagamento",;
+				"mensagem": EncodeUTF8("O cliente já tem contrato em recorrência ativo."),;
+				"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+			::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+				oStatusProcessamento["status"],;
+				oStatusProcessamento["processamento_erp"]["mensagem"],;
+				oStatusProcessamento:toJson())
+
+		EndIf
+
+	EndIf
+
+	U60->(DbCloseArea())
+
+	FreeObj(oStatusProcessamento)
+
+	RestArea(aAreaU60)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::validarIdVenda
+Valida se já existe contrato vinculado a venda
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param oVenda, object
+@return lRet, logical
+/*/
+Method validarIdVenda(oVenda) Class IntegraVendasVirtus
+
+	Local aArea 				:= GetArea()
+	Local aAreaUF2 				:= UF2->( GetArea() )
+	Local lRet 					:= .T.
+	Local oStatusProcessamento 	:= JsonObject():New()
+
+	DbSelectArea("UF2")
+
+	UF2->(DbOrderNickName("IDMOBILE")) //UF2_FILIAL+UF2_IDMOBI
+	If UF2->( MsSeek(xFilial("UF2") + oVenda:_id) )
+
+		lRet := .F.
+		oStatusProcessamento["status"] := "sincronizado"
+		oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+			"titulo": "Venda Processada com Sucesso",;
+			"mensagem": EncodeUTF8("Venda Processada com Sucesso no ERP."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+		::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+			oStatusProcessamento["status"],;
+			oStatusProcessamento["processamento_erp"]["mensagem"],;
+			oStatusProcessamento:toJson())
+
+	EndIf
+
+	UF2->(DbCloseArea())
+
+	FreeObj(oStatusProcessamento)
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::atualizarDataBase
+Atualiza Data Base
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param dDataVenda, date
+/*/
+Method atualizarDataBase(dDataVenda) Class IntegraVendasVirtus
+
+	Local lDataCorrent := SuperGetMv("MV_XDINTVI",.F.,.F.) //Utiliza a data corrente do sistema, ao invés da data de criação da venda (data_da_criacao_app) - Default .F., ou seja utiliza a data de criação da venda (data_da_criacao_app)
+	Default dDataVenda := STOD(Space(8))
+
+	If !Empty(dDataVenda) .and. !lDataCorrent
+		//-- Se data da venda menor que data atual,
+		//-- atualiza para data da venda
+		If dDataVenda < dDataBase
+			dDataBase := dDataVenda
+		EndIf
+	Else
+		dDataBase := ::dDataAtual
+	EndIf
+
+Return
+
+/*/{Protheus.doc} IntegraVendasVirtus::cadastrarCliente
+Cadastra Novo Cliente
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method cadastrarCliente(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local lHVerao := GetMv("MV_HVERAO")
+	Local nHVerao := IIF(lHVerao, 1, 0)
+	Local cLogError := ""
+	Local cNome, cTpPessoa, cNReduz, cEnd, cCompl, cPtoRef, cBairro, cEst, cCodMun, cCep,;
+		cDdd, cTel, cCgc, cRg, cInscEst, cInscMun, cEmail, cDDDCel, cCelular,;
+		dDataNasc, cEstCivil, cSexo, cProfissao, cEscolaridade, cCodigoBairro
+
+	oStatusProcessamento := JsonObject():New()
+
+	cNome		  := AllTrim(oVenda:titular["nome"])
+	cTpPessoa	  := AllTrim(oVenda:titular["tipo_de_pessoa"])
+	cNReduz		  := Alltrim(oVenda:titular["apelido"])
+	cEnd		  := Alltrim(oVenda:titular["endereco"])
+	cCompl		  := Alltrim(oVenda:titular["complemento"])
+	cPtoRef		  := Alltrim(oVenda:titular["referencia"])
+	cBairro		  := Alltrim(oVenda:titular["bairro"])
+	cEst		  := Alltrim(oVenda:titular["estado"])
+	cCodMun		  := Alltrim(oVenda:titular["municipio"])
+	cCep		  := Alltrim(oVenda:titular["cep"])
+	cDdd		  := Alltrim(U_UTrataFone(1, oVenda:titular["telefone"]))
+	cTel		  := Alltrim(U_UTrataFone(2, oVenda:titular["telefone"]))
+	cCgc		  := Alltrim(oVenda:titular["cpfcnpj"])
+	cRg			  := Alltrim(oVenda:titular["rg"])
+	cInscEst	  := ""
+	cInscMun	  := ""
+	cEmail		  := AllTrim(oVenda:titular["email"])
+	cDDDCel		  := Alltrim(U_UTrataFone(1, oVenda:titular["celular"]))
+	cCelular	  := Alltrim(U_UTrataFone(2, oVenda:titular["celular"]))
+	dDataNasc	  := FwDateTimeToLocal(oVenda:titular["nascimento"], nHVerao)[1]
+	cSexo   	  := AllTrim(oVenda:titular["sexo"])
+	cEstCivil	  := AllTrim(oVenda:titular["estado_civil"])
+	cProfissao	  := AllTrim(oVenda:titular["profissao"])
+	cEscolaridade := AllTrim(oVenda:titular["escolaridade"])
+
+	if oVenda:titular["codigo_do_bairro"] <> nil .And. !Empty(oVenda:titular["codigo_do_bairro"])
+		cCodigoBairro := oVenda:titular["codigo_do_bairro"]
+	else
+		cCodigoBairro	:= ""
+	endif
+
+	If !ExecAutoCadastroCliente(cNome, cTpPessoa, cNReduz, cEnd, cCompl, cPtoRef, cBairro,;
+			cEst, cCodMun, cCep, cDdd, cTel, cCgc, cRg, cInscEst, cInscMun, cEmail,;
+			cCelular, cDDDCel, dDataNasc, cSexo, cEstCivil, cProfissao, cEscolaridade,cCodigoBairro, @cLogError)
+
+		lRet := .F.
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Cadastrar Cliente",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::cadastrarContrato
+Cadastra Novo Contrato Funerario
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method cadastrarContrato(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet	 	:= .T.
+	Local aArea 	:= GetArea()
+	Local aAreaSB1 	:= SB1->(GetArea())
+	Local aAreaUF2	:= UF2->(GetArea())
+	Local aAreaUF4	:= UF4->(GetArea())
+	Local aAreaUF3	:= UF3->(GetArea())
+	Local aAreaSA1	:= SA1->(GetArea())
+	Local aAreaSA3	:= SA3->(GetArea())
+	Local aAreaUF9	:= UF9->(GetArea())
+	Local aCabecalho := {}
+	Local aBeneficiarios := {}
+	Local aItens := {}
+	Local aMensagem := {}
+	Local aDados := {}
+	Local lHVerao := GetMv("MV_HVERAO")
+	Local nHVerao := IIF(lHVerao, 1, 0)
+	Local cLogError := ""
+	Local nX := 0
+
+	Local cCodigoVendedor := Posicione("SA3", 3, xFilial("SA3") + oVenda:vendedor["codigo_externo"], "A3_COD")
+	Local cCodigoCliente := Posicione("SA1", 3, xFilial("SA1") + oVenda:titular["cpfcnpj"], "A1_COD")
+	Local cLojaCliente := Posicione("SA1", 3, xFilial("SA1") + oVenda:titular["cpfcnpj"], "A1_LOJA")
+	Local dDataCarencia := STOD(Space(8))
+
+	Local cTipoIndice := SuperGetMv("MV_XINDMOB", .F., "001")
+	Local nTaxaManutencaoFuneraria := SuperGetMv("MV_XTXMOBF", .F., 0)
+
+	Private lImp := .T. //Compatibilidade com o Grid Beneficiarios
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Cabecalho --//
+	AAdd(aCabecalho, {"UF2_PLANO"	, oVenda:plano })
+	AAdd(aCabecalho, {"UF2_VEND"	, cCodigoVendedor })
+	AAdd(aCabecalho, {"UF2_DATA"	, oVenda:data_da_criacao_app })
+	AAdd(aCabecalho, {"UF2_PORTAB"	, oVenda:tipo })
+	AAdd(aCabecalho, {"UF2_MIDIA"	, "" })
+	AAdd(aCabecalho, {"UF2_PRIMVE"	, oVenda:primeiro_vencimento })
+	AAdd(aCabecalho, {"UF2_CLIENT"	, cCodigoCliente })
+	AAdd(aCabecalho, {"UF2_LOJA"	, cLojaCliente })
+	AAdd(aCabecalho, {"UF2_INDICE"	, cTipoIndice })
+	AAdd(aCabecalho, {"UF2_TXMNT"	, nTaxaManutencaoFuneraria })
+	AAdd(aCabecalho, {"UF2_IDMOBI"	, oVenda:_id })
+	AAdd(aCabecalho, {"UF2_FORPG"	, oVenda:forma_pagto_parcelas })
+
+	//-- Beneficiarios --//
+	For nX := 1 To Len(oVenda:beneficiarios)
+		aDados := {}
+		dDataCarencia := CalcularCarenciaBeneficiario(oVenda:tipo, oVenda:data_da_criacao_app)
+
+		AAdd(aDados, {"UF4_ITEM"	, StrZero(nX + 1, TamSX3("UF4_ITEM")[1]) })
+		AAdd(aDados, {"UF4_GRAU"	, oVenda:beneficiarios[nX]["parentesco"] })
+		AAdd(aDados, {"UF4_TIPO"	, oVenda:beneficiarios[nX]["tipo"] })
+		AAdd(aDados, {"UF4_DTINC"	, oVenda:data_da_criacao_app })
+		AAdd(aDados, {"UF4_CAREN"	, dDataCarencia })
+		AAdd(aDados, {"UF4_NOME"	, oVenda:beneficiarios[nX]["nome"] })
+		AAdd(aDados, {"UF4_DTNASC"	, FwDateTimeToLocal(oVenda:beneficiarios[nX]["nascimento"], nHVerao)[1] })
+		AAdd(aDados, {"UF4_SEXO"	, oVenda:beneficiarios[nX]["sexo"] })
+		AAdd(aDados, {"UF4_ESTCIV"	, oVenda:beneficiarios[nX]["estado_civil"] })
+		AAdd(aDados, {"UF4_CPF"     , oVenda:beneficiarios[nX]["cpf"] })
+		AAdd(aDados, {"UF4_TPPLN"	, oVenda:beneficiarios[nX]["seguro"] })
+
+		AAdd(aBeneficiarios, aDados)
+	Next nX
+
+	//-- Itens --//
+	For nX := 1 To Len(oVenda:produtos)
+		//-- Verifica cadastro de produtos --//
+		SB1->( dbSetOrder(1) ) //-- B1_FILIAL + B1_COD
+		If SB1->( MsSeek(xFilial("SB1") + oVenda:produtos[nX]["codigo"]) )
+			aDados := {}
+
+			AAdd(aDados, {"UF3_ITEM"  , StrZero(nX, TamSX3("UF3_ITEM")[1]) })
+			AAdd(aDados, {"UF3_PROD"  , oVenda:produtos[nX]["codigo"] })
+			AAdd(aDados, {"UF3_QUANT" , oVenda:produtos[nX]["quantidade"] })
+
+			AAdd(aItens, aDados)
+		EndIf
+	Next nX
+
+	//-- Observacao/Mensagem --//
+	If !Empty(oVenda:observacao)
+		aDados := {}
+
+		AAdd(aDados, {"UF9_ITEM"   , StrZero(1, TamSX3("UF9_ITEM")[1] ) } )
+		AAdd(aDados, {"UF9_HISTOR" , SubStr(oVenda:observacao, 1, TamSX3("UF9_HISTOR")[1]) } )
+		AAdd(aDados, {"UF9_DESCRI" , oVenda:observacao } )
+		AAdd(aDados, {"UF9_MOSTRA" , "S" } )
+		AAdd(aDados, {"UF9_DTVIGE" , CTOD("01/01/2049") } )
+
+		AAdd(aMensagem, aDados)
+	EndIf
+
+	//-- ExecAuto Cadastro de Contrato Funerario --//
+	If U_RFUNE002(aCabecalho, aBeneficiarios, aMensagem, 3, aItens, @cLogError)
+		oVenda:contrato := UF2->UF2_CODIGO
+	Else
+
+		lRet := .F.
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Cadastrar Contrato",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	RestArea(aAreaUF2)
+	RestArea(aAreaUF4)
+	RestArea(aAreaUF3)
+	RestArea(aAreaSA1)
+	RestArea(aAreaSA3)
+	RestArea(aAreaUF9)
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} IntegraVendasVirtus::anexarImagens
+Anexa iamgens da venda no contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 21/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method anexarImagens(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local cEntidade := "UF2"
+	Local cLogError := ""
+	Local oImagemContratos := ImagemContratos():New()
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Assinatura Digital --//
+	If lRet
+		If oVenda:imagens["assinatura"] <> Nil
+			If !Empty(oVenda:imagens["assinatura"]["url"])
+				oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["assinatura"]["url"],;
+					oVenda:imagens["assinatura"]["nome"], "Assinatura Digital", oVenda:contrato, @cLogError)
+				If !Empty(cLogError)
+					lRet := .F.
+				EndIf
+			Else
+				lRet := .F.
+				cLogError := "Imagem da assinatura não existe!"
+			EndIf
+		Else
+			lRet := .F.
+			cLogError := "Tag imagem da assinatura não existe!"
+		EndIf
+	EndIf
+
+	//-- Documento Frente --//
+	If lRet
+		If oVenda:imagens["frente"] <> Nil
+			If !Empty(oVenda:imagens["frente"]["url"])
+				oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["frente"]["url"],;
+					oVenda:imagens["frente"]["nome"], "Documento Frente", oVenda:contrato, @cLogError)
+				If !Empty(cLogError)
+					lRet := .F.
+				EndIf
+			Else
+				lRet := .F.
+				cLogError := "Imagem do documento frente não existe!"
+			EndIf
+		Else
+			lRet := .F.
+			cLogError := "Tag imagem do documento frente não existe!"
+		EndIf
+	EndIf
+
+	//-- Documento Verso --//
+	If lRet
+		If oVenda:imagens["verso"] <> Nil
+			If !Empty(oVenda:imagens["verso"]["url"])
+				oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["verso"]["url"],;
+					oVenda:imagens["verso"]["nome"], "Documento Verso", oVenda:contrato, @cLogError)
+				If !Empty(cLogError)
+					lRet := .F.
+				EndIf
+			Else
+				lRet := .F.
+				cLogError := "Imagem do documento verso não existe!"
+			EndIf
+		Else
+			lRet := .F.
+			cLogError := "Tag imagem do documento verso não existe!"
+		EndIf
+	EndIf
+
+	//-- Endereco --//
+	If lRet
+		If oVenda:imagens["endereco"] <> Nil
+			If !Empty(oVenda:imagens["endereco"]["url"])
+				oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["endereco"]["url"],;
+					oVenda:imagens["endereco"]["nome"], "Endereco", oVenda:contrato, @cLogError)
+				If !Empty(cLogError)
+					lRet := .F.
+				EndIf
+			Else
+				lRet := .F.
+				cLogError := "Imagem do endereço não existe!"
+			EndIf
+		Else
+			lRet := .F.
+			cLogError := "Tag imagem do endereço não existe!"
+		EndIf
+	EndIf
+
+	//-- Reativacao --//
+	If lRet .And. oVenda:imagens["reativacao"] <> Nil
+		If !Empty(oVenda:imagens["reativacao"]["url"])
+			oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["reativacao"]["url"],;
+				oVenda:imagens["reativacao"]["nome"], "Reativacao", oVenda:contrato, @cLogError)
+			If !Empty(cLogError)
+				lRet := .F.
+			EndIf
+		EndIf
+	EndIf
+
+	//-- Portabilidade --//
+	If lRet .And. oVenda:imagens["portabilidade"] <> Nil
+		If !Empty(oVenda:imagens["portabilidade"]["url"])
+			oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["portabilidade"]["url"],;
+				oVenda:imagens["portabilidade"]["nome"], "Portabilidade", oVenda:contrato, @cLogError)
+			If !Empty(cLogError)
+				lRet := .F.
+			EndIf
+		EndIf
+	EndIf
+
+	//-- Outros --//
+	If lRet .And. oVenda:imagens["outros"] <> Nil
+		If !Empty(oVenda:imagens["outros"]["url"])
+			oImagemContratos:IntegraImagens(Nil, oVenda:_id, cEntidade, oVenda:imagens["outros"]["url"],;
+				oVenda:imagens["outros"]["nome"], "Outros", oVenda:contrato, @cLogError)
+			If !Empty(cLogError)
+				lRet := .F.
+			EndIf
+		EndIf
+	EndIf
+
+	If !lRet
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Anexar Imagens",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	FreeObj(oImagemContratos)
+
+Return lRet
+
+/*/{Protheus.doc} IntegraVendasVirtus::cadastrarRecorrencia
+Cadastra dados do cliente criado na VINDI
+@type method
+@version 1.0
+@author nata.queiroz
+@since 21/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method cadastrarRecorrencia(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaU60 := U60->( GetArea() )
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local oIntegraVindi := Nil
+	Local cOrigem		:= "RUTILE26"
+	Local cOrigemDesc	:= "Cadastrar Recorrencia"
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Verifica forma de pagamento recorrencia --//
+	U60->(DbSetOrder(2)) //-- U60_FILIAL + U60_FORPG
+	If U60->( MsSeek(xFilial("U60") + oVenda:forma_pagto_parcelas) )
+
+		oIntegraVindi := IntegraVindi():New()
+
+		//-- Posiciona no contrato criado --//
+		UF2->(DbOrderNickName("IDMOBILE")) //UF2_FILIAL+UF2_IDMOBI
+		If UF2->( MsSeek(xFilial("UF2") + oVenda:_id) )
+
+			//-- Cadastra dados do cliente criado na VINDI --//
+			lRet := oIntegraVindi:IncManVind(oVenda:recorrencia["idClienteVindi"],;
+				UF2->UF2_CODIGO,;
+				UF2->UF2_CLIENT,;
+				UF2->UF2_LOJA,;
+				oVenda:recorrencia["idPerfilPgto"],;
+				oVenda:forma_pagto_parcelas,;
+				oVenda:recorrencia["nomeClienteCartao"],;
+				oVenda:recorrencia["ultimosDigitosCartao"],;
+				oVenda:recorrencia["validade"],;
+				oVenda:recorrencia["bandeira"],;
+				oVenda:recorrencia["token"],;
+				cOrigem,;
+				cOrigemDesc)
+
+		Else
+			lRet := .F.
+		EndIf
+
+	EndIf
+
+	If !lRet
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Cadastrar Recorrência",;
+			"mensagem": EncodeUTF8("Não foi possível cadastrar os dados do cliente criado na VINDI."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	FreeObj(oIntegraVindi)
+
+	RestArea(aArea)
+	RestArea(aAreaU60)
+	RestArea(aAreaUF2)
+
+Return lRet
+
+/*/{Protheus.doc} IntegraVendasVirtus::ativarContrato
+Realiza ativacao do contrato criado
+@type method
+@version 1.0
+@author nata.queiroz
+@since 21/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, Logical
+/*/
+Method ativarContrato(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local cMsgErro	:= ""
+	Local nQtdParcelas := 0
+	Local nQtdParcelasFuneraria := SuperGetMv("MV_XQTDPAR", .F., 12)
+	Local nQtdAdiant := 0
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Se quantidade de parcelas adiantada for maior que quantidade de parcelas padrao --//
+	If !Empty( oVenda:adiantamento["quantidade"] )
+
+		If oVenda:adiantamento["quantidade"] > 0 .And. oVenda:adiantamento["valor"] > 0
+			nQtdAdiant := oVenda:adiantamento["quantidade"]
+		EndIf
+
+		If nQtdAdiant > nQtdParcelasFuneraria
+			nQtdParcelas := nQtdAdiant
+		EndIf
+
+	EndIf
+
+	//-- Posiciona no contrato criado --//
+	UF2->(DbOrderNickName("IDMOBILE")) //UF2_FILIAL+UF2_IDMOBI
+	If UF2->( MsSeek(xFilial("UF2") + oVenda:_id) )
+
+		//-- Processa ativacao do contrato --//
+		lRet := U_RFUNA004(.T., nQtdParcelas, nQtdAdiant, @cMsgErro)
+
+	Else
+		lRet := .F.
+	EndIf
+
+	If !lRet
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Ativar Contrato",;
+			"mensagem": EncodeUTF8("Não foi possível ativar o contrato: " + AllTrim(cMsgErro) ),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+
+Return lRet
+
+/*/{Protheus.doc} IntegraVendasVirtus::baixarAdesao
+Baixa parcela de adesão do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 25/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method baixarAdesao(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local cPrefixoFun := SuperGetMv("MV_XPREFUN", .F., "FUN")
+	Local cTipoFun := SuperGetMv("MV_XTIPFUN", .F., "AT")
+	Local nDescontoAdesao := 0
+	Local cFormaPagamento := "R$"
+	Local aFPagto := {}
+	Local cLogError := ""
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Posiciona no contrato criado --//
+	UF2->(DbOrderNickName("IDMOBILE")) //UF2_FILIAL+UF2_IDMOBI
+	If UF2->( MsSeek(xFilial("UF2") + oVenda:_id) )
+
+		If UF2->UF2_ADESAO > 0
+
+			//-- Calcula desconto na adesao --//
+			nDescontoAdesao := UF2->UF2_ADESAO - oVenda:adesao["valor"]
+			If nDescontoAdesao < 0
+				nDescontoAdesao := 0
+			EndIf
+
+			If nDescontoAdesao >= UF2->UF2_ADESAO
+				//-- Forma de pagamento no caso de isencao de adesao
+				cFormaPagamento := "R$"
+			Else
+				cFormaPagamento := oVenda:adesao["forma_de_pagamento"]
+			EndIf
+
+			AADD(aFPagto, {;
+				cFormaPagamento,;
+				oVenda:adesao["gateway"],;
+				"",; // Numero Cheque
+			"",; // Portador
+			"",; // agencia
+			"",; // conta
+			oVenda:adesao["valor"],;
+				1,; // Quantidade Parcelas
+			"",; // Vencimento Cheque
+			oVenda:adesao["bandeira"],;
+				oVenda:adesao["nsu"],;
+				oVenda:adesao["autorizacao"],;
+				oVenda:adesao["tipo_chave_pix"],;
+				oVenda:adesao["chave_pix"];
+				})
+
+			lRet := U_RecAdesao(cPrefixoFun, UF2->UF2_CODIGO, cTipoFun,;
+				UF2->UF2_DATA, UF2->UF2_VEND, nDescontoAdesao, aFPagto, @cLogError)
+
+			If lRet
+				//-- Grava percentual e valor de desconto da adesao --//
+				If (UF2->( FieldPos("UF2_XPERAD") ) > 0);
+						.And. (UF2->( FieldPos("UF2_XVLDES") ) > 0)
+
+					RecLock("UF2", .F.)
+					UF2->UF2_XPERAD := IIF(nDescontoAdesao > 0,;
+						cValToChar(((nDescontoAdesao * 100) / UF2->UF2_ADESAO)), "")
+					UF2->UF2_XVLDES := nDescontoAdesao
+					UF2->( MsUnLock() )
+
+				EndIf
+			EndIf
+
+		EndIf
+
+	Else
+		lRet := .F.
+		cLogError := "Não foi possível baixar pagamento da adesão no ERP."
+	EndIf
+
+	If !lRet
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": EncodeUTF8("Erro ao Baixar Adesão"),;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+
+Return lRet
+
+/*/{Protheus.doc} IntegraVendasVirtus::baixarAdiantamento
+Baixa adiantamento de parcelas do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 25/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+@return lRet, logical
+/*/
+Method baixarAdiantamento(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local cPrefixoFun := SuperGetMv("MV_XPREFUN", .F., "FUN")
+	Local cTipoFun := SuperGetMv("MV_XTIPFUN", .F., "AT")
+	Local aFPagto := {}
+	Local cLogError := ""
+
+	oStatusProcessamento := JsonObject():New()
+
+	//-- Posiciona no contrato criado --//
+	UF2->(DbOrderNickName("IDMOBILE")) //UF2_FILIAL+UF2_IDMOBI
+	If UF2->( MsSeek(xFilial("UF2") + oVenda:_id) )
+
+		If oVenda:adiantamento["quantidade"] > 0 .And. oVenda:adiantamento["valor"] > 0
+
+			AADD(aFPagto, {;
+				oVenda:adiantamento["forma_de_pagamento"],;
+				oVenda:adiantamento["gateway"],;
+				"",; // Numero Cheque
+			"",; // Portador
+			"",; // agencia
+			"",; // conta
+			oVenda:adiantamento["valor"],;
+				oVenda:adiantamento["parcelamento"],; // Parcelamento Adquirente
+			"",; // Vencimento Cheque
+			oVenda:adiantamento["bandeira"],;
+				oVenda:adiantamento["nsu"],;
+				oVenda:adiantamento["autorizacao"],;
+				oVenda:adiantamento["tipo_chave_pix"],;
+				oVenda:adiantamento["chave_pix"];
+				})
+
+			lRet := ReceberAdiantamento(cPrefixoFun, UF2->UF2_CODIGO, cTipoFun,;
+				UF2->UF2_DATA, UF2->UF2_VEND, oVenda:adiantamento["quantidade"], aFPagto, @cLogError)
+
+		EndIf
+
+	Else
+		lRet := .F.
+		cLogError := "Não foi possível baixar adiantamento de parcelas no ERP."
+	EndIf
+
+	If !lRet
+
+		oStatusProcessamento["status"] := "erro"
+		oStatusProcessamento["processamento_erp"] := { "status": "erro",;
+			"titulo": "Erro ao Baixar Adiantamento",;
+			"mensagem": EncodeUTF8(cLogError),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+
+Return lRet
+
+/*/{Protheus.doc} IntegraVendasVirtus::finalizarProcessamento
+Enviar status final de processamento
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param oVenda, object
+@param oStatusProcessamento, object
+/*/
+Method finalizarProcessamento(oVenda, oStatusProcessamento) Class IntegraVendasVirtus
+
+	If Empty(oStatusProcessamento["status"])
+		oStatusProcessamento["status"] := "sincronizado"
+		oStatusProcessamento["processamento_erp"] := { "status": "processado",;
+			"titulo": "Venda Processada com Sucesso",;
+			"mensagem": EncodeUTF8("Venda Processada com Sucesso no ERP."),;
+			"data_hora": FWTimeStamp(5, Date(), Time()) }
+	EndIf
+
+	::gravarStatusProcessamento(oVenda:cnpj, oVenda:_id,;
+		oStatusProcessamento["status"],;
+		oStatusProcessamento["processamento_erp"]["mensagem"],;
+		oStatusProcessamento:toJson())
+
+Return
+
+/*/{Protheus.doc} VerificarRecorrenciaPorCpfCnpj
+Verifica se existe contrato em recorrência para cpf/cnpj informado
+@type function
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param cCpfCnjp, character
+@return lRet, logical
+/*/
+Static Function VerificarRecorrenciaPorCpfCnpj(cCpfCnjp)
+	Local lRet := .F.
+	Local aAreaSA1 := SA1->( GetArea() )
+
+	SA1->( dbSetOrder(3) ) //-- A1_FILIAL+A1_CGC
+	If SA1->( MsSeek(xFilial("SA1") + cCpfCnjp) )
+		//-- Verifica se existe contrato em recorrência ativo para cpf/cnpj
+		If .Not. U_RecNaoExist( SA1->A1_COD, SA1->A1_LOJA)
+			lRet := .T.
+		EndIf
+	EndIf
+
+	RestArea(aAreaSA1)
+
+Return lRet
+
+/*/{Protheus.doc} ExecAutoCadastroCliente
+ExecAuto de Cadastro de Cliente MATA030
+@type function
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param cNome, character
+@param cTpPessoa, character
+@param cNReduz, character
+@param cEnd, character
+@param cCompl, character
+@param cPtoRef, character
+@param cBairro, character
+@param cEst, character
+@param cCodMun, character
+@param cCep, character
+@param cDdd, character
+@param cTel, character
+@param cCgc, character
+@param cRg, character
+@param cInscEst, character
+@param cInscMun, character
+@param cEmail, character
+@param cCelular, character
+@param cDDDCel, character
+@param dDataNasc, date
+@param cSexo, character
+@param cEstCivil, character
+@param cProfissao, character
+@param cEscolaridade, character
+@param cLogError, character
+@return lRet, logical
+/*/
+Static Function ExecAutoCadastroCliente(cNome, cTpPessoa, cNReduz, cEnd, cCompl, cPtoRef, cBairro,;
+		cEst, cCodMun, cCep, cDdd, cTel, cCgc, cRg, cInscEst, cInscMun, cEmail,;
+		cCelular, cDDDCel, dDataNasc, cSexo, cEstCivil, cProfissao, cEscolaridade, cCodigoBairro,cLogError)
+
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaSA1 := SA1->( GetArea() )
+	Local nOperacaoAuto := 3
+	Local aErro := {}
+	Local lOk := .T.
+	Local oModelMATA030 := Nil
+	Local oSA1Mod := Nil
+	Local aCliDados := {}
+	Local aCposAdc := {}
+	Local nX := 0
+
+	Private lMsErroAuto := .F.
+
+	DbSelectArea("SA1")
+
+	SA1->(DbSetOrder(3)) //-- A1_FILIAL+A1_CGC
+	If SA1->( MsSeek(xFilial("SA1") + cCgc) )
+		nOperacaoAuto := 4
+	Else
+		nOperacaoAuto := 3
+	EndIf
+
+	oModelMATA030 := FWLoadModel("MATA030")
+	oModelMATA030:SetOperation(nOperacaoAuto)
+	oModelMATA030:Activate()
+
+	oSA1Mod := oModelMATA030:getModel("MATA030_SA1")
+
+	oSA1Mod:setValue("A1_NOME",    Alltrim(Upper(cNome)) )
+	oSA1Mod:setValue("A1_PESSOA",  cTpPessoa             )
+	oSA1Mod:setValue("A1_NREDUZ",  Upper(cNReduz)        )
+	oSA1Mod:setValue("A1_END",     Upper(cEnd)           )
+	if !Empty(cCodigoBairro)
+		oSA1Mod:setValue("A1_XCODBAI",  cCodigoBairro    )
+	endif
+	oSA1Mod:setValue("A1_BAIRRO",  Upper(cBairro)        )
+	oSA1Mod:setValue("A1_COMPLEM", Upper(cCompl)         )
+	oSA1Mod:setValue("A1_XREFERE", Upper(cPtoRef)        )
+	oSA1Mod:setValue("A1_EST",     Upper(AllTrim(cEst))  )
+	oSA1Mod:setValue("A1_CEP",     cCep                  )
+	oSA1Mod:setValue("A1_CGC",     cCgc                  )
+	oSA1Mod:setValue("A1_RG",      cRg                   )
+	oSA1Mod:setValue("A1_PFISICA", cRg                   )
+	oSA1Mod:setValue("A1_DDD",     cDdd                  )
+	oSA1Mod:setValue("A1_TEL",     cTel                  )
+	oSA1Mod:setValue("A1_XCEL",    cCelular              )
+	oSA1Mod:setValue("A1_XDDDCEL", cDDDCel               )
+	oSA1Mod:setValue("A1_INSCR",   cInscEst              )
+	oSA1Mod:setValue("A1_INSCRM",  cInscMun              )
+	oSA1Mod:setValue("A1_EMAIL",   Upper(cEmail)         )
+	oSA1Mod:setValue("A1_XDTNASC", dDataNasc             )
+	oSA1Mod:setValue("A1_XSEXO",   cSexo                 )
+	oSA1Mod:setValue("A1_XESTCIV", cEstCivil             )
+	oSA1Mod:setValue("A1_XPROFIS", cProfissao            )
+	oSA1Mod:setValue("A1_XESCOLA", cEscolaridade         )
+	oSA1Mod:setValue("A1_XINTCA",  "S"                   )
+	oSA1Mod:setValue("A1_COD_MUN", AllTrim(cCodMun)      )
+
+	//-- Ponto de entrada para preencher campos adicionais no cadastro do cliente --//
+	If ExistBlock("PUTL26CL")
+		//-- Dados para ponto de entrada PUTL26CL --//
+		aCliDados := {;
+			cNome, cTpPessoa, cNReduz, cEnd, cCompl, cPtoRef, cBairro, cEst, cCodMun, cCep, cDdd, cTel,;
+			cCgc, cRg, cInscEst, cInscMun, cEmail, cDDDCel, cCelular, dDataNasc, cSexo, cEstCivil,;
+			cProfissao, cEscolaridade;
+			}
+
+		aCposAdc := ExecBlock("PUTL26CL", .F., .F., { aCliDados })
+
+		//-- Preenche campos adicionais recebidos do ponto de entrada PUTL26CL --//
+		If ValType(aCposAdc) == "A"
+			If Len(aCposAdc) > 0
+
+				For nX := 1 To Len(aCposAdc)
+					If SA1->( FieldPos( aCposAdc[nX][1] ) ) > 0 // Campo existe no dicionario
+						If TamSX3( aCposAdc[nX][1] )[3] == "C" // Tipo caractere
+							oSA1Mod:setValue( aCposAdc[nX][1],;
+								SubStr(AllTrim(Upper(aCposAdc[nX][2])), 1, TamSX3( aCposAdc[nX][1] )[1]) )
+						Else
+							oSA1Mod:setValue( aCposAdc[nX][1], aCposAdc[nX][2] )
+						EndIf
+					EndIf
+				Next nX
+
+			EndIf
+		EndIf
+	EndIf
+
+	If oModelMATA030:VldData()
+		If oModelMATA030:CommitData()
+			lOk := .T.
+		Else
+			lOk := .F.
+		EndIf
+	Else
+		lOk := .F.
+	EndIf
+
+	If !lOk
+		aErro := oModelMATA030:GetErrorMessage()
+
+		AutoGrLog("Id do formulário de origem:"  + ' [' + AllToChar(aErro[01]) + ']')
+		AutoGrLog("Id do campo de origem: "      + ' [' + AllToChar(aErro[02]) + ']')
+		AutoGrLog("Id do formulário de erro: "   + ' [' + AllToChar(aErro[03]) + ']')
+		AutoGrLog("Id do campo de erro: "        + ' [' + AllToChar(aErro[04]) + ']')
+		AutoGrLog("Id do erro: "                 + ' [' + AllToChar(aErro[05]) + ']')
+		AutoGrLog("Mensagem do erro: "           + ' [' + AllToChar(aErro[06]) + ']')
+		AutoGrLog("Mensagem da solução: "        + ' [' + AllToChar(aErro[07]) + ']')
+		AutoGrLog("Valor atribuído: "            + ' [' + AllToChar(aErro[08]) + ']')
+		AutoGrLog("Valor anterior: "             + ' [' + AllToChar(aErro[09]) + ']')
+
+		lRet := .F.
+		cLogError := AllTrim( MostraErro('/temp') )
+	EndIf
+
+	oModelMATA030:DeActivate()
+
+	FreeObj(oModelMATA030)
+	FreeObj(oSA1Mod)
+
+	SA1->(DbCloseArea())
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} CalcularCarenciaBeneficiario
+Calcula carencia do beneficiario
+@type function
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+@param cTipoContrato, character
+@param dDataInclusao, date
+@return dDataCarencia, date
+/*/
+Static Function CalcularCarenciaBeneficiario(cTipoContrato, dDataInclusao)
+	Local dDataCarencia := STOD(Space(8))
+	Local cTipoPortabilidade := "2"
+	Local nMesesCarencia := SuperGetMV("MV_XCARBEN", .F., 3) //-- Quantidade de meses de carencia do beneficiario
+
+	//-- Se o contrato for portabilidade,
+	//-- a data de carencia e a mesma data do contrato
+	If cTipoContrato == cTipoPortabilidade
+		dDataCarencia := dDataInclusao
+	Else
+		//-- Data de inclusao + meses da carencia
+		dDataCarencia := MonthSum(dDataInclusao, nMesesCarencia)
+	endif
+
+Return dDataCarencia
+
+/*/{Protheus.doc} RecAdesao
+Realiza recebimento da taxa de adesao
+@type function
+@version 1.0
+@author Wellington Goncalves
+@since 28/03/2019
+@param cPrefFun, character
+@param cContrato, character
+@param cTipoFun, character
+@param dDataRec, date
+@param cVendedor, character
+@param nDesconto, numeric
+@param aFPagto, array
+@param cLogError, character
+@return lRet, logical
+@obs Ajustes nata.queiroz
+/*/
+User Function RecAdesao(cPrefFun,cContrato,cTipoFun,dDataRec,cVendedor,nDesconto,aFPagto,cLogError)
+	Local aArea			:= GetArea()
+	Local aTitulo		:= {}
+	Local cQry			:= ""
+	Local cSequenciaE5	:= ""
+	Local cLoteBx		:= ""
+	Local lRet 			:= .T.
+	Local lContinua     := .T.
+	Local lDinMDM		:= SuperGetMV("MV_XDINMDM",.F.,.F.)		// verifico se gera MDM para recebimentos em dinheiro
+	Local nX			:= 1
+	Local nStart		:= Seconds()
+
+	cQry := " SELECT "
+	cQry += " TOP 1 "
+	cQry += " SE1.E1_PREFIXO, "
+	cQry += " SE1.E1_NUM, "
+	cQry += " SE1.E1_PARCELA, "
+	cQry += " SE1.E1_TIPO, "
+	cQry += " SE1.E1_VENCTO, "
+	cQry += " SE1.E1_VALOR, "
+	cQry += " SE1.E1_MULTA, "
+	cQry += " SE1.E1_JUROS, "
+	cQry += " SE1.E1_DESCONT "
+	cQry += " FROM "
+	cQry += " " +RetSqlName("SE1") + " SE1 "
+	cQry += " WHERE "
+	cQry += " SE1.D_E_L_E_T_ 		<> '*' "
+	cQry += " AND SE1.E1_FILIAL 	= '" + xFilial("SE1") + "'"
+	cQry += " AND SE1.E1_PREFIXO 	= '" + cPrefFun + "'"
+	cQry += " AND SE1.E1_NUM 		= '" + cContrato + "'"
+	cQry += " AND SE1.E1_PARCELA 	= '" + StrZero(1,TamSX3("E1_PARCELA")[1]) + "'"
+	cQry += " AND SE1.E1_TIPO	 	= '" + cTipoFun + "'"
+	cQry += " AND SE1.E1_SALDO	 	> 0 "
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry NEW Alias "QRYSE1"
+
+	If QRYSE1->(!EOF())
+
+		aTitulo := {}
+
+		SE1->(DbSetOrder(1)) // E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+		if SE1->(DbSeek(xFilial("SE1") + QRYSE1->E1_PREFIXO + QRYSE1->E1_NUM + QRYSE1->E1_PARCELA + QRYSE1->E1_TIPO))
+
+			AAdd(aTitulo , SE1->E1_NUM			) // Numero
+			AAdd(aTitulo , SE1->E1_PARCELA		) // Parcela
+			AAdd(aTitulo , SE1->E1_VENCTO		) // Vencimento
+			AAdd(aTitulo , SE1->E1_VALOR		) // Valor
+			AAdd(aTitulo , SE1->E1_MULTA		) // Multa
+			AAdd(aTitulo , SE1->E1_JUROS		) // Juros
+			AAdd(aTitulo , nDesconto			) // Desconto
+			AAdd(aTitulo , SE1->E1_VALOR		) // Valor recebido
+			AAdd(aTitulo , ""					) // Forma de pagamento
+			AAdd(aTitulo , 0					) // Valor troco
+
+			if dDataRec < SE1->E1_EMISSAO
+				dDataRec := SE1->E1_EMISSAO
+			endif
+
+			// Entrada no caixa
+			lContinua := ReceberParcelaLoja(aTitulo,SE1->E1_CLIENTE,SE1->E1_LOJA,dDataRec,aFPagto,;
+				SE1->E1_PREFIXO,SE1->E1_TIPO,cVendedor,cContrato,@cLogError)
+
+			if lContinua
+
+				//========================================================================
+				// verifico se o parametro esta para gerar a MDM para baixa em dinheiro
+				// e a forma de pagamento não é CC ou CD
+				//========================================================================
+				if !lDinMDM .And. !(aFPagto[1,1] $ "CC/CD")
+					lContinua := .F.
+				endIf
+
+				// Gravar dados do recebimento via Pix
+				if aFPagto[1,1] $ "PX"
+					RecLock("SE1", .F.)
+					SE1->E1_XTPCPIX := aFPagto[1,13]
+					SE1->E1_XCHVPIX := aFPagto[1,14]
+					SE1->(MsUnLock())
+				endif
+
+
+			endIf
+
+			if lContinua
+
+				//////////////////////////////////////////////////////////////////////////////////////
+				/////// IDENTIFICO O LOTE DA BAIXA PARA GERAR MOVIMENTOS NAS TABELAS MDM E MDN. //////
+				//////////////////////////////////////////////////////////////////////////////////////
+
+				//Gera numero do lote somando + 1 no ultimo lote encontrado
+				cLoteBx	:= GetSx8Num("MDN","MDN_LOTE",,2)
+
+				MDN->(DbSetOrder(2)) // MDN_FILIAL + MDN_LOTE
+				While MDN->(DbSeek(xFilial("MDN") + cLoteBx))
+					MDN->(ConfirmSX8())
+					cLoteBx := GetSx8Num("MDN","MDN_LOTE",,2)
+				EndDo
+
+				// se ja estiver em uso eu pego um novo numero para o banco de conhecimento
+				While !MayIUseCode("MDN"+xFilial("MDN")+cLoteBx) // Reserva nome no semafaro
+					MDN->(ConfirmSX8())
+					cLoteBx := GetSx8Num("MDN","MDN_LOTE",,2)
+				EndDo
+
+				//retorna a sequencia da movimentacao gerada na SE5 de acordo com a forma de pagamento
+				cSequenciaE5 := RetSequenciaSE5(SE1->E1_PREFIXO,SE1->E1_NUM,SE1->E1_PARCELA,SE1->E1_TIPO)
+
+				//Gravo Log dos Titulos Baixados
+				LogTitulosBaixados(xFilial("SE1"),; //Filial do Titulo
+				SE1->E1_PREFIXO,;	//Prefixo
+				SE1->E1_NUM,;		//Numero do Titulo (Num do Contrato)
+				SE1->E1_PARCELA,;	//Parcela Baixada
+				SE1->E1_TIPO,;		//Tipo da Parcela
+				SE1->E1_EMISSAO,;	//Data de Emissao
+				cSequenciaE5,;		//Sequecia do Movimento na SE5
+				cLoteBx)			//Lote da Baixa
+
+				// Libera nome reservado no semafaro
+				Leave1Code("MDN"+xFilial("MDN")+cLoteBx)
+
+				//caso o pagamento seja em cartao, incluo o titulo contra adm financeira ou Emitente do Cheque
+				For nX := 1 To Len(aFPagto)
+
+					if lRet .And. aFPagto[nX,1] $ "CH|CC|CD"
+
+						if !(lRet := AdmChqIncluiTitulo(aFPagto[nX],cVendedor,SE1->E1_NUM,dDataRec,cLoteBx,1,@cLogError))
+
+							FwLogMsg("ERROR",, "REST", FunName(), "", "01",;
+								"Nao foi possivel incluir titulo contra a administradora financeira!",;
+								0, (nStart - Seconds()), {})
+							Exit
+
+						endif
+
+					endif
+
+				Next nX
+
+			endif
+
+		else
+			cLogError := "Erro ao posicionar no titulo " + QRYSE1->E1_NUM + " parcela " + QRYSE1->E1_PARCELA
+			FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (nStart - Seconds()), {})
+		endif
+
+	endif
+
+
+	QRYSE1->(DbCloseArea())
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} ReceberParcelaLoja
+Processa recebimento de parcela pelo modulo SIGALOJA
+@type function
+@version 1.0
+@author Raphael Martins
+@since 09/12/2019
+@param aTitulo, array
+@param cCliente, character
+@param cLoja, character
+@param dDtReceb, date
+@param aFPagto, array
+@param cPref, character
+@param cTipo, character
+@param cVendedor, character
+@param cContrato, character
+@param cLogError, character
+@return lRet, Logical
+@obs Ajustes nata.queiroz
+/*/
+Static Function ReceberParcelaLoja(aTitulo,cCliente,cLoja,dDtReceb,aFPagto,cPref,cTipo,cVendedor,cContrato,cLogError)
+	Local aArea			:= GetArea()
+	Local lRet			:= .T.
+	Local nX			:= 0
+	//Local cMvLjReceb	:= SuperGetMv("MV_LJRECEB",.F.,"1") // Parametro de controle do Recebimento
+	Local lCaixaUsr     := SuperGetMv("MV_XCXUSR",.F.,.T.)
+	Local nStart		:= Seconds()
+
+	Local cCodUsr		:= ""
+	Local cNomeUsr		:= ""
+
+	DbSelectArea("SA1")
+	SA1->(DbSetOrder(1)) //A1_FILIAL+A1_COD+A1_LOJA
+	SA1->(DbSeek(xFilial("SA1")+cCliente+cLoja))
+
+	For nX := 1 to Len(aFPagto)
+
+		/*LJRecBXSE1( cMV_LJRECEB		, cPrefixo 		, cNum			, cParcela		,;
+		dVencimento		, nValor		, nVlrMulta		, nVlrJuros		,;
+		nVlrDesconto	, nVlrRecebido	, cTipo			, cCartFrt		,;
+		cFilialTit		, cFrmPag		, lPrimBaixa	, nPrimMulta	,;
+		nPrimJuros		, nPrimDescon	, nTotReceb		, aSE5Dados		,;
+		lPgTef			, cNomeUser		, nValAbat		, aSE5Bxas		,;
+		aTitBxSE5		, cNumCheque	, aTitDelSE5	, nValTroco		,;
+		nMoeda			, nRecnoSE5 	, lWS			, cNumMov		,;
+		aNsuVndTef		) */
+
+		if lCaixaUsr
+           	
+            cCodUsr 	:= Posicione("SA3",1,xFilial("SA3")+cVendedor,"A3_CODUSR")
+		    cNomeUsr	:= UsrRetName(cCodUsr)  
+        
+		else
+            
+            cCodUsr 	:= Posicione("SA3",1,xFilial("SA3")+cVendedor,"A3_BCO1")
+
+			if SA6->(DbSeek(xFilial("SA6")+cCodUsr))
+
+                cNomeUsr := SA6->A6_NOME
+            
+			else
+                
+                lRet        := .F. 
+                cLogError   := "Usuario Caixa do Vendedor nao cadastrado"
+                
+                FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (nStart - Seconds()), {})
+                    
+			endif
+
+		endif
+		
+		DbSelectArea("SE1")
+		SE1->(DbSetOrder(1)) //E1_FILIAL+E1_PREFIXO+E1_NUM+E1_PARCELA+E1_TIPO
+		SE1->(DbSeek(xFilial("SE1") + cPref + aTitulo[TIT_NUM] + aTitulo[TIT_PARC] + cTipo))
+
+		oVirtusFin := VirtusFin():New()
+		lRet := oVirtusFin:ULJRecBX(;
+			aTitulo[TIT_MULTA]	, aTitulo[TIT_JUROS]	, ;
+			aTitulo[TIT_DESC]	, aFPagto[nX][7]		, Nil					, ;
+			xFilial("SE1")		, aFPagto[nX][1]		, Nil			   		, Nil					, ;
+			Nil					, Nil					, Nil			 		, Nil					, ;
+			.F.					, cNomeUsr				, 0				 		, Nil					, ;
+			Nil					, aFPagto[nX][3]		, Nil			 		, aTitulo[TIT_TROCO]	, ;
+			1 																							)
+		
+		If !lRet
+			cLogError := "Falha na execucao da funcao: " + "ULJRecBX"
+			FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (nStart - Seconds()), {})
+		EndIf
+
+	Next nX
+
+	FreeObj(oVirtusFin)
+	oVirtusFin := Nil
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} RetSequenciaSE5
+Retorna Sequencia do Movimento Gerado na SE5
+@type function
+@version 1.0
+@author Raphael Martins
+@since 28/03/2019
+@param cPrefixo, character
+@param cTitulo, character
+@param cParcela, character
+@param cTipo, character
+@return cSequencia, character
+@obs Ajustes nata.queiroz
+/*/
+Static Function RetSequenciaSE5(cPrefixo,cTitulo,cParcela,cTipo)
+	Local aArea			:= GetArea()
+	Local cQry 			:= ""
+	Local cSequencia	:= ""
+
+	cQry := " SELECT "
+	cQry += " MAX(E5_SEQ) SEQUENCIA "
+	cQry += " FROM "
+	cQry += RetSQLName("SE5")
+	cQry += " WHERE "
+	cQry += " D_E_L_E_T_ = ' ' "
+	cQry += " AND E5_FILIAL		= '" + xFilial("SE5") + "' "
+	cQry += " AND E5_PREFIXO	= '" + cPrefixo+ "'  "
+	cQry += " AND E5_NUMERO		= '" + cTitulo + "' "
+	cQry += " AND E5_PARCELA	= '" + cParcela + "' "
+	cQry += " AND E5_TIPO		= '" + cTipo + "' "
+
+	if Select("QRYSE5") > 0
+
+		QRYSE5->(DbCloseArea() )
+
+	endif
+
+	cQry := ChangeQuery(cQry)
+
+	TcQuery cQry NEW Alias "QRYSE5"
+
+	if QRYSE5->(!Eof())
+
+		cSequencia := QRYSE5->SEQUENCIA
+
+	endif
+
+	QRYSE5->(DbCloseArea())
+
+	RestArea(aArea)
+
+Return cSequencia
+
+/*/{Protheus.doc} LogTitulosBaixados
+Gravar Log de Titulos Baixados
+@type function
+@version 1.0
+@author Raphael Martins
+@since 28/03/2019
+@param cFilTitulo, character
+@param cPrefixo, character
+@param cTitulo, character
+@param cParcela, character
+@param cTipo, character
+@param dEmissao, date
+@param cSequencia, character
+@param cLoteBx, character
+@obs Ajustes nata.queiroz
+/*/
+Static Function LogTitulosBaixados(cFilTitulo,cPrefixo,cTitulo,cParcela,cTipo,dEmissao,cSequencia,cLoteBx)
+	Local aArea := GetArea()
+
+	RecLock("MDM", .T.)
+
+	MDM->MDM_FILIAL		:= xFilial( "MDM" )
+	MDM->MDM_BXFILI		:= cFilTitulo
+	MDM->MDM_PREFIX		:= cPrefixo
+	MDM->MDM_NUM		:= cTitulo
+	MDM->MDM_PARCEL		:= cParcela
+	MDM->MDM_TIPO		:= cTipo
+	MDM->MDM_SEQ		:= cSequencia
+	MDM->MDM_DATA		:= dEmissao
+	MDM->MDM_LOTE		:= cLoteBx
+	MDM->MDM_ESTORN		:= "2"
+
+	MDM->(MsUnlock())
+
+	MDN->(ConfirmSX8())
+
+	RestArea(aArea)
+
+Return
+
+/*/{Protheus.doc} AdmChqIncluiTitulo
+Gera titulo contra administradora financeira
+@type function
+@version 1.0
+@author Raphael Martins
+@since 28/03/2019
+@param aFormaPgto, array
+@param cVendedor, character
+@param cContrato, character
+@param dRecebimento, date
+@param cLoteBx, character
+@param nQtdParcelas, numeric
+@param cLogError, character
+@return lRet, logical
+/*/
+Static Function AdmChqIncluiTitulo(aFormaPgto,cVendedor,cContrato,dRecebimento,cLoteBx,nQtdParcelas,cLogError)
+	Local aArea 		:= GetArea()
+	Local aAreaSE1		:= SE1->(GetArea())
+	Local cCaixaVend	:= ""
+	Local lRet			:= .T.
+	Local nStart		:= Seconds()
+	Local lCaixaUsr     := SuperGetMv("MV_XCXUSR",.F.,.T.)
+
+	//retorno o caixa do vendedor
+	if lCaixaUsr
+		cCaixaVend := U_UxNumCx(cVendedor)
+	else
+		cCaixaVend := Posicione("SA3",1,xFilial("SA3")+cVendedor,"A3_BCO1")
+	endif
+
+	//realizo a inclusao do Titulo contra a Adm
+	if !U_LjIncTitRec(aFormaPgto,cCaixaVend,cLoteBx,dRecebimento,cVendedor,cContrato,nQtdParcelas,@cLogError)
+
+		FwLogMsg("ERROR",, "REST", FunName(), "", "01",;
+			"Falha na inclusao do titulo a receber", 0, (nStart - Seconds()), {})
+		lRet := .F.
+
+	endIf
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return lRet
+
+/*/{Protheus.doc} LjIncTitRec
+Funcao que cria um titulo a receber a partir da forma de pagamento
+Exemplo: Se o titulo foi pago com CC, devemos criar um
+titulo a receber para a administradora financeira
+@type function
+@version 1.0
+@author Vendas & CRM
+@since 27/06/2012
+@param aFPagto, array
+@param cPortado, character
+@param cLoteBx, character
+@param dDtReceb, date
+@param cVendedor, character
+@param cContrato, character
+@param nQtdParcelas, numeric
+@param cLogError, character
+@return lRet, logical
+/*/
+User Function LjIncTitRec(aFPagto,cPortado,cLoteBx,dDtReceb,cVendedor,cContrato,nQtdParcelas,cLogError)
+	Local lRet				:= .T.					  			// Retorno da funcao
+	Local aSE1				:= {}					  			// Array de gravacao do SE1
+	Local aMDN				:= {}						 		// Array de gravacao da MDN
+	Local aParcelas			:= {}								// Array de controle de parcelas
+	Local cPrefixo			:= SuperGetMV("MV_LJTITGR",,"REC")	// Prefixo de gravacao do titulo
+	Local cNumTitulo		:= Space(0)							// Numero do titulo
+	Local cNatureza			:= Space(0)							// Natureza do titulo
+	Local cFormaPgto		:= Space(0)							// Forma de pagamento do titulo
+	Local lBaixaPIXBanco	:= SuperGetMV("MV_XBXPIX",.F.,.T.)	// Parametro para baixa de titulo PIX no banco
+	Local nI				:= 0								// Contador do For
+	Local nX				:= 0								// Contador do For
+	Local cBcoChq			:= ""								// Banco do cheque
+	Local cAgeChq			:= ""								// Agencia do cheque
+	Local cContaChq			:= ""								// Conta-corrente do cheque
+	Local cAgeDep			:= ""
+	Local cConta			:= ""
+	Local lMvLjGerTx	:= SuperGetMV( "MV_LJGERTX",, .F. )
+	Local cCodFornec	:= ""
+	Local nValorTaxa	:= 0
+	Local aVetorSE2		:= {}
+	Local nStart		:= Seconds()
+
+	Default cPortado	:= CriaVar("E1_PORTADO")
+	Default cLoteBx		:= ""
+	Default cVendedor	:= ""
+	Default cContrato	:= ""
+
+	Private lMsErroAuto	:= .F.
+
+	cFormaPgto := aFPagto[1]
+
+	If AllTrim(cFormaPgto) $ "CC|CD|CO|FI|PX"
+		aParcelas := LJCriaParcelas(cFormaPgto, (aFPagto[7] * nQtdParcelas),;
+			dDtReceb, aFPagto[8], aFPagto[2], UPPER(aFPagto[10]), @cLogError,cContrato)
+	Else
+		aParcelas := LJCriaParcelas(cFormaPgto, (aFPagto[7] * nQtdParcelas),;
+			IIF(!Empty(SToD(aFPagto[9])),SToD(aFPagto[9]),dDtReceb),,,, @cLogError,cContrato)
+	EndIf
+
+	// caso nao tenha carregados os dados para inclusao do titulo a receber
+	// da forma de pagamento, nao prossigo a operacao
+	if Len(aParcelas) > 0
+
+		//Chama funcao do loja(GetNumSE1) Obtemos o numero do titulo disponivel
+		//para gerar o titulo contra administradora
+		cNumTitulo := U_GetNumMDM(cPrefixo) //GetNumSE1(cPrefixo)
+
+		//Obtemos a natureza atraves do tipo de titulo
+		Do Case
+		Case AllTrim(cFormaPgto) == "CC"
+
+			cNatureza	:= &(SuperGetMV("MV_NATCART"))
+
+		Case AllTrim(cFormaPgto) == "CH"
+
+			cNatureza	:= &(SuperGetMV("MV_NATCHEQ"))
+			cBcoChq		:= aFPagto[4]
+			cAgeChq		:= aFPagto[5]
+			cContaChq	:= aFPagto[6]
+
+		Case AllTrim(cFormaPgto) == "CD"
+
+			cNatureza	:= SuperGetMV("MV_NATTEF")
+
+			If SubStr(cNatureza,1,1) == "&"
+
+				cNatureza := SubStr(cNatureza,2,Len(cNatureza))
+				//Se MV_NATTEF Iniciar com & passo o conteudo apartir do segundo byte para ser expandido via macro,
+				//senao passo o label para na expansao pegar o conteudo
+				cNatureza := &(cNatureza)
+
+				// Tratamento no caso de o parametro MV_NATTEF ter sido definido com aspas
+			ElseIf SubStr(cNatureza, 1, 1) == "'"
+
+				cNatureza := &(SuperGetMV("MV_NATTEF"))
+
+			EndIf
+
+		Case AllTrim(cFormaPgto) == "CO"
+
+			cNatureza := &(SuperGetMV("MV_NATCONV"))
+
+		Case AllTrim(cFormaPgto) == "FI"
+			cNatureza := &(SuperGetMV("MV_NATFIN"))
+
+		Case AllTrim(cFormaPgto) == "PX"
+			cNatureza := &(SuperGetMV("MV_NATPGPX", .F., "PAGTOPIX"))
+
+		EndCase
+
+		DbSelectArea("SA6")
+		SA6->(DbSetOrder(1)) //A6_FILIAL+A6_COD
+
+		DbSelectArea("SA1")
+		SA1->(DbSetOrder(1)) //A1_FILIAL+A1_COD+A1_LOJA
+
+		// Executa a inclusao do titulo a receber
+		For nI := 1 To Len(aParcelas)
+
+			If SA6->(DbSeek(xFilial("SA6") + cPortado))
+				cAgeDep		:= SA6->A6_AGENCIA
+				cConta		:= SA6->A6_NUMCON
+			Endif
+
+			If SA1->(DbSeek(xFilial("SA1")+PadR(aParcelas[nI][5],TamSX3("A1_COD")[1])+aParcelas[nI][6]))
+				FwLogMsg("INFO",, "REST", FunName(), "", "01", "Posicionou no cliente", 0, (Seconds() - nStart), {})
+			Else
+				FwLogMsg("ERROR",, "REST", FunName(), "", "01", "Nao posicionou no cliente", 0, (Seconds() - nStart), {})
+			Endif
+
+			aSE1 := {{"E1_FILIAL"	,	xFilial("SE1")		        ,Nil},;
+				{"E1_PREFIXO"	,	cPrefixo						,Nil},;
+				{"E1_NUM"	  	,	cNumTitulo						,Nil},;
+				{"E1_PARCELA" 	,	aParcelas[nI][4] 				,Nil},;
+				{"E1_TIPO"	 	,	AllTrim(cFormaPgto)				,Nil},;
+				{"E1_NATUREZ" 	,	cNatureza						,Nil},;
+				{"E1_PORTADO" 	,	cPortado						,Nil},;
+				{"E1_CLIENTE" 	,	PadR(aParcelas[nI][5],TamSX3("A1_COD")[1]),Nil},;
+				{"E1_LOJA"	  	,	aParcelas[nI][6]				,Nil},;
+				{"E1_EMISSAO" 	,	dDtReceb						,Nil},;
+				{"E1_VENCTO"  	,	aParcelas[nI][3]				,Nil},;
+				{"E1_VENCREA" 	,	DataValida(aParcelas[nI][3])	,Nil},;
+				{"E1_MOEDA" 	,	1								,Nil},;
+				{"E1_ORIGEM"	,	"RECEBIMENTO MOBILE"			,Nil},;
+				{"E1_FLUXO"		,	"S"								,Nil},;
+				{"E1_VALOR"	  	,	aParcelas[nI][1]				,Nil},;
+				{"E1_VLRREAL"  	,	aParcelas[nI][2]				,Nil},;
+				{"E1_HIST"		,	"RECEBIMENTO MOBILE"			,Nil},;
+				{"E1_BCOCHQ" 	,	cBcoChq							,Nil},;
+				{"E1_AGECHQ" 	,	cAgeChq							,Nil},;
+				{"E1_CTACHQ" 	,	cContaChq						,Nil},;
+				{"E1_NSUTEF"  	,	aFPagto[11]						,Nil},;
+				{"E1_CARTAUT"  	,	aFPagto[12]						,Nil}}
+
+			MsExecAuto({|x,y| Fina040(x,y)},aSE1,3) //Inclusao
+
+			If lMsErroAuto
+				cLogError := AllTrim( MostraErro('/temp') )
+				DisarmTransaction()
+				lRet := .F.
+				Exit
+			Else
+				// Gravamos as informacoes do titulo gerado na tabela MDN (Log de Titulos Gerados)
+				aMDN := { 	{"MDN_FILIAL"	, xFilial("MDN")	},;
+					{"MDN_GRFILI"	, xFilial("SE1")	},;
+					{"MDN_PREFIX"	, cPrefixo			},;
+					{"MDN_NUM"		, cNumTitulo		},;
+					{"MDN_PARCEL"	, aParcelas[nI][4] 	},;
+					{"MDN_TIPO"		, cFormaPgto		},;
+					{"MDN_LOTE"		, cLoteBx			} ;
+					}
+
+				//Grava informacoes dos titulos a receber gerados
+				RecLock("MDN" , .T.)
+				For nX := 1 to Len(aMDN)
+					REPLACE &("MDN->" + aMDN[nX][1]) WITH aMDN[nX][2]
+				Next nX
+				MDN->( MsUnlock() )
+
+				If lBaixaPIXBanco .And. AllTrim(cFormaPgto) $ "PX"
+					lRet := U_UBaixarPIXBanco(SE1->(Recno()), aFPagto[13], aFPagto[14],@cLogError)
+				EndIf
+
+				if lRet
+					// se o parametro estiver habilitado para geracao
+					// do contas a pagar para a administradora financeira
+					If lMvLjGerTx .AND. AllTrim(cFormaPgto) $ "CC|CD"
+
+						// inclui Administradora como Fornecedor
+						cCodFornec := L070IncSA2()	//retorna o coigo do Fornecedor(SA2)
+
+						// se o fornecedor ja existe ou foi criado com sucesso
+						If !Empty(cCodFornec)
+
+							// calculo a taxa a ser paga
+							nValorTaxa := A410Arred((aParcelas[nI][2] * nTaxa) / 100, "L2_VRUNIT")
+
+							aVetorSE2 :={	{"E2_PREFIXO"	, SE1->E1_PREFIXO		, Nil}	,;
+								{"E2_NUM"	   	, SE1->E1_NUM    		, Nil}	,;
+								{"E2_PARCELA"	, SE1->E1_PARCELA		, Nil}	,;
+								{"E2_TIPO"		, SE1->E1_TIPO   		, Nil}	,;
+								{"E2_NATUREZ"	, SE1->E1_NATUREZ		, Nil}	,;
+								{"E2_FORNECE"	, cCodFornec 			, Nil}	,;
+								{"E2_LOJA"		, SE1->E1_LOJA   		, Nil}	,;
+								{"E2_EMISSAO"	, dDtReceb      		, NIL}	,;
+								{"E2_VENCTO"	, SE1->E1_VENCTO 		, NIL}	,;
+								{"E2_VENCREA"	, SE1->E1_VENCREA		, NIL}	,;
+								{"E2_VALOR"		, nValorTaxa 			, NIL}	,;
+								{"E2_HIST"		, AllTrim(SE1->E1_NUM)	, NIL}	}
+
+							MSExecAuto( {|x,y,z| FINA050(x,y,z)}, aVetorSE2, Nil, 3 )
+
+							If lMsErroAuto
+								cLogError := AllTrim( MostraErro('/temp') )
+								DisarmTransaction()
+								lRet := .F.
+								Exit
+							EndIf
+						Endif
+					EndIf
+
+					If AllTrim(cFormaPgto) $ "CH"
+						//Gravamos os dados do Cheque
+						LJRecGrvCH(cBcoChq, cAgeChq, cContaChq, cPortado, aParcelas[nI][1],;
+							aParcelas[nI][3], "", "", Space(TamSX3("EF_TEL")[1]), .F.,;
+							cPrefixo, cNumTitulo,	aParcelas[nI][4], cFormaPgto,;
+							aParcelas[nI][5], aParcelas[nI][6])
+					EndIf
+				Endif 
+			EndIf
+		Next nI
+
+	else
+
+		DisarmTransaction()
+		lRet := .F.
+
+	endif
+
+Return lRet
+
+/*/{Protheus.doc} LJCriaParcelas
+Funcao que cria as parcelas da forma de pagamento
+@type function
+@version 1.0
+@author Vendas & CRM
+@since 27/06/2012
+@param cFormaPgto, character
+@param nTotal, numeric
+@param dData, date
+@param nQtdParc, numeric
+@param cCodAdm, character
+@param cBandeira, character
+@param cLogError, character
+@return aParcelas, array
+/*/
+Static Function LJCriaParcelas(cFormaPgto, nTotal, dData, nQtdParc,cCodAdm,cBandeira,cLogError,cContrato)
+	
+	Local aAdmValTax	:= {}
+	Local aParcelas		:= {}						// Array de parcelas do pagamento
+	Local aArea			:= {}						// Armazena a area ativa
+	Local cCodCli		:= ""						// Codigo do cliente
+	Local cLojCli		:= ""						// Loja do cliente
+	Local cNomeCli		:= ""						// Nome do cliente
+	Local nVlrSobra		:= 0						// Resto do total apos ter dividido as parcelas
+	Local nVlrParc		:= 0						// Valor de cada parcela
+	Local nVlrReal		:= 0						// Valor Real sem as taxas cobradas pela administradora financeira
+	Local lContinua		:= .T.
+	Local lMvLjGerTx	:= SuperGetMV( "MV_LJGERTX",, .F. )
+	Local lFuneraria	:= SuperGetMV( "MV_XFUNE",, .F. )
+	Local lCemiterio	:= SuperGetMV( "MV_XCEMI",, .F. )
+	Local nTaxa	 		:= 0						// Taxa cobrada pela Adm.Fin.
+	Local nDias	 		:= 0						// Data com a adicao de dias da virada do recebimento
+	Local nTamE1Dup 	:= TamSX3("E1_PARCELA")[1]	// Tamanho do campo no SX3
+	Local nI			:= 0						// Contador do For	
+	Local nValorTaxa	:= 0
+	Local nStart		:= Seconds()
+
+	Default cCodAdm		:= ""
+	Default cBandeira	:= ""
+	Default cFormaPgto 	:= "R$"
+	Default nTotal	 	:= 0
+	Default dData 	 	:= DDATABASE
+	Default nQtdParc 	:= 1
+	Default cLogError	:= ""
+	Default cContrato	:= ""
+
+	//|		-ESTRUTURA aParcelas-		|
+	//|aParcelas[1] VALOR PARCELA		|
+	//|aParcelas[2] VALOR REAL			|
+	//|aParcelas[3] DATA DE VENCIMENTO	|
+	//|aParcelas[4] PARCELA				|
+	//|aParcelas[5] COD. CLIENTE		|
+	//|aParcelas[6] LOJA CLIENTE		|
+	//|aParcelas[7] NOME CLIENTE		|
+
+	If ValType(nQtdParc) <> 'N' .Or. nQtdParc == 0
+		nQtdParc := 1
+	EndIf
+
+	If AllTrim(cFormaPgto) $ "CC|CD|FI|CO|PX"
+
+		aArea := GetArea()
+
+		UJT->(DbSetOrder(2))
+		UJU->(DbSetOrder(1))
+
+		//Posiciono no cadastro da amarracao Gateway x Bandeira
+		if UJT->(MsSeek(xFilial("UJT")+ PADR(cCodAdm,TamSx3("UJT_IDVIND")[1] ) )) .AND. UJT->UJT_STATUS == "A"
+
+			//posiciona na bandeira da gateway
+			if UJU->( MsSeek(xFilial("UJU")+UJT->UJT_CODIGO+UPPER(cBandeira)) )
+
+				SAE->(DbOrderNickName("IDVINDI"))
+
+				//Posiciono na administradora financeira
+				If SAE->(MsSeek(xFilial("SAE")+UJU->UJU_CODIGO+UJU->UJU_ITEM))
+
+					If SAE->AE_FINPRO == "N"
+
+						nDias		:= SAE->AE_DIAS
+						//Se a administradora financeira nao estiver cadastrada
+						//como cliente a funcao L070IncSAI a inclui
+						L070IncSA1()
+						cCodCLi		:= SAE->AE_COD
+						cLojCli		:= "01"
+						cNomeCli	:= SAE->AE_DESC
+					
+					//se for financiamento proprio gera o titulo contrato o cliente da parcela.	
+					else
+						
+						if lFuneraria
+							
+							UF2->(DbSetOrder(1)) //UF2_FILIAL+UF2_CODIGO
+							if UF2->(MsSeek(xFilial("UF2")+cContrato))
+								
+								cCodCLi		:= UF2->UF2_CLIENT
+								cLojCli		:= UF2->UF2_LOJA
+							
+							endif
+
+						elseIf lCemiterio
+							
+							U00->(DbSetOrder(1)) //U00_FILIAL+U00_CODIGO
+							if U00->(MsSeek(xFilial("UF2")+cContrato))
+								
+								cCodCLi		:= U00->U00_CLIENT
+								cLojCli		:= U00->U00_LOJA
+								
+							endif
+
+						endif
+					
+					EndIf
+
+					///////////////////////////////////////////////////////////////////////
+					//Chamada da rotina LJ7_TxAdm para calculo da taxa da Adm Financeira  //
+					//de acordo com o cadastrado na tabela MEN							  //
+					//Par?etros utilizados:						    					  //
+					// 1 - Quantidade de parcelas					  					  //
+					// 2 - Valor total das parcelas					 					  //
+					///////////////////////////////////////////////////////////////////////
+					aAdmValTax := LJ7_TxAdm(SAE->AE_COD,nQtdParc,nTotal)
+
+					nTaxa := Iif(aAdmValTax[03] > 0,aAdmValTax[03],SAE->AE_TAXA)
+
+					// se o parametro MV_LJGERTX estiver descontada a taxa da Administradora Financeira
+					// na inclusao do titulo a receber contra a Administradora
+					// se estiver habiltiado, sera gerado um contas a pagar contra a Administradora
+					If lMvLjGerTx
+						nValorTaxa := 0
+					Else
+						nValorTaxa := (nTotal * nTaxa) / 100
+					EndIf
+				endif
+			else
+
+				lContinua := .F.
+				cLogError := "Bandeira nao foi localizada na amarracao Gateway x Bandeira"
+				FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (Seconds() - nStart), {})
+
+			endif
+		Else
+			lContinua := .F.
+			cLogError := "Gateway nao foi localizada na amarracao Gateway x Bandeira"
+			FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (Seconds() - nStart), {})
+		EndIf
+
+		RestArea(aArea)
+	EndIf
+
+	if lContinua
+
+		//realizo a deducao da taxa administrativa
+		nVlrReal	:= nTotal - nValorTaxa
+
+		//valor da parcela contra a administradora
+		nVlrParc 	:= Round((nVlrReal / nQtdParc),2)
+
+		//valor de sobra pra adicionar na ultima parcela
+		nVlrSobra 	:= nVlrReal - (nVlrParc * nQtdParc)
+
+		// Data com a adicao de dias da virada do recebimento
+		dData 		+= nDias
+
+		For nI := 1 To nQtdParc
+
+			//A partir da segunda parcela, adicionamos 30d a data de cada parcela?
+			If nI > 1
+				dData += 30
+			EndIf
+
+			//Adicionamos a sobra ao valor da ultima parcela
+			If nI == nQtdParc
+				nVlrParc += nVlrSobra
+			EndIf
+
+			Aadd( aParcelas,{nVlrParc   		,;
+				nVlrReal			,;
+				dData				,;
+				StrZero(nI, nTamE1Dup)	,;
+				cCodCli				,;
+				cLojCli				,;
+				cNomeCli			})
+
+		Next nI
+
+	endif
+
+Return aParcelas
+
+/*/{Protheus.doc} ReceberAdiantamento
+Realiza recebimento de adiantamento de parcelas
+@type function
+@version 1.0
+@author Wellington Goncalves
+@since 28/03/2019
+@param cPrefFun, character
+@param cContrato, character
+@param cTipoFun, character
+@param dDataRec, date
+@param cVendedor, character
+@param nQtdParcelas, numeric
+@param aFPagto, array
+@param cLogError, character
+@return lRet, logical
+@obs Ajustes nata.queiroz
+/*/
+Static Function ReceberAdiantamento(cPrefFun,cContrato,cTipoFun,dDataRec,cVendedor,nQtdParcelas,aFPagto,cLogError)
+
+	Local aArea			:= GetArea()
+	Local aTitulo		:= {}
+	Local cQry			:= ""
+	Local cSequenciaE5	:= ""
+	Local cLoteBx		:= ""
+	Local lRet 			:= .T.
+	Local lDinMDM		:= SuperGetMV("MV_XDINMDM",.F.,.F.)		// verifico se gera MDM para recebimentos em dinheiro
+	Local lContinua     := .T.
+	Local nStart		:= Seconds()
+	Local nX			:= 1
+
+	cQry := " SELECT "
+	cQry += " TOP " + cValToChar(nQtdParcelas) + " "
+	cQry += " SE1.E1_PREFIXO, "
+	cQry += " SE1.E1_NUM, "
+	cQry += " SE1.E1_PARCELA, "
+	cQry += " SE1.E1_TIPO, "
+	cQry += " SE1.E1_VENCTO, "
+	cQry += " SE1.E1_VALOR, "
+	cQry += " SE1.E1_MULTA, "
+	cQry += " SE1.E1_JUROS, "
+	cQry += " SE1.E1_DESCONT "
+	cQry += " FROM "
+	cQry += " " +RetSqlName("SE1") + " SE1 "
+	cQry += " WHERE "
+	cQry += " SE1.D_E_L_E_T_ 		<> '*' "
+	cQry += " AND SE1.E1_FILIAL 	= '" + xFilial("SE1") + "'"
+	cQry += " AND SE1.E1_PREFIXO 	= '" + cPrefFun + "'"
+	cQry += " AND SE1.E1_NUM 		= '" + cContrato + "'"
+	cQry += " AND SE1.E1_TIPO	 	= '" + cTipoFun + "'"
+	cQry += " AND SE1.E1_SALDO	 	> 0 "
+	cQry += " ORDER BY SE1.E1_FILIAL, SE1.E1_PREFIXO, SE1.E1_NUM, SE1.E1_PARCELA "
+	cQry := ChangeQuery(cQry)
+
+	If Select("UQRYSE1") > 0
+		UQRYSE1->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry NEW Alias "UQRYSE1"
+
+	If UQRYSE1->(!EOF())
+
+		FwLogMsg("INFO",, "REST", FunName(), "", "01",;
+			">> RecAdiant - Consulta de Titulos retornou registros", 0, (nStart - Seconds()), {})
+
+		While UQRYSE1->(!EOF())
+
+			aTitulo := {}
+
+			SE1->(DbSetOrder(1)) // E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+			if SE1->(DbSeek(xFilial("SE1") + UQRYSE1->E1_PREFIXO + UQRYSE1->E1_NUM + UQRYSE1->E1_PARCELA + UQRYSE1->E1_TIPO))
+
+				AAdd(aTitulo , SE1->E1_NUM			) // Numero
+				AAdd(aTitulo , SE1->E1_PARCELA		) // Parcela
+				AAdd(aTitulo , SE1->E1_VENCTO		) // Vencimento
+				AAdd(aTitulo , SE1->E1_VALOR		) // Valor
+				AAdd(aTitulo , SE1->E1_MULTA		) // Multa
+				AAdd(aTitulo , SE1->E1_JUROS		) // Juros
+				AAdd(aTitulo , SE1->E1_DESCONT		) // Desconto
+				AAdd(aTitulo , SE1->E1_VALOR		) // Valor recebido
+				AAdd(aTitulo , ""					) // Forma de pagamento
+				AAdd(aTitulo , 0					) // Valor troco
+
+				if dDataRec < SE1->E1_EMISSAO
+					dDataRec := SE1->E1_EMISSAO
+				endif
+
+				// Entrada no caixa - Baixa
+				lRet := ReceberParcelaLoja(aTitulo,SE1->E1_CLIENTE,SE1->E1_LOJA,;
+					dDataRec,aFPagto,SE1->E1_PREFIXO,SE1->E1_TIPO,cVendedor,cContrato,@cLogError)
+
+				if lRet
+
+					//========================================================================
+					// verifico se o parametro esta para gerar a MDM para baixa em dinheiro
+					// e a forma de pagamento não é CC ou CD
+					//========================================================================
+					if !lDinMDM .And. !(aFPagto[1,1] $ "CC/CD")
+						lContinua := .F.
+					endIf
+
+					// Gravar dados do recebimento via Pix
+					if aFPagto[1,1] $ "PX"
+						RecLock("SE1", .F.)
+						SE1->E1_TPCHPIX := aFPagto[1,13]
+						SE1->E1_CHVPIX := aFPagto[1,14]
+						SE1->(MsUnLock())
+					endif
+
+
+				endIf
+
+				//////////////////////////////////////////////////////////////////////////////////////
+				/////// IDENTIFICO O LOTE DA BAIXA PARA GERAR MOVIMENTOS NAS TABELAS MDM E MDN ///////
+				//////////////////////////////////////////////////////////////////////////////////////
+				if lContinua .And. Empty(cLoteBx)
+
+					//Gera numero do lote somando + 1 no ultimo lote encontrado
+					cLoteBx	:= GetSx8Num("MDN","MDN_LOTE",,2)
+
+					MDN->(DbSetOrder(2)) // MDN_FILIAL + MDN_LOTE
+					While MDN->(DbSeek(xFilial("MDN") + cLoteBx))
+						MDN->(ConfirmSX8())
+						cLoteBx := GetSx8Num("MDN","MDN_LOTE",,2)
+					EndDo
+
+					// se ja estiver em uso eu pego um novo numero para o banco de conhecimento
+					While !MayIUseCode("MDN"+xFilial("MDN")+cLoteBx) // Reserva nome no semafaro
+						MDN->(ConfirmSX8())
+						cLoteBx := GetSx8Num("MDN","MDN_LOTE",,2)
+					EndDo
+					//retorna a sequencia da movimentacao gerada na SE5 de acordo com a forma de pagamento
+					cSequenciaE5 := RetSequenciaSE5(SE1->E1_PREFIXO,SE1->E1_NUM,SE1->E1_PARCELA,SE1->E1_TIPO)
+
+					//Gravo Log dos Titulos Baixados
+					LogTitulosBaixados(xFilial("SE1"),; //Filial do Titulo
+					SE1->E1_PREFIXO,;	//Prefixo
+					SE1->E1_NUM,;		//Numero do Titulo (Num do Contrato)
+					SE1->E1_PARCELA,;	//Parcela Baixada
+					SE1->E1_TIPO,;		//Tipo da Parcela
+					SE1->E1_EMISSAO,;	//Data de Emissao
+					cSequenciaE5,;		//Sequecia do Movimento na SE5
+					cLoteBx)			//Lote da Baixa
+
+					// Libera nome reservado no semaforo
+					Leave1Code("MDN"+xFilial("MDN")+cLoteBx)
+
+				endif
+
+				//-- Verifica se a baixa/recebimento ocorreu com sucesso
+				if lRet
+
+					FwLogMsg("INFO",, "REST", FunName(), "", "01",;
+						" >> RecAdiant - Parcela recebida com sucesso " + UQRYSE1->E1_PARCELA,;
+						0, (nStart - Seconds()), {})
+
+				else
+
+					cLogError := "RecAdiant - Nao foi possivel receber parcela " + UQRYSE1->E1_PARCELA
+					FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (nStart - Seconds()), {})
+
+					// Finaliza Loop
+					// Ignora os titulos restantes
+					EXIT
+
+				endif
+
+			else
+				cLogError := "RecAdiant - Erro ao posicionar no titulo ";
+					+ QRYSE1->E1_NUM + " parcela " + UQRYSE1->E1_PARCELA
+
+				FwLogMsg("ERROR",, "REST", FunName(), "", "01", cLogError, 0, (nStart - Seconds()), {})
+
+			endif
+
+			UQRYSE1->(DbSkip())
+
+		EndDo
+
+		//caso o pagamento seja em cartao, incluo o titulo contra adm financeira ou Emitente do Cheque
+		For nX := 1 To Len(aFPagto)
+
+			if lRet .And. aFPagto[nX,1] $ "CH|CC|CD"
+
+				if !(lRet := AdmChqIncluiTitulo(aFPagto[nX],cVendedor,cContrato,dDataRec,cLoteBx,nQtdParcelas,@cLogError))
+
+					FwLogMsg("ERROR",, "REST", FunName(), "", "01",;
+						">> Nao foi possivel incluir titulo contra a administradora financeira!",;
+						0, (nStart - Seconds()), {})
+					Exit
+
+				endif
+
+			endif
+
+		Next nX
+
+	else
+
+		FwLogMsg("ERROR",, "REST", FunName(), "", "01",;
+			" >> RecAdiant - Consulta de titulos nao retornou registros",;
+			0, (nStart - Seconds()), {})
+
+	endif
+
+
+	UQRYSE1->(DbCloseArea())
+
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} UTrataFone
+Funcao para tratar o telefone
+@type function
+@version 1.0
+@author g.sampaio
+@since 21/03/2024
+@param nTipo, numeric, param_description
+@param cFone, character, param_description
+@return variant, return_description
+/*/
+User Function UTrataFone(nTipo, cFone)
+
+	Local cAux		:= ""
+	Local cRetorno	:= ""
+
+	Default nTipo	:= 0
+	Default cFone	:= ""
+
+	cAux := StrTran(cFone, "(","")
+	cAux := StrTran(cAux, ")", "")
+	cAux := StrTran(cAux, "-", "")
+
+	If nTipo == 1 // DDD
+		cRetorno := SubStr(cAux, 1, 2)
+	ElseIf nTipo == 2 // telefone
+		cRetorno := SubStr(cAux, 3)
+	else
+		cRetorno := cAux
+	EndIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} GetNumMDM
+Rotina para retornar o proximo SE1 dependendo de um determinado preciso, 
+utilizado para Recebimento do Loja
+@type function
+@version 1.0
+@author g.sampaio
+@since 15/12/2023
+@param cPrefRec, character, param_description
+@param cTipoTitulo, character, param_description
+@return variant, return_description
+/*/
+User Function GetNumMDM(cPrefRec)
+
+	Local aArea			:= GetArea()
+	Local aAreaSE1		:= SE1->( GetArea() )
+	Local aAreaSX5		:= SX5->( GetArea() )
+	Local aAreaMDM		:= MDM->( GetArea() )
+	Local cSe1Num		:= ""
+	Local cQuery		:= ""
+	Local cFilSE1		:= xFilial("SE1")
+	Local nTamE1Num		:= TamSx3("E1_NUM")[1]
+	Local cTabelaSX5	:= "01"
+	Local lContinua		:= .T.
+
+	//==================================================================
+	// Verifica se ja existe a numeracao para o prefixo especifico.
+	//==================================================================
+	DbSelectArea("SX5")
+	SX5->( DbSetOrder(1) )		//X5_FILIAL + X5_TABELA + X5_CHAVE
+	If SX5->( DbSeek(cFilSE1 + cTabelaSX5 + cPrefRec) )
+
+		cSe1Num := StrZero( Val(SX5->X5_DESCRI) + 1, nTamE1Num )
+
+	Else
+
+		cSe1Num := StrZero(1, nTamE1Num)
+
+		//Cria o SX5 para controlar a numeracao do prefixo especificado
+		If SX5->(RecLock("SX5", .T.))
+			SX5->X5_FILIAL	:= cFilSE1
+			SX5->X5_TABELA	:= cTabelaSX5
+			SX5->X5_CHAVE	:= cPrefRec
+			SX5->X5_DESCRI	:= cSe1Num
+			SX5->X5_DESCSPA	:= cSe1Num
+			SX5->X5_DESCENG	:= cSe1Num
+			SX5->( MsUnlock() )
+		EndIf
+		
+	EndIf
+
+	If Select("TRBMDN") > 0
+		TRBMDN->( DbCloseArea() )
+	EndIf
+
+	//Pega o ultimo numero utilizado mesmo estando deletado para nao utilizar mais
+	cQuery	:= "SELECT MAX(SE1.E1_NUM) AS E1_NUM FROM " + RetSqlName("SE1")+ " SE1 " 
+	cQuery	+= " WHERE SE1.E1_FILIAL = '" +cFilSE1		+ "'  "
+	cQuery	+= " AND SE1.E1_PREFIXO = '" +cPrefRec	+ "'  " 
+	cQuery	+= " AND SE1.E1_NUM BETWEEN	'" +cSe1Num		+ "' AND '" +Replicate("9", nTamE1Num)+ "'" 
+	cQuery	+= " AND SE1.D_E_L_E_T_ = ' '"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBMDN")
+
+	If TRBMDN->( !Eof() )
+
+		If Val(TRBMDN->E1_NUM) > Val(cSe1Num)
+			cSe1Num := cValToChar( Val(TRBMDN->E1_NUM) + 1 )
+		EndIf
+
+	EndIf
+
+	cSe1Num := Padl(cSe1Num, nTamE1Num, "0")
+
+	If Select("TRBMDN") > 0
+		TRBMDN->( DbCloseArea() )
+	EndIf
+
+	// vou conferir se a numeracao ja existe na MDN
+	//Pega o ultimo numero utilizado mesmo estando deletado para nao utilizar mais
+	cQuery	:= "SELECT MAX(MDN.MDN_NUM) AS MAX_NUM FROM " + RetSqlName("MDN")+ " MDN " 
+	cQuery	+= " WHERE MDN.MDN_FILIAL = '" +cFilSE1		+ "'  "
+	cQuery	+= " AND MDN.MDN_PREFIX = '" +cPrefRec	+ "'  " 
+	cQuery	+= " AND MDN.MDN_NUM BETWEEN	'" +cSe1Num		+ "' AND '" +Replicate("9", nTamE1Num)+ "'"
+	cQuery	+= " AND MDN.D_E_L_E_T_ = ' '"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBMDN")
+
+	If TRBMDN->( !Eof() )
+
+		If Val(TRBMDN->MAX_NUM) > Val(cSe1Num)
+			cSe1Num := cValToChar( Val(TRBMDN->MAX_NUM) + 1 )
+		EndIf
+
+	EndIf
+
+	cSe1Num := Padl(cSe1Num, nTamE1Num, "0")
+
+	While lContinua
+		SE1->(dbSetOrder(1))
+		If SE1->(MsSeek( xFilial("SE1")+cFilSE1+cPrefRec+cSe1Num ))
+			cSe1Num := Padl( cValToChar( Val(cSe1Num) + 1 ) , nTamE1Num, "0")
+		Else
+			lContinua := .F.			
+		EndIf
+	EndDo
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( "SE1"+cFilSE1+cPrefRec+cSe1Num )
+		// gero um novo nosso numero
+		cSe1Num := Padl( cValToChar( Val(cSe1Num) + 1 ) , nTamE1Num, "0")
+	EndDo
+
+	ConOut("==========================================================================")
+	ConOut("Numeracao disponivel MDM: " + cSe1Num )
+	ConOut("==========================================================================")
+
+	If ExistBlock("PENUMMDN")
+	
+		ConOut("==========================================================================")
+		ConOut("Potno de Entrada - PENUMMDN")
+		ConOut("==========================================================================")
+
+		cSe1Num := ExecBlock("PENUMMDN", .F., .F., {cFilSE1, cTabelaSX5, cPrefRec, cSe1Num})
+
+		ConOut("==========================================================================")
+		ConOut("Numeracao disponivel MDM - PE: " + cSe1Num )
+		ConOut("==========================================================================")
+
+	EndIf
+
+	//==================================================================
+	// Atualiza a numeracao no SX5 que sera utilizada.
+	//==================================================================
+	DbSelectArea("SX5")
+	SX5->( DbSetOrder(1) )		//X5_FILIAL + X5_TABELA + X5_CHAVE
+	If SX5->( DbSeek(cFilSE1 + cTabelaSX5 + cPrefRec) )
+
+		cSe1Num := Padl(cSe1Num, nTamE1Num, "0")
+
+		If SX5->(RecLock("SX5", .F.))
+			SX5->X5_DESCRI	:= cSe1Num
+			SX5->X5_DESCSPA	:= cSe1Num
+			SX5->X5_DESCENG	:= cSe1Num
+			SX5->( MsUnlock() )
+		EndIf
+
+	EndIf
+
+	RestArea( aAreaMDM )
+	RestArea( aAreaSX5 )
+	RestArea( aAreaSE1 )
+	RestArea( aArea )
+
+Return(cSe1Num)
+
+/*/{Protheus.doc} UBaixarPIXBanco
+Funcao para baixar o titulo de PIX
+@type function
+@version 1.0
+@author g.sampaio
+@since 21/03/2024
+@param nRecnoSE1, numeric, param_description
+@param cTipoChave, character, param_description
+@param cChavePIX, character, param_description
+@return variant, return_description
+/*/
+User Function UBaixarPIXBanco(nRecnoSE1, cTipoChave, cChavePIX,cLogError)
+
+	Local aArea 		As Array
+	Local aAreaSE1 		As Array
+	Local aBaixa		As Array
+	Local cQuery		As Character
+	Local cBanco 		As Character
+	Local cAgencia		As Character
+	Local cConta		As Character
+	Local cArqLog		As Character
+	Local cDirLogServer	As Character
+	Local lRetorno		As Logical
+	Local nDesconto		As Numeric
+	Local nJuros		As Numeric
+	Local nVlrBaixa		As Numeric
+
+	Default cLogError	:=  ""
+
+	// atribui valores as variaveis
+	aArea 		:= GetArea()
+	aAreaSE1 	:= SE1->(GetArea())
+	aBaixa 		:= {}
+	cArqLog		:= "log_cobranca_baixapix_" + DToS(Date()) + "_" + StrTran(Time(),":","") + ".log"
+	lRetorno	:= .F.
+
+	If !Empty(cTipoChave) .And. !Empty(cChavePIX)
+
+		// (F70_TPCHV) tipo de chave - 01=Telefone;02=E-mail;03=CPF/CNPJ;04=Chave Aleatória 
+		If AllTRim(Upper(cTipoChave)) == "CELULAR"
+			cTipoChave := "01"
+		ElseIf AllTRim(Upper(cTipoChave)) == "EMAIL"
+			cTipoChave := "02"
+		ElseIf AllTRim(Upper(cTipoChave)) == "CPF OU CNPJ"
+			cTipoChave := "03"
+		Else
+			cTipoChave := "04"
+		EndIf
+
+		If cTipoChave == "01"
+			If .Not. ("+" $ AllTrim(cChavePIX) .Or. "55" $ AllTrim(cChavePIX))
+				cChavePIX := "+55" + AllTrim(cChavePIX)
+			EndIf
+		EndIf
+
+		// busco na tabela de chaves pix do banco
+		cQuery := " SELECT " 
+		cQuery += " 	F70.F70_COD BANCO, "
+		cQuery += " 	F70.F70_AGENCI AGENCIA, "
+		cQuery += " 	F70.F70_NUMCON CONTA "
+		cQuery += " FROM " + RetSqlName("F70") + " F70 "
+		cQuery += " WHERE F70.D_E_L_E_T_ = ' ' "
+		cQuery += " AND F70.F70_FILIAL = '" + xFilial("F70") + "' "
+		cQuery += " AND F70.F70_TPCHV = '" + cTipoChave + "' "
+		cQuery += " AND F70.F70_CHVPIX = '" + AllTrim(cChavePIX) + "' "
+		cQuery += " AND F70.F70_ACTIVE = '1' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery(cQuery, "TRBF70")
+
+		If TRBF70->(!Eof())
+			cBanco 		:= TRBF70->BANCO
+			cAgencia 	:= TRBF70->AGENCIA
+			cConta 		:= TRBF70->CONTA
+		EndIf
+
+		If !Empty(cBanco) .And. !Empty(cAgencia) .And. !Empty(cConta)
+
+			If nRecnoSE1 > 0
+
+				SA6->(DbSetOrder(1)) //A6_FILIAL + A6_COD + A6_AGENCIA + A6_NUMCON
+				if SA6->(MsSeek(xFilial("SA6") + cBanco + cAgencia + cConta))
+					//diretorio no server que sera salvo o retorno do execauto
+					cDirLogServer := GetPvProfString(GetEnvServer(),"StartPath","ERROR",GetAdv97())
+					cDirLogServer += If(Right(cDirLogServer, 1) <> "\", "\", "")
+					
+					SE1->(DBGoTo(nRecnoSE1))
+
+					dDataBaixa 	:= SE1->E1_EMISSAO
+					nVlrBaixa	:= SE1->E1_VALOR
+
+					Aadd( aBaixa, {"E1_PREFIXO"   	, SE1->E1_PREFIXO		, Nil})
+					Aadd( aBaixa, {"E1_NUM"       	, SE1->E1_NUM			, Nil})
+					Aadd( aBaixa, {"E1_PARCELA"   	, SE1->E1_PARCELA		, Nil})
+					Aadd( aBaixa, {"E1_TIPO"      	, SE1->E1_TIPO			, Nil})
+					Aadd( aBaixa, {"E1_CLIENTE" 	, SE1->E1_CLIENTE 		, Nil})
+					Aadd( aBaixa, {"E1_LOJA" 		, SE1->E1_LOJA 			, Nil})
+					Aadd( aBaixa, {"AUTMOTBX"     	, "NOR"					, Nil})
+					Aadd( aBaixa, {"AUTBANCO"     	, cBanco 		        , Nil})
+					Aadd( aBaixa, {"AUTAGENCIA"   	, cAgencia		    	, Nil})
+					Aadd( aBaixa, {"AUTCONTA"     	, cConta	       		, Nil})
+					Aadd( aBaixa, {"AUTDTBAIXA"   	, dDataBaixa			, Nil})
+					Aadd( aBaixa, {"AUTDTCREDITO" 	, dDataBaixa			, Nil})
+					Aadd( aBaixa, {"AUTHIST"      	, "BAIXA DE TITULO PIX" , Nil})
+					Aadd( aBaixa, {"AUTMULTA"		, 0					    , Nil})
+					Aadd( aBaixa, {"AUTDESCONT"   	, nDesconto             , Nil})
+					Aadd( aBaixa, {"AUTJUROS"     	, nJuros   		     	, Nil})
+					Aadd( aBaixa, {"AUTVALREC"   	, nVlrBaixa				, Nil})
+
+					MSExecAuto({|x,y| Fina070(x,y)}, aBaixa, 3) //Baixa conta a receber
+
+					If lMsErroAuto
+						lRetorno := .F.
+						DisarmTransaction()
+
+						cLogError := MostraErro(cDirLogServer, cArqLog)
+					Else
+						lRetorno := .T.
+
+					EndIf
+				else
+					lRetorno := .F.
+
+				endif
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lRetorno)

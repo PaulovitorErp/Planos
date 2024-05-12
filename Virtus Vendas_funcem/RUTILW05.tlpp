@@ -1,0 +1,125 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW05
+Integracao de Condicoes das Regras para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW05
+    Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+    Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+    If MsgYesNo('Deseja realmente integrar as condicoes das regras da sua base ao Virtus?')
+        sendRulesConditions(cCnpj)
+    EndIf
+Return
+
+/*/{Protheus.doc} getRulesConditions
+Busca condicoes das regras com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aRulesConditions, array
+/*/
+Static Function getRulesConditions(cCnpj)
+    Local cQry := ""
+    Local nQtdReg := 0
+    Local aRulesConditions := {}
+    Local oVirtusRegraCondicao := Nil
+
+    cQry := "SELECT UJ7.UJ7_CODIGO CODIGO, "
+    cQry += "    UJ7.UJ7_REGRA REGRA, "
+    cQry += "    UJ7.UJ7_ITEM ITEM, "
+    cQry += "    UJ7.UJ7_TPCOND TIPO_CONDICAO, "
+    cQry += "    UJ7.UJ7_VLRINI VALOR_INICIAL, "
+    cQry += "    UJ7.UJ7_VLRFIM VALOR_FINAL "
+    cQry += "FROM "+ RetSqlName("UJ5") +" UJ5 "
+    cQry += "INNER JOIN "+ RetSqlName("UJ6") +" UJ6 "
+    cQry += "    ON UJ6.D_E_L_E_T_ <> '*' "
+    cQry += "    AND UJ6.UJ6_FILIAL = UJ5.UJ5_FILIAL "
+    cQry += "    AND UJ6.UJ6_CODIGO = UJ5.UJ5_CODIGO "
+    cQry += "INNER JOIN "+ RetSqlName("UJ7") +" UJ7 "
+    cQry += "    ON UJ7.D_E_L_E_T_ <> '*' "
+    cQry += "    AND UJ7.UJ7_FILIAL = UJ6.UJ6_FILIAL "
+    cQry += "    AND UJ7.UJ7_CODIGO = UJ6.UJ6_CODIGO "
+    cQry += "    AND UJ7.UJ7_REGRA = UJ6.UJ6_REGRA "
+    cQry += "WHERE UJ5.D_E_L_E_T_ <> '*' "
+    cQry += "    AND UJ5.UJ5_FILIAL = '"+ xFilial("UJ5") +"' "
+    cQry += "    AND UJ5.UJ5_STATUS = 'A' "
+    cQry += "    AND UJ5.UJ5_XSINCR = 'S' "
+    cQry += "ORDER BY UJ6.UJ6_CODIGO, UJ6.UJ6_REGRA "
+    cQry := ChangeQuery(cQry)
+
+    If Select("GETRUCOND") > 0
+        GETRUCOND->( DbCloseArea() )
+    EndIf
+    
+    MPSysOpenQuery(cQry, "GETRUCOND")
+
+    If GETRUCOND->(!EOF())
+        While GETRUCOND->( !EOF() )
+            oVirtusRegraCondicao := Nil
+            oVirtusRegraCondicao := VirtusRegraCondicao():New()
+            oVirtusRegraCondicao:chave_regra_item := AllTrim(cCnpj + GETRUCOND->CODIGO + GETRUCOND->REGRA)
+            oVirtusRegraCondicao:cnpj := cCnpj
+            oVirtusRegraCondicao:item := AllTrim(GETRUCOND->ITEM)
+            oVirtusRegraCondicao:tipo_condicao := AllTrim(GETRUCOND->TIPO_CONDICAO)
+            oVirtusRegraCondicao:valor_inicial := GETRUCOND->VALOR_INICIAL
+            oVirtusRegraCondicao:valor_final := GETRUCOND->VALOR_FINAL
+            AADD(aRulesConditions, oVirtusRegraCondicao:toJsonObject())
+
+            GETRUCOND->( dbSkip() )
+        EndDo
+    EndIf
+
+    If Select("GETRUCOND") > 0
+        GETRUCOND->( DbCloseArea() )
+    EndIf
+
+Return(aRulesConditions)
+
+/*/{Protheus.doc} sendRulesConditions
+Envia condicoes das regras para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendRulesConditions(cCnpj)
+    Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+    Local cPath := "/regracondicao/" + cCnpj
+    Local aHeadStr := {}
+    Local oRestClient := Nil
+    Local aRulesConditions := {}
+    Local oRulesConditions := JsonObject():New()
+    Local oResponse := JsonObject():New()
+
+    AADD(aHeadStr,"Content-Type:application/json")
+
+    aRulesConditions := getRulesConditions(cCnpj)
+    oRulesConditions["regrasCondicoes"] := aRulesConditions
+
+    If Len(aRulesConditions) > 0
+        oRestClient := FWRest():New(cHost)
+        oRestClient:SetPath(cPath)
+        oRestClient:SetPostParams( oRulesConditions:toJSON() )
+
+        If oRestClient:Post(aHeadStr)
+            oResponse:fromJson(oRestClient:GetResult())
+            MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+        Else
+            MsgAlert(oRestClient:GetResult())
+        EndIf
+
+        U_GrvLogU56("UJ7", oRulesConditions:toJSON(), oRestClient:GetResult())
+    EndIf
+
+Return

@@ -1,0 +1,120 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW10
+Integracao de Bairros dos Planos para base do Virtus
+@type function
+@version 1.0
+@author raphael martins
+@since 22/07/2020
+/*/
+User Function RUTILW10
+    Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+    Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+    If MsgYesNo('Deseja realmente integrar os bairros da sua base ao Virtus?')
+        sendBairros(cCnpj)
+    EndIf
+Return
+
+/*/{Protheus.doc} getBairros
+Busca os bairros com flags de sincronizacao
+@type function
+@version 1.0
+@author raphael martins
+@since 25/09/2023
+@param cCnpj, character
+@return aBairros, array
+/*/
+Static Function getBairros(cCnpj)
+    Local cQry := ""
+    Local nQtdReg := 0
+    Local aBairros := {}
+    Local oVirtusBairros := Nil
+
+    cQry := " SELECT  " 
+    cQry += " ZFC_EST EST, " 
+    cQry += " ZFC_MUN DESC_MUN, " 
+    cQry += " ZFC_CODMUN COD_MUN, " 
+    cQry += " ZFC_CODBAI COD_BAIRRO, " 
+    cQry += " ZFC_BAIRRO DESCRICAO " 
+    cQry += " FROM "  
+    cQry += RetSQLName("ZFC") 
+    cQry += " WHERE D_E_L_E_T_ = ' '  " 
+    cQry += " AND ZFC_FILIAL = '" + xFilial("ZFC") + "' " 
+    cQry += " AND ZFC_CODMUN <> ' ' "
+    cQry += " AND ZFC_CODBAI <> ' ' "
+    cQry += " AND ZFC_BAIRRO <> ' ' "
+    cQry += " ORDER BY EST,COD_MUN,COD_BAIRRO " 
+
+    cQry := ChangeQuery(cQry)
+
+    If Select("GETPBAIR") > 0
+        GETPBAIR->( DbCloseArea() )
+    EndIf
+    
+    MPSysOpenQuery(cQry, "GETPBAIR")
+
+    If GETPBAIR->( !EOF() )
+        While GETPBAIR->( !EOF() )
+            oVirtusBairros := Nil
+            oVirtusBairros := VirtusBairros():New()
+            oVirtusBairros:cnpj := cCnpj
+            oVirtusBairros:uf := Alltrim(GETPBAIR->EST)
+            oVirtusBairros:city := Alltrim(FwNoAccent(GETPBAIR->DESC_MUN))
+            oVirtusBairros:city_code := Alltrim(GETPBAIR->COD_MUN)
+            oVirtusBairros:description := Alltrim(FwNoAccent(GETPBAIR->DESCRICAO))
+            oVirtusBairros:code := Alltrim(GETPBAIR->COD_BAIRRO)
+
+            AADD(aBairros, oVirtusBairros:toJsonObject())
+
+            GETPBAIR->( dbSkip() )
+        EndDo
+    EndIf
+
+    If Select("GETPBAIR") > 0
+        GETPBAIR->( DbCloseArea() )
+    EndIf
+
+Return(aBairros)
+
+/*/{Protheus.doc} sendPlansItems
+Envia bairros para Virtus
+@type function
+@version 1.0
+@author raphael martins
+@since 25/09/2023
+@param cCnpj, character
+/*/
+Static Function sendBairros(cCnpj)
+    Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+    Local cPath := "/neighborhood/create/"
+    Local aHeadStr := {}
+    Local oRestClient := Nil
+    Local aPlansBairros := {}
+    Local oBairrosList := JsonObject():New()
+    Local oResponse := JsonObject():New()
+
+    AADD(aHeadStr,"Content-Type:application/json")
+
+    aPlansBairros := getBairros(cCnpj)
+    oBairrosList["bairros"] := aPlansBairros
+
+    If Len(aPlansBairros) > 0
+        oRestClient := FWRest():New(cHost)
+        oRestClient:SetPath(cPath)  
+        oRestClient:SetPostParams( oBairrosList:toJSON() )
+
+        If oRestClient:Post(aHeadStr)
+            oResponse:fromJson(oRestClient:GetResult())
+            MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+        Else
+            MsgAlert(oRestClient:GetResult())
+        EndIf
+
+        U_GrvLogU56("ZFC", oBairrosList:toJSON(), oRestClient:GetResult())
+    EndIf
+
+Return

@@ -1,0 +1,129 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW04
+Integracao de Itens das Regras para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW04
+	Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+	Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+	If MsgYesNo('Deseja realmente integrar os itens das regras da sua base ao Virtus?')
+		sendRulesItems(cCnpj)
+	EndIf
+Return
+
+/*/{Protheus.doc} getRulesItems
+Busca itens das regras com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aRulesItems, array
+/*/
+Static Function getRulesItems(cCnpj)
+	Local cQry := ""
+	Local nQtdReg := 0
+	Local aRulesItems := {}
+	Local oVirtusRegraItem := Nil
+
+	cQry := "SELECT UJ6.UJ6_CODIGO CODIGO, "
+	cQry += "    UJ6.UJ6_REGRA REGRA, "
+	cQry += "    UJ6.UJ6_TPREGR TIPO_REGRA, "
+	cQry += "    UJ6.UJ6_TPBENE TIPO_BENEF, "
+	cQry += "    UJ6.UJ6_VLRINI VALOR_INICIAL, "
+	cQry += "    UJ6.UJ6_VLRFIM VALOR_FINAL, "
+	cQry += "    UJ6.UJ6_VLRCOB VALOR_COBR, "
+	cQry += "    UJ6.UJ6_ADESAO ADESAO, "
+	cQry += "    UJ6.UJ6_INDIVI INDIVIDUAL "
+	cQry += "FROM "+ RetSqlName("UJ5") +" UJ5 "
+	cQry += "INNER JOIN "+ RetSqlName("UJ6") +" UJ6 "
+	cQry += "    ON UJ6.D_E_L_E_T_ <> '*' "
+	cQry += "    AND UJ6.UJ6_FILIAL = UJ5.UJ5_FILIAL "
+	cQry += "    AND UJ6.UJ6_CODIGO = UJ5.UJ5_CODIGO "
+	cQry += "WHERE UJ5.D_E_L_E_T_ <> '*' "
+	cQry += "    AND UJ5.UJ5_FILIAL = '"+ xFilial("UJ5") +"' "
+	cQry += "    AND UJ5.UJ5_STATUS = 'A' "
+	cQry += "    AND UJ5.UJ5_XSINCR = 'S' "
+	cQry += "ORDER BY UJ6.UJ6_CODIGO, UJ6.UJ6_REGRA "
+	cQry := ChangeQuery(cQry)
+
+	If Select("GETRUITM") > 0
+		GETRUITM->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "GETRUITM")
+
+	If GETRUITM->(!EOF())
+		While GETRUITM->( !EOF() )
+			oVirtusRegraItem := Nil
+			oVirtusRegraItem := VirtusRegraItem():New()
+			oVirtusRegraItem:chave_regra_item := AllTrim(cCnpj + GETRUITM->CODIGO + GETRUITM->REGRA)
+			oVirtusRegraItem:cnpj := cCnpj
+			oVirtusRegraItem:codigo := AllTrim(GETRUITM->CODIGO)
+			oVirtusRegraItem:item := AllTrim(GETRUITM->REGRA)
+			oVirtusRegraItem:tipo_regra := AllTrim(GETRUITM->TIPO_REGRA)
+			oVirtusRegraItem:tipo_beneficiario := AllTrim(GETRUITM->TIPO_BENEF)
+			oVirtusRegraItem:valor_inicial := GETRUITM->VALOR_INICIAL
+			oVirtusRegraItem:valor_final := GETRUITM->VALOR_FINAL
+			oVirtusRegraItem:valor_cobranca := GETRUITM->VALOR_COBR
+			oVirtusRegraItem:individual := GETRUITM->INDIVIDUAL
+			oVirtusRegraItem:chave_regra := AllTrim(cCnpj + GETRUITM->CODIGO)
+			oVirtusRegraItem:adesao_regra := GETRUITM->ADESAO
+			AADD(aRulesItems, oVirtusRegraItem:toJsonObject())
+
+			GETRUITM->( dbSkip() )
+		EndDo
+	EndIf
+
+	If Select("GETRUITM") > 0
+		GETRUITM->( DbCloseArea() )
+	EndIf
+
+Return(aRulesItems)
+
+/*/{Protheus.doc} sendRulesItems
+Envia itens das regras para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendRulesItems(cCnpj)
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/regraitem/" + cCnpj
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local aRulesItems := {}
+	Local oRulesItems := JsonObject():New()
+	Local oResponse := JsonObject():New()
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	aRulesItems := getRulesItems(cCnpj)
+	oRulesItems["regrasItens"] := aRulesItems
+
+	If Len(aRulesItems) > 0
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oRulesItems:toJSON() )
+
+		If oRestClient:Post(aHeadStr)
+			oResponse:fromJson(oRestClient:GetResult())
+			MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+		Else
+			MsgAlert(oRestClient:GetResult())
+		EndIf
+
+		U_GrvLogU56("UJ6", oRulesItems:toJSON(), oRestClient:GetResult())
+	EndIf
+
+Return

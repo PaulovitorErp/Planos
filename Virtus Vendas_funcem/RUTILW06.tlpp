@@ -1,0 +1,128 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE 'RESTFUL.CH'
+#INCLUDE 'TOPCONN.ch'
+#INCLUDE 'TBICONN.CH'
+
+/*/{Protheus.doc} RUTILW06
+Integracao de Planos para base do Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 22/07/2020
+/*/
+User Function RUTILW06
+	Local aSM0Data := FWSM0Util():GetSM0Data(cEmpAnt, cFilAnt, { "M0_CGC" })
+	Local cCnpj := AllTrim( aSM0Data[1][2] )
+
+	If MsgYesNo('Deseja realmente integrar os planos da sua base ao Virtus?')
+		sendPlans(cCnpj)
+	EndIf
+Return
+
+/*/{Protheus.doc} getPlans
+Busca planos com flags de sincronizacao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+@return aPlans, array
+/*/
+Static Function getPlans(cCnpj)
+	Local cQry := ""
+	Local nQtdReg := 0
+	Local aPlans := {}
+	Local oVirtusPlano := Nil
+
+	cQry := "SELECT UF0_CODIGO CODIGO, "
+	cQry += "    UF0_DESCRI DESCRICAO, "
+	cQry += "    UF0_DTINI VIG_INICIAL, "
+	cQry += "    UF0_DTFIM VIG_FINAL, "
+	cQry += "    UF0_STATUS STATUS, "
+	cQry += "    UF0_ADESAO TAXA_ADESAO, "
+	cQry += "    UF0_ADPARC ADESAO_VLR_PARCELA, "
+	cQry += "    UF0_TABPRE TABELA_PRECO, "
+	cQry += "    UF0_ADREGR AD_REGRA,
+	cQry += "    UF0_REGRA REGRA "
+	cQry += "FROM " + RetSqlName("UF0")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "AND UF0_FILIAL = '"+ xFilial("UF0") +"' "
+	cQry += "AND UF0_STATUS = 'A' "
+	cQry += "AND UF0_XSINCR = 'S' "
+	cQry := ChangeQuery(cQry)
+
+	If Select("GETPLAN") > 0
+		GETPLAN->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "GETPLAN")
+
+	If GETPLAN->(!EOF())
+		While GETPLAN->( !EOF() )
+			oVirtusPlano := Nil
+			oVirtusPlano := VirtusPlano():New()
+			oVirtusPlano:chave_plano := AllTrim(cCnpj + GETPLAN->CODIGO)
+			oVirtusPlano:cnpj := cCnpj
+			oVirtusPlano:codigo := AllTrim(GETPLAN->CODIGO)
+			oVirtusPlano:descricao := AllTrim(GETPLAN->DESCRICAO)
+			oVirtusPlano:vigencia_inicial := IIF(!Empty(GETPLAN->VIG_INICIAL),;
+				FWTimeStamp(5, STOD(GETPLAN->VIG_INICIAL), "00:00:00"), Nil)
+			oVirtusPlano:vigencia_final := IIF(!Empty(GETPLAN->VIG_FINAL),;
+				FWTimeStamp(5, STOD(GETPLAN->VIG_FINAL), "00:00:00"), Nil)
+			oVirtusPlano:status := GETPLAN->STATUS
+			oVirtusPlano:taxa_adesao := GETPLAN->TAXA_ADESAO
+			oVirtusPlano:adesao_valor_parcela := GETPLAN->ADESAO_VLR_PARCELA
+			oVirtusPlano:qrcode_link := ""
+			oVirtusPlano:chave_tabela := AllTrim(cCnpj + GETPLAN->TABELA_PRECO)
+			oVirtusPlano:chave_regra := AllTrim(cCnpj + GETPLAN->REGRA)
+			oVirtusPlano:adesao_regra := Alltrim(GETPLAN->AD_REGRA)
+			AADD(aPlans, oVirtusPlano:toJsonObject())
+
+			GETPLAN->( dbSkip() )
+		EndDo
+	EndIf
+
+	If Select("GETPLAN") > 0
+		GETPLAN->( DbCloseArea() )
+	EndIf
+
+Return(aPlans)
+
+/*/{Protheus.doc} sendPlans
+Envia planos para Virtus
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+@param cCnpj, character
+/*/
+Static Function sendPlans(cCnpj)
+	Local cHost := SuperGetMV("MV_XURLVIR", .F., "https://contratos.virtusapp.com.br")
+	Local cPath := "/plano/" + cCnpj
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local aPlans := {}
+	Local oPlans := JsonObject():New()
+	Local oResponse := JsonObject():New()
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	aPlans := getPlans(cCnpj)
+	oPlans["planos"] := aPlans
+
+	If Len(aPlans) > 0
+		oRestClient := FWRest():New(cHost)
+		oRestClient:SetPath(cPath)
+		oRestClient:SetPostParams( oPlans:toJSON() )
+
+		If oRestClient:Post(aHeadStr)
+			oResponse:fromJson(oRestClient:GetResult())
+			MsgInfo(oResponse["msg"] + " - Registros: " + cValToChar(oResponse["registros"]))
+		Else
+			MsgAlert(oRestClient:GetResult())
+		EndIf
+
+		U_GrvLogU56("UF0", oPlans:toJSON(), oRestClient:GetResult())
+	EndIf
+
+Return

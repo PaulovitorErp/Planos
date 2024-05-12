@@ -1,0 +1,46 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusTabelaPreco
+Classe VirtusTabelaPreco
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusTabelaPreco
+Return
+
+Class VirtusTabelaPreco
+
+    Public Data chave_tabela as character
+    Public Data cnpj as character
+    Public Data codigo as character
+    Public Data preco as numeric
+    Public Data chave_produto as character
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusTabelaPreco
+
+    ::chave_tabela := ""
+    ::cnpj := ""
+    ::codigo := ""
+    ::preco := 0
+    ::chave_produto := ""
+
+Return Self
+
+Method toJsonObject() Class VirtusTabelaPreco
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_tabela"] := ::chave_tabela
+    oJson["cnpj"] := ::cnpj
+    oJson["codigo"] := ::codigo
+    oJson["preco"] := ::preco
+    oJson["chave_produto"] := ::chave_produto
+
+Return oJson

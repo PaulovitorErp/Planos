@@ -1,0 +1,192 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusVenda
+Classe VirtusVenda
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/08/2020
+/*/
+User Function VirtusVenda
+Return
+
+    Class VirtusVenda
+
+        Public Data _id as character
+        Public Data contrato as character
+        Public Data cnpj as character
+        Public Data plano as character
+        Public Data vendedor as object
+        Public Data equipe as object
+        Public Data tipo as character
+        Public Data observacao as character
+        Public Data versao as character
+        Public Data status as character
+        Public Data titular as object
+        Public Data beneficiarios as array
+        Public Data adiantamento as object
+        Public Data adesao as object
+        Public Data recorrencia as object
+        Public Data produtos as array
+        Public Data primeiro_vencimento as date
+        Public Data forma_pagto_parcelas as character
+        Public Data valor_adicionais as numeric
+        Public Data valor_itens_adicionais as numeric
+        Public Data valor_plano as numeric
+        Public Data valor_total as numeric
+        Public Data imagens as object
+        Public Data processamento_erp as object
+        Public Data data_da_criacao_app as date
+        Public Data datahora_aprovacao as date
+        Public Data datahora_devolucao as date
+        Public Data datahora_sicronismo_erp as date
+
+        Public Method New() Constructor
+        Public Method fromJson(cJson)
+        Public Method formatData()
+
+    EndClass
+
+/*/{Protheus.doc} VirtusVenda::New
+Nova Instancia da Classe
+@type method
+@version 1.0
+@author nata.queiroz
+@since 17/08/2020
+@return self, object
+/*/
+Method New() Class VirtusVenda
+
+    ::_id := ""
+    ::contrato := ""
+    ::cnpj := ""
+    ::plano := ""
+    ::vendedor := Nil
+    ::equipe := Nil
+    ::tipo := ""
+    ::observacao := ""
+    ::versao := ""
+    ::status := ""
+    ::titular := Nil
+    ::beneficiarios := {}
+    ::adiantamento := Nil
+    ::adesao := Nil
+    ::recorrencia := Nil
+    ::produtos := {}
+    ::primeiro_vencimento := STOD(Space(8))
+    ::forma_pagto_parcelas := ""
+    ::valor_adicionais := 0
+    ::valor_itens_adicionais := 0
+    ::valor_plano := 0
+    ::valor_total := 0
+    ::imagens := Nil
+    ::processamento_erp := Nil
+    ::data_da_criacao_app := STOD(Space(8))
+    ::datahora_aprovacao := STOD(Space(8))
+    ::datahora_devolucao := STOD(Space(8))
+    ::datahora_sicronismo_erp := STOD(Space(8))
+
+Return Self
+
+/*/{Protheus.doc} VirtusVenda::fromJson
+Converte de json para objeto
+@type method
+@version 1.0
+@author nata.queiroz
+@since 17/08/2020
+@param cJson, character
+@return lRet, logic
+/*/
+Method fromJson(cJson) Class VirtusVenda
+
+    Local oJson := JsonObject():New()
+    Local xRet := Nil
+    Local lRet := .F.
+    Local lHVerao := GetMv("MV_HVERAO")
+    Local nHVerao := IIF(lHVerao, 1, 0)
+
+    xRet := oJson:fromJson(cJson)
+    lRet := ValType(xRet) == "U"
+
+    if lRet
+        ::_id := oJson["_id"]
+        ::cnpj := oJson["cnpj"]
+        ::plano := oJson["plano"]
+        ::vendedor := oJson["vendedor"]
+        ::equipe := oJson["equipe"]
+        ::tipo := oJson["tipo"]
+        ::observacao := oJson["observacao"]
+        ::versao := oJson["versao"]
+        ::status := oJson["status"]
+        ::titular := oJson["titular"]
+        ::beneficiarios := oJson["beneficiarios"]
+        ::adiantamento := oJson["adiantamento"]
+        ::adesao := oJson["adesao"]
+        ::recorrencia := oJson["recorrencia"]
+        ::produtos := oJson["produtos"]
+        ::primeiro_vencimento := IIF(oJson["primeiro_vencimento"] <> Nil,;
+            FwDateTimeToLocal(oJson["primeiro_vencimento"], nHVerao)[1], STOD(Space(8)) )
+        ::forma_pagto_parcelas := IIF(oJson["forma_pagto_parcelas"] <> Nil,;
+            oJson["forma_pagto_parcelas"] , "")
+        ::valor_adicionais := oJson["valor_adicionais"]
+        ::valor_itens_adicionais := oJson["valor_itens_adicionais"]
+        ::valor_plano := oJson["valor_plano"]
+        ::valor_total := oJson["valor_total"]
+        ::imagens := oJson["imagens"]
+        ::processamento_erp := oJson["processamento_erp"]
+        ::data_da_criacao_app := FwDateTimeToLocal(oJson["data_da_criacao_app"], nHVerao)[1]
+        ::datahora_aprovacao := FwDateTimeToLocal(oJson["datahora_aprovacao"], nHVerao)[1]
+        ::datahora_devolucao := IIF(oJson["datahora_devolucao"] <> Nil,;
+            FwDateTimeToLocal(oJson["datahora_devolucao"], nHVerao)[1], STOD(Space(8)) )
+        ::datahora_sicronismo_erp := IIF(oJson["datahora_sicronismo_erp"] <> Nil,;
+            FwDateTimeToLocal(oJson["datahora_sicronismo_erp"], nHVerao)[1], STOD(Space(8)) )
+
+        //-- Formata dados do modelo --//
+        ::formatData()
+    endif
+
+Return lRet
+
+/*/{Protheus.doc} VirtusVenda::formatData
+Formata dados do modelo
+@type method
+@version 1.0
+@author nata.queiroz
+@since 20/08/2020
+/*/
+Method formatData() Class VirtusVenda
+
+    //-- Formata IDs recorrencia --//
+    ::recorrencia["idClienteVindi"] := cValToChar(::recorrencia["idClienteVindi"])
+    ::recorrencia["idPerfilPgto"] := cValToChar(::recorrencia["idPerfilPgto"])
+
+    //-- Formata data validade recorrencia --//
+    ::recorrencia["validade"] := SubStr(::recorrencia["validade"], 6, 2) + SubStr(::recorrencia["validade"], 1, 4)
+
+    //-- Formatacoes adesao e adiantamento --//
+    ::adesao["bandeira"] := Upper(::adesao["bandeira"])
+    ::adiantamento["bandeira"] := Upper(::adiantamento["bandeira"])
+    ::adesao["gateway"] := cValToChar(::adesao["gateway"])
+    ::adiantamento["gateway"] := cValToChar(::adiantamento["gateway"])
+    ::adesao["forma_de_pagamento"] := IIF( AllTrim(::adesao["forma_de_pagamento"]) == "DI",;
+        "R$", ::adesao["forma_de_pagamento"])
+    ::adiantamento["forma_de_pagamento"] := IIF( AllTrim(::adiantamento["forma_de_pagamento"]) == "DI",;
+        "R$", ::adiantamento["forma_de_pagamento"])
+    ::adesao["valor"] := IIF(ValType( ::adesao["valor"] ) == "C",;
+        Val( ::adesao["valor"] ), ::adesao["valor"])
+    ::adiantamento["valor"] := IIF(ValType( ::adiantamento["valor"] ) == "C",;
+        Val( ::adiantamento["valor"] ), ::adiantamento["valor"])
+    ::adiantamento["quantidade"] := IIF(ValType( ::adiantamento["quantidade"] ) == "C",;
+        Val( ::adiantamento["quantidade"] ), ::adiantamento["quantidade"])
+
+    //-- Formatacoes Titular --//
+    ::titular["municipio"] := PadL(AllTrim(::titular["municipio"]), TamSx3("A1_COD_MUN")[1], "0")
+    ::titular["estado_civil"] := Upper( AllTrim(::titular["estado_civil"]) )
+    ::titular["referencia"] := SubStr(::titular["referencia"], 1, TamSX3("A1_XREFERE")[1])
+    ::titular["apelido"] := SubStr(::titular["apelido"], 1, TamSX3("A1_NREDUZ")[1])
+    ::titular["endereco"] := SubStr(AllTrim(::titular["endereco"]) + " Nr " + ::titular["numero"], 1, TamSX3("A1_END")[1])
+
+    //-- Formatacao Plano --//
+    ::plano := PadL(::plano, TamSX3("UF2_CODIGO")[1], "0")
+
+Return

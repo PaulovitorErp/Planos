@@ -1,0 +1,43 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusRegra
+Classe VirtusRegra
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function VirtusRegra
+Return
+
+Class VirtusRegra
+
+    Public Data chave_regra as character
+    Public Data cnpj as character
+    Public Data codigo as character
+    Public Data descricao as character
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class VirtusRegra
+
+    ::chave_regra := ""
+    ::cnpj := ""
+    ::codigo := ""
+    ::descricao := ""
+
+Return Self
+
+Method toJsonObject() Class VirtusRegra
+
+    Local oJson := JsonObject():New()
+
+    oJson["chave_regra"] := ::chave_regra
+    oJson["cnpj"] := ::cnpj
+    oJson["codigo"] := ::codigo
+    oJson["descricao"] := ::descricao
+
+Return oJson
