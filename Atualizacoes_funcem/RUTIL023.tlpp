@@ -1,0 +1,1388 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TOPCONN.CH"
+
+// Direções disponívels para o parâmetro nDirection do construtor e da respectiva propriedade
+#DEFINE LAYOUT_LINEAR_L2R 0 // LEFT TO RIGHT
+#DEFINE LAYOUT_LINEAR_R2L 1 // RIGHT TO LEFT
+#DEFINE LAYOUT_LINEAR_T2B 2 // TOP TO BOTTOM
+#DEFINE LAYOUT_LINEAR_B2T 3 // BOTTOM TO TOP
+
+// Definições de alinhamento específicas para o parâmetro nAlign do método addInLayout
+#DEFINE LAYOUT_ALIGN_LEFT     1
+#DEFINE LAYOUT_ALIGN_RIGHT    2
+#DEFINE LAYOUT_ALIGN_HCENTER  4
+#DEFINE LAYOUT_ALIGN_TOP      32
+#DEFINE LAYOUT_ALIGN_BOTTOM   64
+#DEFINE LAYOUT_ALIGN_VCENTER  128
+
+/*/{Protheus.doc} RUTIL023
+Consulta Clientes
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 16/06/2021
+/*/
+User Function RUTIL023
+	Local cTitle := "Consulta Clientes"
+	Local aObjects := {}
+	Local aSizeAut := MsAdvSize(.F.)
+	Local aInfo := {}
+	Local aPosObj := {}
+	Local aPosObj1 := {}
+
+	Local oGroup1 := Nil
+	Local oGroup3 := Nil
+	Local oGroup4 := Nil
+
+	Local oTSay1 := Nil
+	Local oTGet1 := Nil
+	Local cTGet1 := Space(60) // Nome
+	Local oTSay2 := Nil
+	Local oTGet2 := Nil
+	Local cTGet2 := Space(20) // CPF
+
+	Local oTButton1 := Nil
+	Local bTButt1Act := {|| BuscarDados(cTGet1, cTGet2, cAliasTrb1, cAliasTrb2, @oBrowse1, @oBrowse2) }
+	Local oTButton2 := Nil
+	Local bTButt2Act := {|| FWMsgRun(,{|| LimparFiltros(@cTGet1, @cTGet2, cAliasTrb1, cAliasTrb2,;
+		@oBrowse1, @oBrowse2) }, 'Aguarde...','Limpando filtros e consultas...') }
+
+	Local oTPanel1 := Nil
+	Local oTLayout1 := Nil
+	Local oBtnOpc1 := Nil
+	Local bTButtOpc1 := {|| ExecutarOperacao(cAliasTrb1, 1) }
+	Local oBtnOpc2 := Nil
+	Local bTButtOpc2 := {|| ExecutarOperacao(cAliasTrb1, 2) }
+	Local oBtnOpc3 := Nil
+	Local bTButtOpc3 := {|| ExecutarOperacao(cAliasTrb1, 3) }
+	Local oBtnOpc4 := Nil
+	Local bTButtOpc4 := {|| ExecutarOperacao(cAliasTrb1, 4) }
+	Local oBtnOpc5 := Nil
+	Local bTButtOpc5 := {|| ExecutarOperacao(cAliasTrb1, 5) }
+	Local oBtnOpc6 := Nil
+	Local bTButtOpc6 := {|| ExecutarOperacao(cAliasTrb1, 6) }
+	Local oBtnOpc7 := Nil
+	Local bTButtOpc7 := {|| ExecutarOperacao(cAliasTrb1, 7) }
+	Local oBtnOpc8 := Nil
+	Local bTButtOpc8 := {|| U_FUNA002LEG() }
+	Local oBtnOpc9 := Nil
+	Local bTButtOpc9 := {|| oDlg:End() }
+
+	Local oTPanel2 := Nil
+	Local oBrowse1 := Nil
+	Local oTempContratos := Nil
+	Local cAliasTrb1 := "TBR1X"
+
+	Local oTPanel3 := Nil
+	Local oBrowse2 := Nil
+	Local oTempBeneficiarios := Nil
+	Local cAliasTrb2 := "TBR2X"
+
+	Local oFontLabel := TFont():New("Arial",,016,,.F.,,,,,.F.,.F.)
+
+	Static oDlg := Nil
+
+	// Parametros Objeto Principal
+	AADD( aObjects, { 100, 40, .T., .T. } ) // Fitros
+	AADD( aObjects, { 100, 30, .T., .T., .T. } ) // Operações
+	AADD( aObjects, { 100, 100, .T., .T. } ) // Contratos
+	AADD( aObjects, { 100, 100, .T., .T. } ) // Autorizados/Beneficiários
+	aInfo := { aSizeAut[1], aSizeAut[2], aSizeAut[3], aSizeAut[4], 2, 2 }
+	aPosObj := MsObjSize(aInfo, aObjects, .T. , .F.)
+
+	// Paramentros Objeto Filtros
+	aObjects := {}
+	AADD( aObjects, { 10, 120, .T., .T., .T. } ) // Nome
+	AADD( aObjects, { 10, 120, .T., .T., .T. } ) // CPF/CNPJ
+	AADD( aObjects, { 15, 80, .T., .T., .T. } ) // Botão Filtrar
+	AADD( aObjects, { 15, 80, .T., .T., .T. } ) // Botão Limpar
+	aInfo := { aPosObj[1,2], aPosObj[1,1], aPosObj[1,4], aPosObj[1,3], 2, 2, 10, 25 }
+	aPosObj1 := MsObjSize(aInfo, aObjects, .T. , .T.)
+
+	DEFINE MSDIALOG oDlg TITLE cTitle FROM aSizeAut[7], 0 TO aSizeAut[6], aSizeAut[5] COLORS 0, 16777215 PIXEL
+
+	//--------------------//
+	//-- Objeto Filtros --//
+	//--------------------//
+	oGroup1 := TGroup():New(aPosObj[1,1],aPosObj[1,2],aPosObj[1,3],aPosObj[1,4],"Filtros",oDlg,,,.T.)
+	oTSay1 := TSay():New( aPosObj1[1,1]*0.7,aPosObj1[1,2],{||"Nome"},oGroup1,,oFontLabel,,,,.T.,/*nClrText*/,/*nClrBack*/,100,10 )
+	oTGet1 := TGet():New( aPosObj1[1,1],aPosObj1[1,2],{ |u| If( PCount() == 0, cTGet1, cTGet1 := u ) },oGroup1,120,010,"@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.F.,.F.,,cTGet1,,,, )
+	oTSay2 := TSay():New( aPosObj1[2,1]*0.7,aPosObj1[2,2],{||"CPF/CNPJ"},oGroup1,,oFontLabel,,,,.T.,/*nClrText*/,/*nClrBack*/,100,10 )
+	oTGet2 := TGet():New( aPosObj1[2,1],aPosObj1[2,2],{ |u| If( PCount() == 0, cTGet2, cTGet2 := u ) },oGroup1,120,010,"@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.F.,.F.,,cTGet2,,,, )
+	oTButton1 := TButton():New( aPosObj1[3,1]*0.94, aPosObj1[3,2], "Filtrar",oDlg,bTButt1Act,80,15,,oFontLabel,.F.,.T.,.F.,,.F.,,,.F. )
+	oTButton2 := TButton():New( aPosObj1[4,1]*0.94, aPosObj1[4,2]*0.78, "Limpar",oDlg,bTButt2Act,80,15,,oFontLabel,.F.,.T.,.F.,,.F.,,,.F. )
+	oTButton1:SetCss( CSSBotoesAzul( aSizeAut[5] ) )
+	oTButton2:SetCss( CSSBotoesCinza( aSizeAut[5] ) )
+
+	//----------------------//
+	//-- Objeto Operações --//
+	//----------------------//
+	oTPanel1 := TPanel():New(aPosObj[2,1],aPosObj[2,2],/*cText*/,oDlg,oFontLabel,.T.,,/*nClrText*/,/*nClrText*/,(aSizeAut[5]*0.495),40)
+	oTLayout1 := TLinearLayout():New(oTPanel1,LAYOUT_LINEAR_L2R,LAYOUT_ALIGN_LEFT,(aSizeAut[5]*0.495),40)
+	oBtnOpc1 := TBtnBmp2():New( 0,0,50,50,'r23_browse',,,,bTButtOpc1,oTLayout1,"Browse",,.T. )
+	oBtnOpc2 := TBtnBmp2():New( 0,0,50,50,'r23_visual',,,,bTButtOpc2,oTLayout1,"Visualizar",,.T. )
+	oBtnOpc3 := TBtnBmp2():New( 0,0,50,50,'r23_alterar',,,,bTButtOpc3,oTLayout1,"Alterar",,.T. )
+	oBtnOpc4 := TBtnBmp2():New( 0,0,50,50,'r23_painel',,,,bTButtOpc4,oTLayout1,"Painel Financeiro",,.T. )
+	oBtnOpc5 := TBtnBmp2():New( 0,0,50,50,'r23_transf',,,,bTButtOpc5,oTLayout1,"Transferência",,.T. )
+	oBtnOpc6 := TBtnBmp2():New( 0,0,50,50,'r23_apont',,,,bTButtOpc6,oTLayout1,"Apontamento",,.T. )
+	oBtnOpc7 := TBtnBmp2():New( 0,0,50,50,'r23_obito',,,,bTButtOpc7,oTLayout1,"Consulta Óbito",,.T. )
+	oBtnOpc8 := TButton():New( 0, 0, "Legenda",oTLayout1,bTButtOpc8,60,15,,oFontLabel,.F.,.T.,.F.,,.F.,,,.F. )
+	oBtnOpc9 := TButton():New( 0, 0, "Sair",oTLayout1,bTButtOpc9,60,15,,oFontLabel,.F.,.T.,.F.,,.F.,,,.F. )
+
+	oBtnOpc1:SetCss( CSSCustomButton() )
+	oBtnOpc2:SetCss( CSSCustomButton() )
+	oBtnOpc3:SetCss( CSSCustomButton() )
+	oBtnOpc4:SetCss( CSSCustomButton() )
+	oBtnOpc5:SetCss( CSSCustomButton() )
+	oBtnOpc6:SetCss( CSSCustomButton() )
+	oBtnOpc7:SetCss( CSSCustomButton() )
+	oBtnOpc8:SetCss( CSSBotoesCinza( aSizeAut[5] ) )
+	oBtnOpc9:SetCss( CSSBotoesVermelho( aSizeAut[5], .T. ) )
+
+	oTLayout1:AddInLayout(oBtnOpc1, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc2, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc3, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc4, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc5, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc6, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddInLayout(oBtnOpc7, LAYOUT_ALIGN_VCENTER)
+	oTLayout1:AddSpacer(8)
+	oTLayout1:AddInLayout(oBtnOpc8, LAYOUT_ALIGN_TOP)
+	oTLayout1:AddInLayout(oBtnOpc9, LAYOUT_ALIGN_TOP)
+
+	//----------------------//
+	//-- Objeto Contratos --//
+	//----------------------//
+	oGroup3 := TGroup():New(aPosObj[3,1],aPosObj[3,2],aPosObj[3,3],aPosObj[3,4],"Contratos",oDlg,,,.T.)
+	oTPanel2:= TPanel():New(aPosObj[3,1]*1.14,aPosObj[3,2]*3.2,/*cText*/,oGroup3,oFontLabel,.T.,,/*nClrText*/,/*nClrText*/,(aPosObj[3,4]-aPosObj[3,2])*0.99,(aPosObj[3,3]-aPosObj[3,1])*0.86)
+	CriarBrowseContratos(oTPanel2, @oBrowse1, @oBrowse2, @oTempContratos, cAliasTrb1, cAliasTrb2)
+
+	//--------------------------------------//
+	//-- Objeto Autorizados/Beneficiários --//
+	//--------------------------------------//
+	oGroup4 := TGroup():New(aPosObj[4,1],aPosObj[4,2],aPosObj[4,3],aPosObj[4,4],"Autorizados/Beneficiários",oDlg,,,.T.)
+	oTPanel3:= TPanel():New(aPosObj[4,1]*1.06,aPosObj[4,2]*3.2,/*cText*/,oGroup4,oFontLabel,.T.,,/*nClrText*/,/*nClrText*/,(aPosObj[4,4]-aPosObj[4,2])*0.99,(aPosObj[4,3]-aPosObj[4,1])*0.86)
+	CriarBrowseBeneficiarios(oTPanel3, @oBrowse2, @oTempBeneficiarios, cAliasTrb2)
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+	oTempContratos:Delete()
+	oTempBeneficiarios:Delete()
+
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( DbCloseArea() )
+	EndIf
+
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( DbCloseArea() )
+	EndIf
+
+Return
+
+/*/{Protheus.doc} CriarBrowseContratos
+Cria Browse de Contratos
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 18/06/2021
+@param oDialog, object, oDialog
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+@param oTempContratos, object, oTempContratos
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+/*/
+Static Function CriarBrowseContratos(oDialog, oBrowse1, oBrowse2, oTempContratos, cAliasTrb1, cAliasTrb2)
+	Local aFields := {}
+	Local aHeadAux := {}
+	Local aColunas := {}
+	Local oColumn := Nil
+	Local nX := 0
+	Local bChange := {|| ConsultarMembros( Nil, Nil, cAliasTrb1, cAliasTrb2, @oBrowse2 ) }
+	Local lHabTalona	:= SuperGetMV("MV_XHABTAL", .F., .F.)
+	Local nTamCodCtr	:= SuperGetMV("MV_XTCMPCT",.F.,6)
+	Local nTamDescPlan	:= SuperGetMV("MV_XTCMPPL",.F.,40)
+
+	Default oDialog := Nil
+	Default oBrowse1 := Nil
+	Default oTempContratos := Nil
+	Default cAliasTrb1 := ""
+
+	//-------------------------------------------//
+	//-- Cria tabela temporária para contratos --//
+	//-------------------------------------------//
+	AADD(aFields, {"TB1_STATUS", "C", 1, 0})
+	AADD(aFields, {"TB1_STTSFN", "C", 12, 0})
+	AADD(aFields, {"TB1_FILDES", "C", 16, 0})
+	AADD(aFields, {"TB1_CONTRA", "C", nTamCodCtr, 0})
+	AADD(aFields, {"TB1_CLIENT", TamSX3('A1_COD')[3], TamSX3('A1_COD')[1], TamSX3('A1_COD')[2]})
+	AADD(aFields, {"TB1_LOJA", TamSX3('A1_LOJA')[3], TamSX3('A1_LOJA')[1], TamSX3('A1_LOJA')[2]})
+	AADD(aFields, {"TB1_NOME", TamSX3('A1_NOME')[3], TamSX3('A1_NOME')[1], TamSX3('A1_NOME')[2]})
+
+	If lHabTalona
+		AADD(aFields, {"TB1_TALONA", "C", nTamCodCtr, 0})
+	EndIf
+
+	AADD(aFields, {"TB1_PLANO", "C", nTamDescPlan, 0})
+	AADD(aFields, {"TB1_CGC", TamSX3('A1_CGC')[3], TamSX3('A1_CGC')[1], TamSX3('A1_CGC')[2]})
+	AADD(aFields, {"TB1_TEL", "C", 18, 0})
+	AADD(aFields, {"TB1_DTATIV", "D", 8, 0})
+	AADD(aFields, {"TB1_MODULO", "C", 1, 0})
+	AADD(aFields, {"TB1_MSFIL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+	AADD(aFields, {"TB1_FILIAL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( DbCloseArea() )
+	EndIf
+
+	If oTempContratos <> Nil
+		FreeObj(oTempContratos)
+	EndIf
+
+	oTempContratos := FWTemporaryTable():New(cAliasTrb1)
+	oTempContratos:SetFields( aFields )
+	oTempContratos:AddIndex("1", {"TB1_FILIAL", "TB1_CONTRA"} )
+	oTempContratos:Create()
+
+	//-------------------------------------------//
+	//-- Cria colunas para browse de contratos --//
+	//-------------------------------------------//
+	//[1] - Campo da Temporaria
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB1_STTSFN", "Status Financeiro", "C", 12, 0, ""})
+	AADD(aHeadAux, {"TB1_FILDES", "Filial", "C", 16, 0, "" })
+	AADD(aHeadAux, {"TB1_CONTRA", "Contrato", "C", nTamCodCtr, 0, "@!" })
+	AADD(aHeadAux, {"TB1_CLIENT", "Cliente", TamSX3("A1_COD")[3], TamSX3("A1_COD")[1], TamSX3("A1_COD")[2], PesqPict("SA1","A1_COD") })
+	AADD(aHeadAux, {"TB1_LOJA", "Loja", TamSX3("A1_LOJA")[3], TamSX3("A1_LOJA")[1], TamSX3("A1_LOJA")[2], PesqPict("SA1","A1_LOJA") })
+	AADD(aHeadAux, {"TB1_NOME", "Titular", TamSX3("A1_NOME")[3], TamSX3("A1_NOME")[1], TamSX3("A1_NOME")[2], PesqPict("SA1","A1_NOME") })
+
+	If lHabTalona
+		AADD(aHeadAux, {"TB1_TALONA", "Talonario", "C", nTamCodCtr, 0, "@!" })
+	EndIf
+
+	AADD(aHeadAux, {"TB1_PLANO", "Plano/Produto", "C", nTamDescPlan, 0, "@!" })
+	AADD(aHeadAux, {"TB1_CGC", "CPF/CNPJ", TamSX3("A1_CGC")[3], TamSX3("A1_CGC")[1], TamSX3("A1_CGC")[2], PesqPict("SA1","A1_CGC") })
+	AADD(aHeadAux, {"TB1_TEL", "Telefone", "C", 18, 0, ""})
+	AADD(aHeadAux, {"TB1_DTATIV", "Data Ativacao", "D", 8, 0, PesqPict("SE1","E1_EMISSAO") })
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb1 + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//--------------------------------------//
+	//-- Cria e ativa browse de contratos --//
+	//--------------------------------------//
+	oBrowse1 := FWBrowse():New()
+	oBrowse1:DisableFilter()
+	oBrowse1:DisableConfig()
+	oBrowse1:DisableReport()
+	oBrowse1:DisableSeek()
+	oBrowse1:DisableSaveConfig()
+	oBrowse1:SetAlias(cAliasTrb1)
+	oBrowse1:SetDataTable()
+	oBrowse1:SetInsert(.F.)
+	oBrowse1:SetDelete(.F., { || .F. })
+	oBrowse1:SetChange(bChange)
+	oBrowse1:lHeaderClick := .F.
+	oBrowse1:AddLegend("TB1_STATUS == 'P'", "WHITE"	, "Pre-cadastrado")
+	oBrowse1:AddLegend("TB1_STATUS == 'A'", "GREEN"	, "Ativo")
+	oBrowse1:AddLegend("TB1_STATUS == 'S'", "ORANGE", "Suspenso")
+	oBrowse1:AddLegend("TB1_STATUS == 'C'", "BLUE"	, "Cancelado")
+	oBrowse1:AddLegend("TB1_STATUS == 'F'", "RED"	, "Finalizado")
+	oBrowse1:SetColumns(aColunas)
+	oBrowse1:SetOwner(oDialog)
+	oBrowse1:Activate()
+
+Return
+
+/*/{Protheus.doc} CriarBrowseBeneficiarios
+Cria Browse de Beneficiários
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 18/06/2021
+@param oDialog, object, oDialog
+@param oBrowse2, object, oBrowse2
+@param oTempBeneficiarios, object, oTempBeneficiarios
+@param cAliasTrb2, character, cAliasTrb2
+/*/
+Static Function CriarBrowseBeneficiarios(oDialog, oBrowse2, oTempBeneficiarios, cAliasTrb2)
+	Local aFields 		:= {}
+	Local aHeadAux 		:= {}
+	Local aColunas 		:= {}
+	Local oColumn 		:= Nil
+	Local nX 			:= 0
+	Local nTamCodCtr	:= SuperGetMV("MV_XTCMPCT",.F.,6)
+
+	Default oDialog := Nil
+	Default oBrowse2 := Nil
+	Default oTempBeneficiarios := Nil
+	Default cAliasTrb2 := "TRB1"
+
+	//-----------------------------------------------//
+	//-- Cria tabela temporária para beneficiários --//
+	//-----------------------------------------------//
+	AADD(aFields, {"TB2_FILIAL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+	AADD(aFields, {"TB2_CONTRA", "C", nTamCodCtr, 0})
+	AADD(aFields, {"TB2_TIPO", "C", 40, 0})
+	AADD(aFields, {"TB2_GRAU", "C", 40, 0})
+	AADD(aFields, {"TB2_NOME", TamSX3('A1_NOME')[3], TamSX3('A1_NOME')[1], TamSX3('A1_NOME')[2]})
+	AADD(aFields, {"TB2_CGC", TamSX3('A1_CGC')[3], TamSX3('A1_CGC')[1], TamSX3('A1_CGC')[2]})
+	AADD(aFields, {"TB2_DTNASC", TamSX3('A1_XDTNASC')[3], TamSX3('A1_XDTNASC')[1], TamSX3('A1_XDTNASC')[2]})
+
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( DbCloseArea() )
+	EndIf
+
+	If oTempBeneficiarios <> Nil
+		FreeObj(oTempBeneficiarios)
+	EndIf
+
+	oTempBeneficiarios := FWTemporaryTable():New(cAliasTrb2)
+	oTempBeneficiarios:SetFields( aFields )
+	oTempBeneficiarios:AddIndex("1", {"TB2_FILIAL", "TB2_CONTRA"} )
+	oTempBeneficiarios:AddIndex("2", {"TB2_FILIAL", "TB2_CONTRA", "TB2_CGC"} )
+	oTempBeneficiarios:Create()
+
+	//-----------------------------------------------//
+	//-- Cria colunas para browse de beneficiários --//
+	//-----------------------------------------------//
+	//[1] - Campo da Temporaria
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB2_CONTRA", "Contrato", "C", 6, 0, "@!" })
+	AADD(aHeadAux, {"TB2_TIPO", "Tipo", "C", 40, 0, ""})
+	AADD(aHeadAux, {"TB2_GRAU", "Parentesco", "C", 40, 0, ""})
+	AADD(aHeadAux, {"TB2_NOME", "Nome", TamSX3("A1_NOME")[3], TamSX3("A1_NOME")[1], TamSX3("A1_NOME")[2], PesqPict("SA1","A1_NOME") })
+	AADD(aHeadAux, {"TB2_CGC", "CPF/CNPJ", TamSX3("A1_CGC")[3], TamSX3("A1_CGC")[1], TamSX3("A1_CGC")[2], PesqPict("SA1","A1_CGC") })
+	AADD(aHeadAux, {"TB2_DTNASC", "Dt Nascimento", TamSX3("A1_XDTNASC")[3], TamSX3("A1_XDTNASC")[1], TamSX3("A1_XDTNASC")[2], PesqPict("SA1","A1_XDTNASC") })
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb2 + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//------------------------------------------//
+	//-- Cria e ativa browse de beneficiários --//
+	//------------------------------------------//
+	oBrowse2 := FWBrowse():New()
+	oBrowse2:DisableFilter()
+	oBrowse2:DisableConfig()
+	oBrowse2:DisableReport()
+	oBrowse2:DisableSeek()
+	oBrowse2:DisableSaveConfig()
+	oBrowse2:SetAlias(cAliasTrb2)
+	oBrowse2:SetDataTable()
+	oBrowse2:SetInsert(.F.)
+	oBrowse2:SetDelete(.F., { || .F. })
+	oBrowse2:lHeaderClick := .F.
+	oBrowse2:SetColumns(aColunas)
+	oBrowse2:SetOwner(oDialog)
+	oBrowse2:Activate()
+
+Return
+
+/*/{Protheus.doc} BuscarDados
+Busca dados dos contratos conforme filtro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 22/06/2021
+@param cNome, character, cNome
+@param cCpfCnpj, character, cCpfCnpj
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+/*/
+Static Function BuscarDados(cNome, cCpfCnpj, cAliasTrb1, cAliasTrb2, oBrowse1, oBrowse2)
+	Local oProcess := Nil
+	Local lEnd := .F.
+
+	Default cNome := ""
+	Default cCpfCnpj := ""
+
+	If ValidarFiltros(@cNome, @cCpfCnpj)
+
+		oProcess := MsNewProcess():New( {|lEnd| ConsultarDados( @oProcess, @lEnd, cNome, cCpfCnpj,;
+			cAliasTrb1, cAliasTrb2, @oBrowse1, @oBrowse2 ) },;
+			"Consultando dados...","Aguarde! Consultando dados do cliente...", .T. )
+
+		oProcess:Activate()
+
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ValidarFiltros
+Valida preenchimento dos filtros
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 22/06/2021
+@param cNome, character, cNome
+@param cCpfCnpj, character, cCpfCnpj
+@return logical, lRet
+/*/
+Static Function ValidarFiltros(cNome, cCpfCnpj)
+	Local lRet := .T.
+
+	If !Empty(cNome) .Or. !Empty(cCpfCnpj)
+		If !Empty(cCpfCnpj) // Formata cpf/cnpj
+			cCpfCnpj := StrTran(cCpfCnpj,".","")
+			cCpfCnpj := StrTran(cCpfCnpj,"-","")
+		EndIf
+	Else
+		lRet := .F.
+		MsgAlert("Nenhum filtro informado. Por favor informe um filtro.", "Consulta Clientes")
+	EndIf
+
+Return lRet
+
+/*/{Protheus.doc} ConsultarDados
+Consulta dados filtrando parâmetros informados
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 23/06/2021
+@param oProcess, object, oProcess
+@param lEnd, logical, lEnd
+@param cNome, character, cNome
+@param cCpfCnpj, character, cCpfCnpj
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+/*/
+Static Function ConsultarDados(oProcess, lEnd, cNome, cCpfCnpj, cAliasTrb1, cAliasTrb2, oBrowse1, oBrowse2)
+
+	oProcess:SetRegua1(2)
+
+	ConsultarContratos(@oProcess, @lEnd, cNome, cCpfCnpj, cAliasTrb1, @oBrowse1)
+
+	ConsultarMembros(@oProcess, @lEnd, cAliasTrb1, cAliasTrb2, @oBrowse2)
+
+Return
+
+/*/{Protheus.doc} ConsultarContratos
+Consulta contratos filtrando parâmetros informados
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 23/06/2021
+@param oProcess, object, oProcess
+@param lEnd, logical, lEnd
+@param cNome, character, cNome
+@param cCpfCnpj, character, cCpfCnpj
+@param cAliasTrb1, character, cAliasTrb1
+@param oBrowse1, object, oBrowse1
+/*/
+Static Function ConsultarContratos(oProcess, lEnd, cNome, cCpfCnpj, cAliasTrb1, oBrowse1)
+
+	Local cQry  		:= ""
+	Local oSX2			:= UGetSxFile():New
+	Local lAbreUF2		:= SuperGetMV("MV_XCCLUF2", .F., .T.)
+	Local lAbreU00		:= SuperGetMV("MV_XCCLU00", .F., .T.)
+	Local lHabTalona	:= SuperGetMV("MV_XHABTAL", .F., .F.)
+
+	Default cNome := ""
+	Default cCpfCnpj := ""
+	Default cAliasTrb1 := "TRB1"
+	Default oBrowse1 := Nil
+
+	oProcess:IncRegua1("Consultando contratos...")
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( __dbZap() )
+	EndIf
+
+	cQry := "SELECT DISTINCT * FROM ( "
+
+	//verifico se a tabela UF2 existe na base de dados
+	if Len(oSX2:GetInfoSX2("UF2")) > 0 .And. lAbreUF2
+		// CONTRATOS FUNERARIA
+		cQry += "SELECT DISTINCT UF2.UF2_STATUS TB1_STATUS, "
+		cQry += "	(UF2.UF2_MSFIL + ' - FUNERARIA') TB1_FILDES, "
+		cQry += "	UF2.UF2_CODIGO TB1_CONTRA, "
+
+		If lHabTalona
+			cQry += "	UF2.UF2_TALONA TB1_TALONA, "
+		EndIF
+		
+		cQry += "	SA1.A1_COD TB1_CLIENT, "
+		cQry += "	SA1.A1_LOJA TB1_LOJA, "
+		cQry += "	SA1.A1_NOME TB1_NOME, "
+		cQry += "	UF0.UF0_DESCRI TB1_PLANO, "
+		cQry += "	SA1.A1_CGC TB1_CGC, "
+		cQry += "	(SA1.A1_DDD + SA1.A1_TEL) TB1_TEL, "
+		cQry += "	UF2.UF2_DTATIV TB1_DTATIV, "
+		cQry += "	'F' TB1_MODULO, "
+		cQry += "	UF2.UF2_FILIAL TB1_FILIAL, "
+		cQry += "	UF2.UF2_MSFIL TB1_MSFIL, "
+		cQry += "	(SELECT COUNT(SE1.E1_NUM) QTD "
+		cQry += "		FROM "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+		cQry += "		WHERE SE1.D_E_L_E_T_ <> '*' "
+		cQry += "		AND SE1.E1_FILIAL = UF2.UF2_MSFIL "
+		cQry += "		AND SE1.E1_XCTRFUN = UF2.UF2_CODIGO "
+		cQry += "		AND SE1.E1_SALDO > 0 "
+		cQry += "		AND SE1.E1_VENCREA < '"+ DTOS(dDataBase) +"' "
+		cQry += "		AND SE1.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+		cQry += "		,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+		cQry += "		,'IV-','RA','NCC','NDC')) TB1_STTSFN "
+		cQry += "FROM "+ RetSqlName("SA1") +" SA1 (NOLOCK) "
+		cQry += "INNER JOIN "+ RetSqlName("UF2") +" UF2 (NOLOCK) "
+		cQry += "	ON UF2.D_E_L_E_T_ <> '*' "
+		cQry += "	AND UF2.UF2_CLIENT = SA1.A1_COD "
+		cQry += "	AND UF2.UF2_LOJA = SA1.A1_LOJA "
+		cQry += "LEFT JOIN "+ RetSqlName("UF0") +" UF0 (NOLOCK) "
+		cQry += "	ON UF0.D_E_L_E_T_ <> '*' "
+		cQry += "	AND UF0.UF0_FILIAL = UF2.UF2_FILIAL "
+		cQry += "	AND UF0.UF0_CODIGO = UF2.UF2_PLANO "
+		cQry += "WHERE SA1.D_E_L_E_T_ <> '*' "
+		If !Empty(cNome)
+			cQry += "AND SA1.A1_NOME LIKE '%"+ AllTrim(cNome) +"%' "
+		EndIf
+		If !Empty(cCpfCnpj)
+			cQry += "AND SA1.A1_CGC LIKE '%"+ AllTrim(cCpfCnpj) +"%' "
+		EndIf
+
+		cQry += "UNION ALL "
+
+		// FUNERARIA BENEFICIARIOS
+		cQry += "SELECT DISTINCT UF2.UF2_STATUS TB1_STATUS, "
+		cQry += "	(UF2.UF2_MSFIL + ' - FUNERARIA') TB1_FILDES, "
+
+		cQry += "	UF2.UF2_CODIGO TB1_CONTRA, "
+
+		If lHabTalona
+			cQry += "	UF2.UF2_TALONA TB1_TALONA, "
+		EndIF
+
+		cQry += "	SA1.A1_COD TB1_CLIENT, "
+		cQry += "	SA1.A1_LOJA TB1_LOJA, "
+		cQry += "	SA1.A1_NOME TB1_NOME, "
+		cQry += "	UF0.UF0_DESCRI TB1_PLANO, "
+		cQry += "	SA1.A1_CGC TB1_CGC, "
+		cQry += "	(SA1.A1_DDD + SA1.A1_TEL) TB1_TEL, "
+		cQry += "	UF2.UF2_DTATIV TB1_DTATIV, "
+		cQry += "	'F' TB1_MODULO, "
+		cQry += "	UF2.UF2_FILIAL TB1_FILIAL, "
+		cQry += "	UF2.UF2_MSFIL TB1_MSFIL, "
+		cQry += "	(SELECT COUNT(SE1.E1_NUM) QTD "
+		cQry += "		FROM "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+		cQry += "		WHERE SE1.D_E_L_E_T_ <> '*' "
+		cQry += "		AND SE1.E1_FILIAL = UF2.UF2_MSFIL "
+		cQry += "		AND SE1.E1_XCTRFUN = UF2.UF2_CODIGO "
+		cQry += "		AND SE1.E1_SALDO > 0 "
+		cQry += "		AND SE1.E1_VENCREA < '"+ DTOS(dDataBase) +"' "
+		cQry += "		AND SE1.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+		cQry += "		,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+		cQry += "		,'IV-','RA','NCC','NDC')) TB1_STTSFN "
+		cQry += "FROM "+ RetSqlName("UF4") +" UF4 (NOLOCK) "
+		cQry += "INNER JOIN "+ RetSqlName("UF2") +" UF2 (NOLOCK) "
+		cQry += "	ON UF2.D_E_L_E_T_ <> '*' "
+		cQry += "	AND UF2.UF2_FILIAL = UF4.UF4_FILIAL "
+		cQry += "	AND UF2.UF2_CODIGO = UF4.UF4_CODIGO "
+		cQry += "INNER JOIN "+ RetSqlName("SA1") +" SA1 (NOLOCK) "
+		cQry += "	ON SA1.D_E_L_E_T_ <> '*' "
+		cQry += "	AND SA1.A1_COD = UF2.UF2_CLIENT "
+		cQry += "	AND SA1.A1_LOJA = UF2.UF2_LOJA "
+		cQry += "LEFT JOIN "+ RetSqlName("UF0") +" UF0 (NOLOCK) "
+		cQry += "	ON UF0.D_E_L_E_T_ <> '*' "
+		cQry += "	AND UF0.UF0_FILIAL = UF2.UF2_FILIAL "
+		cQry += "	AND UF0.UF0_CODIGO = UF2.UF2_PLANO "
+		cQry += "WHERE UF4.D_E_L_E_T_ <> '*' "
+		cQry += "AND UF4.UF4_TIPO <> '3' " // Retira titulares
+		If !Empty(cNome)
+			cQry += "AND UF4.UF4_NOME LIKE '%"+ AllTrim(cNome) +"%' "
+		EndIf
+		If !Empty(cCpfCnpj)
+			cQry += "AND UF4.UF4_CPF LIKE '%"+ AllTrim(cCpfCnpj) +"%' "
+		EndIf
+	endif
+
+	if (Len(oSX2:GetInfoSX2("UF2")) > 0  .And. lAbreUF2) .And. (Len(oSX2:GetInfoSX2("U00")) > 0 .And. lAbreU00)
+		cQry += "UNION ALL
+	endIf
+
+	if Len(oSX2:GetInfoSX2("U00")) > 0  .And. lAbreU00
+
+		// CONTRATOS CEMITERIO
+		cQry += "SELECT DISTINCT U00.U00_STATUS TB1_STATUS, "
+		cQry += "	(U00.U00_FILIAL + ' - CEMITERIO') TB1_FILDES, "
+		cQry += "	U00.U00_CODIGO TB1_CONTRA, "
+
+		If lHabTalona
+			cQry += "	U00.U00_TALONA TB1_TALONA, "
+		EndIF
+
+		cQry += "	SA1.A1_COD TB1_CLIENT, "
+		cQry += "	SA1.A1_LOJA TB1_LOJA, "
+		cQry += "	SA1.A1_NOME TB1_NOME, "
+		cQry += "	U00.U00_DESCPL TB1_PLANO, "
+		cQry += "	SA1.A1_CGC TB1_CGC, "
+		cQry += "	(SA1.A1_DDD + SA1.A1_TEL) TB1_TEL, "
+		cQry += "	U00.U00_DTATIV TB1_DTATIV, "
+		cQry += "	'C' TB1_MODULO, "
+		cQry += "	U00.U00_FILIAL TB1_FILIAL, "
+		cQry += "	U00.U00_MSFIL TB1_MSFIL, "
+		cQry += "	(SELECT COUNT(SE1.E1_NUM) QTD "
+		cQry += "		FROM "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+		cQry += "		WHERE SE1.D_E_L_E_T_ <> '*' "
+		cQry += "		AND SE1.E1_FILIAL = U00.U00_MSFIL "
+		cQry += "		AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+		cQry += "		AND SE1.E1_SALDO > 0 "
+		cQry += "		AND SE1.E1_VENCREA < '"+ DTOS(dDataBase) +"' "
+		cQry += "		AND SE1.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+		cQry += "		,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+		cQry += "		,'IV-','RA','NCC','NDC')) TB1_STTSFN "
+		cQry += "FROM "+ RetSqlName("SA1") +" SA1 (NOLOCK) "
+		cQry += "INNER JOIN "+ RetSqlName("U00") +" U00 (NOLOCK) "
+		cQry += "	ON U00.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U00.U00_CLIENT = SA1.A1_COD "
+		cQry += "	AND U00.U00_LOJA = SA1.A1_LOJA "
+		cQry += "WHERE SA1.D_E_L_E_T_ <> '*' "
+
+		If !Empty(cNome)
+			cQry += "AND SA1.A1_NOME LIKE '%"+ AllTrim(cNome) +"%' "
+		EndIf
+		If !Empty(cCpfCnpj)
+			cQry += "AND SA1.A1_CGC LIKE '%"+ AllTrim(cCpfCnpj) +"%' "
+		EndIf
+
+		cQry += "UNION ALL
+
+		// AUTORIZADOS CEMITERIO
+		cQry += "SELECT DISTINCT U00.U00_STATUS TB1_STATUS, "
+		cQry += "	(U00.U00_FILIAL + ' - CEMITERIO') TB1_FILDES, "
+		cQry += "	U00.U00_CODIGO TB1_CONTRA, "
+
+		If lHabTalona
+			cQry += "	U00.U00_TALONA TB1_TALONA, "
+		EndIF
+
+		cQry += "	SA1.A1_COD TB1_CLIENT, "
+		cQry += "	SA1.A1_LOJA TB1_LOJA, "
+		cQry += "	SA1.A1_NOME TB1_NOME, "
+		cQry += "	U00.U00_DESCPL TB1_PLANO, "
+		cQry += "	SA1.A1_CGC TB1_CGC, "
+		cQry += "	(SA1.A1_DDD + SA1.A1_TEL) TB1_TEL, "
+		cQry += "	U00.U00_DTATIV TB1_DTATIV, "
+		cQry += "	'C' TB1_MODULO, "
+		cQry += "	U00.U00_FILIAL TB1_FILIAL, "
+		cQry += "	U00.U00_MSFIL TB1_MSFIL, "
+		cQry += "	(SELECT COUNT(SE1.E1_NUM) QTD "
+		cQry += "		FROM "+ RetSqlName("SE1") +" SE1 (NOLOCK) "
+		cQry += "		WHERE SE1.D_E_L_E_T_ <> '*' "
+		cQry += "		AND SE1.E1_FILIAL = U00.U00_MSFIL "
+		cQry += "		AND SE1.E1_XCONTRA = U00.U00_CODIGO "
+		cQry += "		AND SE1.E1_SALDO > 0 "
+		cQry += "		AND SE1.E1_VENCREA < '"+ DTOS(dDataBase) +"' "
+		cQry += "		AND SE1.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+		cQry += "		,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+		cQry += "		,'IV-','RA','NCC','NDC')) TB1_STTSFN "
+		cQry += "FROM "+ RetSqlName("U02") +" U02 (NOLOCK) "
+		cQry += "INNER JOIN "+ RetSqlName("U00") +" U00 (NOLOCK) "
+		cQry += "	ON U00.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U00.U00_FILIAL = U02.U02_FILIAL "
+		cQry += "	AND U00.U00_CODIGO = U02.U02_CODIGO "
+		cQry += "INNER JOIN "+ RetSqlName("SA1") +" SA1 (NOLOCK) "
+		cQry += "	ON SA1.D_E_L_E_T_ <> '*' "
+		cQry += "	AND SA1.A1_COD = U00.U00_CLIENT "
+		cQry += "	AND SA1.A1_LOJA = U00.U00_LOJA "
+		cQry += "WHERE U02.D_E_L_E_T_ <> '*' "
+		cQry += "AND U02.U02_STATUS <> '2' " // Retira titulares
+
+		If !Empty(cNome)
+			cQry += "AND U02.U02_NOME LIKE '%"+ AllTrim(cNome) +"%' "
+		EndIf
+		If !Empty(cCpfCnpj)
+			cQry += "AND U02.U02_CPF LIKE '%"+ AllTrim(cCpfCnpj) +"%' "
+		EndIf
+
+	endif
+
+	cQry += ") DADOS_CLIENTES "
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRY_TB1") > 0
+		QRY_TB1->( DbCloseArea() )
+	EndIf
+
+	FwExecCachedQuery():OpenQuery(cQry,"QRY_TB1", /*aSetField*/, /*cDriver*/, "180", "60")
+
+	If QRY_TB1->( !EOF() )
+		oProcess:SetRegua2( QRY_TB1->( RECCOUNT() ) )
+
+		While QRY_TB1->( !EOF() )
+
+			RecLock(cAliasTrb1, .T.)
+			(cAliasTrb1)->TB1_STATUS := QRY_TB1->TB1_STATUS
+			(cAliasTrb1)->TB1_STTSFN := IIF(QRY_TB1->TB1_STTSFN <= 0, "ADIMPLENTE", "INADIMPLENTE")
+			(cAliasTrb1)->TB1_FILDES := QRY_TB1->TB1_FILDES
+			(cAliasTrb1)->TB1_CONTRA := QRY_TB1->TB1_CONTRA
+
+			If lHabTalona
+				(cAliasTrb1)->TB1_TALONA := QRY_TB1->TB1_TALONA
+			EndIF
+
+			(cAliasTrb1)->TB1_CLIENT := QRY_TB1->TB1_CLIENT
+			(cAliasTrb1)->TB1_LOJA := QRY_TB1->TB1_LOJA
+			(cAliasTrb1)->TB1_NOME := QRY_TB1->TB1_NOME
+			(cAliasTrb1)->TB1_PLANO := QRY_TB1->TB1_PLANO
+			(cAliasTrb1)->TB1_CGC := QRY_TB1->TB1_CGC
+			(cAliasTrb1)->TB1_TEL := QRY_TB1->TB1_TEL
+			(cAliasTrb1)->TB1_DTATIV := STOD(QRY_TB1->TB1_DTATIV)
+			(cAliasTrb1)->TB1_MODULO := QRY_TB1->TB1_MODULO
+			(cAliasTrb1)->TB1_FILIAL := QRY_TB1->TB1_FILIAL
+			(cAliasTrb1)->TB1_MSFIL := QRY_TB1->TB1_MSFIL
+			(cAliasTrb1)->( MsUnlock() )
+
+			oProcess:IncRegua2(AllTrim(QRY_TB1->TB1_CONTRA) + " - " + AllTrim(QRY_TB1->TB1_NOME))
+
+			QRY_TB1->( DbSkip() )
+
+		EndDo
+
+	EndIf
+
+	QRY_TB1->( DbCloseArea() )
+	(cAliasTrb1)->( DbGoTop() )
+
+	//-- Browse Refresh
+	If ValType(oBrowse1) == "O"
+		oBrowse1:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ConsultarMembros
+Consulta beneficiários e autorizados dos contratos
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 24/06/2021
+@param oProcess, object, oProcess
+@param lEnd, logical, lEnd
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param oBrowse2, object, oBrowse2
+/*/
+Static Function ConsultarMembros(oProcess, lEnd, cAliasTrb1, cAliasTrb2, oBrowse2)
+	Local cQry  := ""
+	Local cFilTrb1 := (cAliasTrb1)->TB1_FILIAL
+	Local cModulo := (cAliasTrb1)->TB1_MODULO
+	Local cContrato := AllTrim( (cAliasTrb1)->TB1_CONTRA )
+
+	Default cNome := ""
+	Default cCpfCnpj := ""
+	Default cAliasTrb1 := "TRB1X"
+	Default cAliasTrb2 := "TRB2X"
+	Default oBrowse2 := Nil
+
+	If ValType(oProcess) == "O"
+		oProcess:IncRegua1("Consultando membros...")
+	EndIf
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( __dbZap() )
+	EndIf
+
+	If Empty(cContrato)
+		//-- Browse Refresh
+		If ValType(oBrowse2) == "O"
+			oBrowse2:Refresh(.T.)
+		EndIf
+
+		Return
+	EndIf
+
+	If cModulo == "F"
+		cQry := "SELECT UF4_FILIAL TB2_FILIAL, "
+		cQry += "	UF4_CODIGO TB2_CONTRA, "
+		cQry += "	UF4_TIPO TB2_TIPO, "
+		cQry += "	UF4_GRAU TB2_GRAU, "
+		cQry += "	UF4_NOME TB2_NOME, "
+		cQry += "	UF4_CPF TB2_CGC, "
+		cQry += "	UF4_DTNASC TB2_DTNASC "
+		cQry += "FROM " + RetSqlName("UF4")  + " (NOLOCK) "
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "	AND UF4_FILIAL = '"+ cFilTrb1 +"' "
+		cQry += "	AND UF4_TIPO <> '3' " // Retira titulares
+		cQry += "	AND UF4_CODIGO = '"+ cContrato +"' "
+		cQry += "ORDER BY UF4_ITEM "
+	Else
+		cQry := "SELECT U02_FILIAL TB2_FILIAL, "
+		cQry += "	U02_CODIGO TB2_CONTRA, "
+		cQry += "	'AUTORIZADO' TB2_TIPO, "
+		cQry += "	U02_GRAUPA TB2_GRAU, "
+		cQry += "	U02_NOME TB2_NOME, "
+		cQry += "	U02_CPF TB2_CGC, "
+		cQry += "	U02_DTNASC TB2_DTNASC "
+		cQry += "FROM " + RetSqlName("U02") + " (NOLOCK) "
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "	AND U02_FILIAL = '"+ cFilTrb1 +"' "
+		cQry += "	AND U02_STATUS <> '2' " // Retira titulares
+		cQry += "	AND U02_CODIGO = '"+ cContrato +"' "
+		cQry += "ORDER BY U02_ITEM "
+	EndIf
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRY_TB2") > 0
+		QRY_TB2->( DbCloseArea() )
+	EndIf
+
+	FwExecCachedQuery():OpenQuery(cQry,"QRY_TB2", /*aSetField*/, /*cDriver*/, "180", "60")
+
+	If QRY_TB2->( !EOF() )
+		If ValType(oProcess) == "O"
+			oProcess:SetRegua2( QRY_TB2->( RECCOUNT() ) )
+		EndIf
+
+		While QRY_TB2->( !EOF() )
+
+			RecLock(cAliasTrb2, .T.)
+			(cAliasTrb2)->TB2_FILIAL := QRY_TB2->TB2_FILIAL
+			(cAliasTrb2)->TB2_CONTRA := QRY_TB2->TB2_CONTRA
+			(cAliasTrb2)->TB2_TIPO := IIF(cModulo == "F", BuscarTipoBenef(QRY_TB2->TB2_TIPO), QRY_TB2->TB2_TIPO)
+			(cAliasTrb2)->TB2_GRAU := BuscarGrauParente(QRY_TB2->TB2_GRAU)
+			(cAliasTrb2)->TB2_NOME := QRY_TB2->TB2_NOME
+			(cAliasTrb2)->TB2_CGC := QRY_TB2->TB2_CGC
+			(cAliasTrb2)->TB2_DTNASC := STOD(QRY_TB2->TB2_DTNASC)
+			(cAliasTrb2)->( MsUnlock() )
+
+			If ValType(oProcess) == "O"
+				oProcess:IncRegua2(AllTrim(QRY_TB2->TB2_CONTRA) + " - " + AllTrim(QRY_TB2->TB2_NOME))
+			EndIf
+
+			QRY_TB2->( DbSkip() )
+
+		EndDo
+
+	EndIf
+
+	QRY_TB2->( DbCloseArea() )
+	(cAliasTrb2)->( DbGoTop() )
+
+	//-- Browse Refresh
+	If ValType(oBrowse2) == "O"
+		oBrowse2:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} LimparFiltros
+Limpa filtros e browses da consulta clientes
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 25/06/2021
+@param cTGet1, character, cTGet1
+@param cTGet2, character, cTGet2
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+/*/
+Static Function LimparFiltros(cTGet1, cTGet2, cAliasTrb1, cAliasTrb2, oBrowse1, oBrowse2)
+
+	cTGet1 := Space(60) // Nome
+	cTGet2 := Space(20) // Cpf
+
+	//-- Limpa tabela temporaria contratos
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( __dbZap() )
+	EndIf
+
+	//-- Limpa tabela temporaria membros
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( __dbZap() )
+	EndIf
+
+	//-- Browse Refresh contratos
+	If ValType(oBrowse1) == "O"
+		oBrowse1:Refresh(.T.)
+	EndIf
+
+	//-- Browse Refresh membros
+	If ValType(oBrowse2) == "O"
+		oBrowse2:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ExecutarOperacao
+Executa operação selecionada para o contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 25/06/2021
+@param cAliasTrb1, character, cAliasTrb1
+@param nOpc, numeric, nOpc
+/*/
+Static Function ExecutarOperacao(cAliasTrb1, nOpc)
+	Local aArea := GetArea()
+	Local aAreaUF2 := {}
+	Local aAreaU00 := {}
+	Local cFilAtual := cFilAnt
+	Local lCemiterio := SuperGetMV("MV_XCEMI",.F.,.F.)
+	Local lFuneraria := SuperGetMV("MV_XFUNE",.F.,.F.)
+	Local lNovPnFin	:= SuperGetMV("MV_XNVPNFN", .F., .F.) // Habilita o novo painel financeiro
+	Local nApto		:= 0 
+
+	// Variáveis para aberturas das rotinas externas
+	Private aRotina := {}
+	Private l030Auto := .F.
+	Private lRegSel := .F.
+	Private oTotais := NIL
+	Private oBkpCtr := NIL
+	Private cPlanoBkp := ""
+	Private nReajBkp := 0
+	Private cAdesIgualPar := ""
+
+	If (cAliasTrb1)->TB1_MODULO == "F"// Funerária
+
+		aAreaUF2 := UF2->( GetArea() )
+
+		UF2->( DbSetOrder(1) )
+		If UF2->( MsSeek( (cAliasTrb1)->TB1_FILIAL + (cAliasTrb1)->TB1_CONTRA ) )
+			SetFunName("RFUNA002")
+			cFilAnt := AllTrim( (cAliasTrb1)->TB1_MSFIL )
+			FWSM0Util():setSM0PositionBycFilAnt()
+
+			Do Case
+			Case nOpc == 1 // Browse
+				BrwRFUNA002( UF2->UF2_CODIGO )
+			Case nOpc == 2 // Visualizar
+				FWExecView("VISUALIZAR","RFUNA002",1,,{|| .T. })
+			Case nOpc == 3 // Alterar
+				FWExecView("ALTERAR","RFUNA002",4,,{|| .T. })
+			Case nOpc == 4 // Painel Financeiro
+
+				if !lNovPnFin
+					U_RFUNE024()
+				else
+					U_RUTILE46()
+				endif
+
+			Case nOpc == 5 // Transferência
+				U_RFUNA006()
+			Case nOpc == 6 // Apontamento
+				U_RFUNA003()
+			Case nOpc == 7 // Consulta Obito
+				MsgAlert("Operação apenas para contratos cemitério.", "ExecutarOperacao")
+			EndCase
+
+			cFilAnt := cFilAtual
+			FWSM0Util():setSM0PositionBycFilAnt()
+			SetFunName("RUTIL023")
+		Else
+			MsgAlert("Não foi possível posicionar no contrato. Tente novamente.", "ExecutarOperacao")
+		EndIf
+
+		RestArea(aAreaUF2)
+
+	ElseIf (cAliasTrb1)->TB1_MODULO == "C" // Cemitério
+
+		aAreaU00 := U00->( GetArea() )
+
+		U00->( DbSetOrder(1) )
+		If U00->( MsSeek( (cAliasTrb1)->TB1_FILIAL + (cAliasTrb1)->TB1_CONTRA ) )
+			SetFunName("RCPGA001")
+			cFilAnt := AllTrim( (cAliasTrb1)->TB1_MSFIL )
+			FWSM0Util():setSM0PositionBycFilAnt()
+
+			Do Case
+			Case nOpc == 1 // Browse
+				BrwRCPGA001( U00->U00_CODIGO )
+			Case nOpc == 2 // Visualizar
+				FWExecView("VISUALIZAR","RCPGA001",1,,{|| .T. })
+			Case nOpc == 3 // Alterar
+				FWExecView("ALTERAR","RCPGA001",4,,{|| .T. })
+			Case nOpc == 4 // Painel Financeiro
+				U_RCPGE046(U00->U00_CODIGO)
+			Case nOpc == 5 // Transferência
+				U_RCPGE048(U00->U00_CODIGO)
+			Case nOpc == 6 // Apontamento
+				
+				nApto := Aviso( "Apontamento", 'Escolha a opção para Execução de Serviços', { "Apontamento", "Transferência" }, ;
+                1, "Escolha a opcao para Execucao de Servicos - Apontamento para Sepultamento e Transferencia para Exumacoes",,, .F. )
+
+				if nApto == 1 
+					Processa({|| U_RCPGA040(1, .T.),"Aguarde"})
+				elseif nApto == 2
+					Processa({|| U_RCPGA035(),"Aguarde"}) 
+				endif
+
+			Case nOpc == 7 // Consulta Obito
+				U_RCPGE041(/*aLocaliza*/, AllTrim(U00->U00_CGC), AllTrim(U00->U00_NOMCLI),U00->U00_CODIGO)
+			EndCase
+
+			cFilAnt := cFilAtual
+			FWSM0Util():setSM0PositionBycFilAnt()
+			SetFunName("RUTIL023")
+		Else
+			MsgAlert("Não foi possível posicionar no contrato. Tente novamente.", "ExecutarOperacao")
+		EndIf
+
+		RestArea(aAreaU00)
+
+	elseIf Empty((cAliasTrb1)->TB1_MODULO) .And. lCemiterio .And. nOpc == 7 // abro a consulta obito caso nao tenha nada posicionado
+
+		// consulta obitos
+		U_RCPGE041()
+
+		cFilAnt := cFilAtual
+		FWSM0Util():setSM0PositionBycFilAnt()
+		SetFunName("RUTIL023")
+
+	elseIf Empty((cAliasTrb1)->TB1_MODULO) .And. lFuneraria .And. nOpc == 7 // aviso o usuario para o uso da consula obitos no modulo de funerario
+		MsgAlert("Operação apenas para contratos cemitério.", "ExecutarOperacao")
+
+	else// caso nao tenha dados para o uso da consulta
+		MsgAlert("Não existem registros para o uso das rotinas disponíveis na 'Consulta Cliente'", "Atenção!")
+
+	EndIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwRFUNA002
+Abre browse de contratos funerária
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 28/06/2021
+@param cContrato, character, cContrato
+/*/
+Static Function BrwRFUNA002(cContrato)
+	Local oBrowse	:= Nil
+
+	Private aRotina			:= {}
+	Private oTotais			:= NIL
+	Private oBkpCtr			:= NIL
+	Private cPlanoBkp		:= ""
+	Private nReajBkp		:= 0
+	Private cAdesIgualPar	:= ""
+
+	Default cContrato := ""
+
+	oBrowse := FWmBrowse():New()
+	oBrowse:SetAlias("UF2")
+	oBrowse:SetDescription("Contrato Funerário")
+	oBrowse:AddLegend("UF2_STATUS == 'P'", "WHITE"	, "Pre-cadastrado")
+	oBrowse:AddLegend("UF2_STATUS == 'A'", "GREEN"	, "Ativo")
+	oBrowse:AddLegend("UF2_STATUS == 'S'", "ORANGE"	, "Suspenso")
+	oBrowse:AddLegend("UF2_STATUS == 'C'", "BLUE"	, "Cancelado")
+	oBrowse:AddLegend("UF2_STATUS == 'F'", "RED"	, "Finalizado")
+
+	// Filtra contrato selecionado
+	If !Empty(cContrato)
+		oBrowse:SetFilterDefault( "UF2_CODIGO == '"+ cContrato +"' " )
+	EndIf
+
+	oBrowse:SetAttach( .T. )
+	oBrowse:Activate()
+
+Return
+
+/*/{Protheus.doc} BrwRCPGA001
+Abre browse de contratos cemitério
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 28/06/2021
+@param cContrato, character, cContrato
+/*/
+Static Function BrwRCPGA001(cContrato)
+	Local oBrowse			:= Nil
+	Local lAtivaNegociacao	:= SuperGetMV("MV_XATVNEG",, .F.) // ativa ou nao a regra de negociacao
+
+	Private aRotina		:= {}
+	Private l030Auto	:= .F.
+	Private lRegSel		:= .F.
+
+	Default cContrato := ""
+
+	// atribuo atalhos do teclado na rotina de contratos de cemiterio
+	SetKey(VK_F6,{|| U_RCPGE046(U00->U00_CODIGO)}) // painel financeiro
+	SetKey(VK_F7,{|| U_RCPGA040(1)}) // apontamento de servicos
+	SetKey(VK_F8,{|| U_RCPGE041()}) // consulta obitos
+	SetKey(VK_F9,{|| U_RCPGE044()}) // gera taxa de manutencao
+
+	oBrowse := FWmBrowse():New()
+	oBrowse:SetAlias("U00")
+	oBrowse:SetDescription("Contrato Cemitério")
+
+	// verifico se a regra de negociacao esta ativada
+	if lAtivaNegociacao
+		// legenda de bloqueio de desconto
+		oBrowse:AddLegend("U00_STATUS == 'P' .And. U00_DSCBLQ == '1'", "YELLOW", 	"Bloqueio de Desconto")
+		oBrowse:AddLegend("U00_STATUS == 'P' .And. U00_DSCBLQ == '2'" , "GRAY"	, 	"Desconto Rejeitado")
+	endIf
+
+	oBrowse:AddLegend("U00_STATUS == 'P'", "WHITE", 	"Pré-Cadastro")
+	oBrowse:AddLegend("U00_STATUS == 'A'", "GREEN",		"Ativo")
+	oBrowse:AddLegend("U00_STATUS == 'S'", "ORANGE",	"Suspenso")
+	oBrowse:AddLegend("U00_STATUS == 'C'", "BLUE",		"Cancelado")
+	oBrowse:AddLegend("U00_STATUS == 'F'", "RED",		"Finalizado")
+
+	// Filtra contrato selecionado
+	If !Empty(cContrato)
+		oBrowse:SetFilterDefault( "U00_CODIGO == '"+ cContrato +"' " )
+	EndIf
+
+	oBrowse:Activate()
+
+	// limpo os atalhos do teclado na rotina de contratos de cemiterio
+	SetKey(VK_F6,{|| }) // painel financeiro
+	SetKey(VK_F7,{|| }) // apontamento de servicos
+	SetKey(VK_F8,{|| }) // consulta obitos
+	SetKey(VK_F9,{|| }) // gera taxa de manutencao
+
+Return
+
+/*/{Protheus.doc} BuscarGrauParente
+Busca descricao grau de paratensco
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 24/06/2021
+@param cGrau, character, cGrau
+@return character, cDescGrau
+/*/
+Static Function BuscarGrauParente(cGrau)
+	Local cDescGrau := "OUTROS"
+
+	Do Case
+	Case cGrau == "CO"
+		cDescGrau := "CONJUGUE"
+	Case cGrau == "FI"
+		cDescGrau := "FILHO(A)"
+	Case cGrau == "IR"
+		cDescGrau := "IRMÃO(A)"
+	Case cGrau == "NE"
+		cDescGrau := "NETO(A)"
+	Case cGrau == "OU"
+		cDescGrau := "OUTROS"
+	Case cGrau == "PA"
+		cDescGrau := "PAI"
+	Case cGrau == "MA"
+		cDescGrau := "MÃE"
+	EndCase
+
+Return cDescGrau
+
+/*/{Protheus.doc} BuscarTipoBenef
+Busca descricao tipo de beneficiario
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 24/06/2021
+@param cTipo, character, cTipo
+@return character, cDescTipo
+/*/
+Static Function BuscarTipoBenef(cTipo)
+	Local cDescTipo := "BENEFICIÁRIO"
+
+	Do Case
+	Case cTipo == "1"
+		cDescTipo := "BENEFICIÁRIO"
+	Case cTipo == "2"
+		cDescTipo := "AGREGADO"
+	Case cTipo == "3"
+		cDescTipo := "TÍTULAR"
+	EndCase
+
+Return cDescTipo
+
+/*/{Protheus.doc} CSSBotoesCinza
+CSS TButton Cinza
+@type function
+@version 12.1.27
+@author g.sampaio
+@since 28/07/2020
+@param nTamanhoTela, numeric, nTamanhoTela
+@return character, cCSSTButton
+/*/
+Static Function CSSBotoesCinza(nTamanhoTela)
+	Local cCSSTButton := ""
+
+	Default nTamanhoTela := 0
+
+	// implementacao do CSS
+	cCSSTButton    := " QPushButton { background: #D2D2D2; "
+	cCSSTButton    += " border: 1px solid #696969;"
+	cCSSTButton    += " outline:0;"
+	cCSSTButton    += " border-radius: 5px;"
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " padding: 6px;"
+	cCSSTButton    += " color: #000000;}"
+	cCSSTButton    += " QPushButton:hover { background-color: #696969;"
+	cCSSTButton    += " border-style: inset;"
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " border-color: #D2D2D2;"
+	cCSSTButton    += " color: #FFFFFF; }"
+
+Return cCSSTButton
+
+/*/{Protheus.doc} CSSBotoesAzul
+CSS TButton Azul
+@type function
+@version 12.1.27
+@author g.sampaio
+@since 28/07/2020
+@return character, cCSSTButton
+/*/
+Static Function CSSBotoesAzul(nTamanhoTela)
+	Local cCSSTButton := ""
+
+	Default nTamanhoTela := 0
+
+	// implementacao do CSS
+	cCSSTButton    := " QPushButton { background: #35ACCA; "
+	cCSSTButton    += " border: 1px solid #1F6779;"
+	cCSSTButton    += " outline:0;"
+	cCSSTButton    += " border-radius: 5px;"
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " padding: 6px;"
+	cCSSTButton    += " color: #FFFFFF;}"
+	cCSSTButton    += " QPushButton:hover { background-color: #1F6779;"
+	cCSSTButton    += " border-style: inset;"
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " border-color: #35ACCA;"
+	cCSSTButton    += " color: #FFFFFF; }"
+
+Return cCSSTButton
+
+/*/{Protheus.doc} CSSBotoesVermelho
+CSS TButton Cinza
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 28/07/2021
+@param nTamanhoTela, numeric, nTamanhoTela
+@param lMarginLeft, logical, lMarginLeft
+@return character, cCSSTButton
+/*/
+Static Function CSSBotoesVermelho(nTamanhoTela, lMarginLeft)
+	Local cCSSTButton := ""
+
+	Default nTamanhoTela := 0
+	Default lMarginLeft := .F.
+
+	// implementacao do CSS
+	cCSSTButton    := " QPushButton { background: #D95959; "
+	cCSSTButton    += " border: 1px solid #696969;"
+	cCSSTButton    += " outline:0;"
+	cCSSTButton    += " border-radius: 5px;"
+	If lMarginLeft
+		cCSSTButton    += " margin-left: 6px;"
+	EndIf
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " padding: 6px;"
+	cCSSTButton    += " color: #FFFFFF;}"
+	cCSSTButton    += " QPushButton:hover { background-color: #9C3636;"
+	cCSSTButton    += " border-style: inset;"
+	cCSSTButton    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cCSSTButton    += " font-size: 10px;"
+	else
+		cCSSTButton    += " font-size: 14px;"
+	endIf
+
+	cCSSTButton    += " font-weight: bold;"
+	cCSSTButton    += " border-color: #696969;"
+	cCSSTButton    += " color: #FFFFFF; }"
+
+Return cCSSTButton
+
+/*/{Protheus.doc} CSSCustomButton
+CSS Custom Button
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 13/07/2021
+@return character, cCSSTButton
+/*/
+Static Function CSSCustomButton()
+	Local cCSSTButton := ""
+
+	// implementacao do CSS
+	cCSSTButton := " QPushButton { background-color: #E9E9E9; "
+	cCSSTButton += " border-radius: 5px;"
+	cCSSTButton += " margin-right: 45px; }"
+	cCSSTButton += " QPushButton:hover { background-color: #D2D2D2;"
+	cCSSTButton += " border-radius: 5px;"
+	cCSSTButton += " margin-right: 45px; }"
+	cCSSTButton += " QPushButton:pressed { background-color: #696969;"
+	cCSSTButton += " border-radius: 5px;"
+	cCSSTButton += " margin-right: 45px; }"
+
+Return cCSSTButton
