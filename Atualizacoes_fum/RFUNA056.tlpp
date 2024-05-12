@@ -1,0 +1,2760 @@
+#INCLUDE 'TOTVS.CH'
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+
+#DEFINE CRLF CHR(13) + CHR(10)
+
+#DEFINE POS_CONTRATO 	1 // Contrato
+#DEFINE POS_CLIENTE  	2 // Cliente
+#DEFINE POS_LOJA     	3 // Loja
+#DEFINE POS_PROXREAJ 	4 // Proximo Reajuste
+#DEFINE POS_PARCREST 	5 // Parcelas Restantes
+
+/*/{Protheus.doc} RFUNA056
+Reserva de Fonte para Classe ReajusteContratosMod2
+@type function
+@version 1.0
+@author nata.queiroz
+@since 30/12/2020
+/*/
+User Function RFUNA056
+Return
+
+/*/{Protheus.doc} ReajusteContratosMod2
+Classe ReajusteContratosMod2
+@type class
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+/*/
+	Class ReajusteContratosMod2
+
+		Public  Data aContratos as array
+		Public  Data cRegra as character
+		Private Data cRegraItem as character
+		Private Data cNovaRegra as character
+		Private Data cNovaTabela as character
+		Private Data cCalculaIndice as character
+		Private Data cCalculaIdades as character
+		Private Data cZeraValorAdicional as character
+		Private Data nVlrBrutoCont	as numeric
+
+		//-- Dados para gravar histórico das alterações do contrato
+		Private Data oHistoricoAlteracao as object
+
+		//-- Dados para gravar histórico de reajustes do contrato
+		Private Data oHistoricoReajuste as object
+
+		//-- Logs de erro no processamento dos contratos
+		Private Data cLogError as character
+
+		Public Method New(aContratos, cRegra) Constructor
+		Public Method processarReajustes()
+		Public Method buscarRegraDefinicoes()
+		Public Method validarParametros()
+		Public Method criarNovoCicloBeneficiarios(aContrato)
+		Public Method calcularIdades(aContrato)
+		Public Method calcularNovaRegra(aContrato)
+		Public Method calcularNovaTabela(aContrato)
+		Public Method calcularValorLiquido(aContrato)
+		Public Method calcularIndice(aContrato)
+		Public Method gerarParcelas(aContrato)
+		Public Method gravarHistoricoAlteracao(aContrato)
+		Public Method gravarHistoricoReajuste(aContrato)
+		Public Method gerarArquivoLogError()
+		Public Method CalcDesconto(nVlrBrutoCont)
+
+	EndClass
+
+/*/{Protheus.doc} ReajusteContratosMod2::New
+Nova Instancia da Classe
+@type method
+@version 1.0
+@author nata.queiroz
+@since 30/12/2020
+@param aContratos, array, Contratos
+@param cRegra, character, Codigo da Regra
+@return object, Self
+/*/
+Method New(aContratos, cRegra) Class ReajusteContratosMod2
+
+	::aContratos := aContratos
+	::cRegra := cRegra
+	::cRegraItem := ""
+	::cNovaRegra := ""
+	::cNovaTabela := ""
+	::cCalculaIndice := "N"
+	::cCalculaIdades := "N"
+	::cZeraValorAdicional := "N"
+	::cLogError := ""
+
+	::oHistoricoAlteracao := JsonObject():New()
+	::oHistoricoAlteracao["aUF4"] := {}
+	::oHistoricoAlteracao["aUJ9"] := {}
+	::oHistoricoAlteracao["aUF3"] := {}
+	::oHistoricoAlteracao["aCampos"] := {}
+
+	::oHistoricoReajuste := JsonObject():New()
+	::oHistoricoReajuste["cIndice"] := ""
+	::oHistoricoReajuste["nIndice"] := 0
+	::oHistoricoReajuste["nValorAdicional"] := 0
+	::oHistoricoReajuste["aTitulo"] := {}
+	::oHistoricoReajuste["cProximoReaj"] := ""
+	::oHistoricoReajuste["nValorAnterior"] := 0
+	::oHistoricoReajuste["nValorNovo"] := 0
+	::oHistoricoReajuste["cHistoricoAlteracao"] := ""
+
+Return Self
+
+/*/{Protheus.doc} ReajusteContratosMod2::processarReajustes
+Processa reajuste dos contratos selecionados
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+/*/
+Method processarReajustes(oProcess) Class ReajusteContratosMod2
+
+	Local aArea			:= GetArea()
+	Local cTotalReaj	:= ""
+	Local lContinua 	:= .F.
+	Local nX 			:= 0
+	Local nTotalReaj	:= 0
+
+	Default oProcess	:= Nil
+
+	//----------------------------------------//
+	//-- Busca definições para os reajustes --//
+	//----------------------------------------//
+	lContinua := ::buscarRegraDefinicoes()
+	If !lContinua
+		Return
+	EndIf
+
+	//--------------------------------------------//
+	//-- Valida parâmetros usados nos reajustes --//
+	//--------------------------------------------//
+	lContinua := ::validarParametros()
+	If !lContinua
+		Return
+	EndIf
+
+	// pego o total de contratos
+	nTotalReaj  := Len( ::aContratos )
+	cTotalReaj	:= cValToChar(nTotalReaj)
+
+	If ValType( oProcess ) == "O"
+		oProcess:SetRegua2(nTotalReaj)
+	endIf
+
+	//------------------------------------------------//
+	//-- Inicia processamento contrato por contrato --//
+	//------------------------------------------------//
+	For nX := 1 To nTotalReaj
+
+		If ValType( oProcess ) == "O"
+
+			// atualizo a primeira barra
+			oProcess:IncRegua1('Regra: ' + ::cRegra + ' | Contrato ' + cValToChar(nX) + ' de ' + cTotalReaj + '...')
+
+			// atualizo o objeto de processamento
+			oProcess:IncRegua2('Reajustando o contrato ' + ::aContratos[nX][POS_CONTRATO] + '...')
+
+		endIf
+
+		// valido se ja existe reajuste gerado, para prevenir duplicidades
+		if ValReajuste( ::aContratos[nX, POS_CONTRATO], ::aContratos[nX, POS_PROXREAJ], @::cLogError  )
+
+			//-- Inicia transação de gravação do reajuste --//
+			BEGIN TRANSACTION
+
+				//-- Cria novo ciclo para os beneficiários --//
+				if lContinua
+					lContinua := ::criarNovoCicloBeneficiarios( ::aContratos[nX] )
+				endIf
+
+				//-- Calcula idades dos beneficiários para data base atual --//
+				if lContinua
+					lContinua := ::calcularIdades( ::aContratos[nX] )
+				endIf
+
+				//-- Calcula nova regra e adiciona registros com valores adicionais --//
+				if lContinua
+					lContinua := ::calcularNovaRegra( ::aContratos[nX] )
+				endIf
+
+				//-- Atualiza preço dos itens e valor bruto do contrato --//
+				if lContinua
+					lContinua := ::calcularNovaTabela( ::aContratos[nX] )
+				endIf
+
+				//-- Calcula valor líquido e atualiza valor final do contrato --//
+				if lContinua
+					lContinua := ::calcularValorLiquido( ::aContratos[nX] )
+				endIf
+
+				//-- Calcula indice do contrato e reajusta valor adicional do contrato --//
+				if lContinua
+					lContinua := ::calcularIndice( ::aContratos[nX] )
+				endIf
+
+				//-- Gera parcelas do reajuste no financeiro --//
+				if lContinua
+					lContinua := ::gerarParcelas( ::aContratos[nX] )
+				endIf
+
+				//-- Grava histórico de alterações realizadas no contrato --//
+				if lContinua
+					lContinua := ::gravarHistoricoAlteracao( ::aContratos[nX] )
+				endIf
+
+				//-- Grava histórico de reajustes realizados no contrato --//
+				if lContinua
+					lContinua := ::gravarHistoricoReajuste( ::aContratos[nX] )
+				endIf
+
+				// saio da transacao caso exista alguma transacao com erro
+				If !lContinua
+					DisarmTransaction()
+					BREAK
+				EndIf
+
+			END TRANSACTION
+
+		endIf
+
+	Next nX
+
+	//-----------------------------------------------------//
+	//-- Gera arquivo de log error e abri para o usuário --//
+	//-----------------------------------------------------//
+	::gerarArquivoLogError()
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} ReajusteContratosMod2::buscarRegraDefinicoes
+Busca definições da regra de reajuste
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+@return logical, lRet
+/*/
+Method buscarRegraDefinicoes() Class ReajusteContratosMod2
+	Local lRet := .F.
+	Local aArea := GetArea()
+	Local aAreaUI5 := UI5->( GetArea() )
+
+	UI5->( DbSetOrder(1) ) // UI5_FILIAL+UI5_CODIGO+UI5_ITEM
+	If UI5->( MsSeek( xFilial("UI5") + ::cRegra ) )
+		While UI5->( !EOF() .And. UI5_FILIAL+UI5_CODIGO == xFilial("UI5")+::cRegra )
+
+			If dDataBase >= UI5->UI5_VIGINI .And. dDataBase <= UI5->UI5_VIGFIM
+				lRet := .T.
+				::cRegraItem := AllTrim(UI5->UI5_ITEM)
+				::cNovaRegra := AllTrim(UI5->UI5_REGRA)
+				::cNovaTabela := AllTrim(UI5->UI5_TABELA)
+				::cCalculaIndice := AllTrim(UI5->UI5_INDICE)
+				::cCalculaIdades := AllTrim(UI5->UI5_IDADES)
+				::cZeraValorAdicional := AllTrim(UI5->UI5_ZRVLAD)
+				Exit
+			EndIf
+
+			UI5->( DbSkip() )
+		EndDo
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUI5 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::validarParametros
+Valida os parâmetros usados no processamento
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/31/2020
+@return logical, lRet
+/*/
+Method validarParametros() Class ReajusteContratosMod2
+	Local lRet				:= .T.
+	Local aArea				:= GetArea()
+	Local aAreaDA0			:= DA0->( GetArea() )
+	Local aAreaUJ5			:= UJ5->( GetArea() )
+	Local nQtdParcela		:= SuperGetMV("MV_XQTDPAR", .F., 12)
+	Local cPrefixo			:= SuperGetMV("MV_XPREFUN", .F., "FUN")
+	Local cTipo				:= SuperGetMV("MV_XTRJFUN", .F., "RJ")
+	Local nAnosRenov		:= SuperGetMV("MV_XANOREN", .F., 4)
+	Local lUsaPrimVencto	:= SuperGetMV("MV_XPRIMVC", .F., .F.)
+	Local nAntecRJ 			:= SuperGetMV("MV_XANTREJ", .F., 0)
+	Local lConsAniver		:= SuperGetMV("MV_XPARNIV", .F., .F.)
+	Local lArredondaParcela	:= SuperGetMV("MV_XARRPRC", .F., .F.)
+
+	If Empty( cValToChar(nQtdParcela) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XQTDPAR preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty(cPrefixo)
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XPREFUN preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty(cTipo)
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XTRJFUN preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty( cValToChar(nAnosRenov) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XANOREN preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty( cValToChar(lUsaPrimVencto) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XPRIMVC preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty( cValToChar(nAntecRJ) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XANTREJ preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty( cValToChar(lConsAniver) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XPARNIV preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	ElseIf Empty( cValToChar(lArredondaParcela) )
+		lRet := .F.
+		Help(NIL, NIL, "validarParametros", NIL,"Parâmetro MV_XARRPRC preenchido.",;
+			1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor preencher parâmetro antes de processar a rotina."})
+	EndIf
+
+	//----------------------------//
+	//-- Valida Tabela de Preço --//
+	//----------------------------//
+	If !Empty( ::cNovaTabela )
+		DA0->( DbSetOrder(1) ) // DA0_FILIAL+DA0_CODTAB
+		If DA0->( MsSeek(xFilial("DA0") + ::cNovaTabela) )
+			// Verifica vigência da tabela de preço
+			If !(DA0->DA0_DATDE <= dDatabase .AND. (Empty(DA0->DA0_DATATE) .Or. DA0->DA0_DATATE >= dDatabase))
+				lRet := .F.
+				Help(NIL, NIL, "validarParametros", NIL,"Tabela de preço selecionada não se encontra vigente.",;
+					1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor verificar o cadastro da tabela de preço na regra de reajuste."})
+			EndIf
+		Else
+			lRet := .F.
+			Help(NIL, NIL, "validarParametros", NIL,"Tabela de preço selecionada não foi encontrada no sistema.",;
+				1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor verificar o cadastro da tabela de preço na regra de reajuste."})
+		EndIf
+	EndIf
+
+	//------------------------------//
+	//-- Valida Regra de Contrato --//
+	//------------------------------//
+	If !Empty( ::cNovaRegra )
+		UJ5->( DbSetOrder(1) ) // UJ5_FILIAL+UJ5_CODIGO
+		If UJ5->( MsSeek(xFilial("UJ5") + ::cNovaRegra) )
+			// Verifica status da regra de contrato
+			If AllTrim(UJ5->UJ5_STATUS) <> "A"
+				lRet := .F.
+				Help(NIL, NIL, "validarParametros", NIL,"Regra de contrato selecionada não está ativa.",;
+					1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor verificar o cadastro da regra de contrato na regra de reajuste."})
+			EndIf
+		Else
+			lRet := .F.
+			Help(NIL, NIL, "validarParametros", NIL,"Regra de contrato selecionada não foi encontrada no sistema.",;
+				1, 0, NIL, NIL, NIL, NIL, NIL, {"Por favor verificar o cadastro da regra de contrato na regra de reajuste."})
+		EndIf
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaDA0)
+	RestArea(aAreaUJ5)
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::criarNovoCicloBeneficiarios
+Valida se e necessario criar um novo ciclo para os beneficiarios do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method criarNovoCicloBeneficiarios(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local aAreaUF4 := UF4->( GetArea() )
+	Local nAnosRenov := SuperGetMv("MV_XANOREN", .F., 4)
+	Local aUF4 := {}
+	Local cOperacao := "A"
+	Local aCamposUF4 := {}
+	Local dVlrAnt := STOD(Space(8))
+
+	UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+	If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+		//-- Dados para histórico de reajuste do contrato
+		::oHistoricoReajuste["nValorAnterior"] := (UF2->UF2_VALOR + UF2->UF2_VLADIC)
+
+		UF4->( DbSetOrder(1) ) // UF4_FILIAL+UF4_CODIGO+UF4_ITEM
+		If UF4->( MsSeek(xFilial("UF4") + UF2->UF2_CODIGO) )
+
+			While UF4->( !EOF() ) ;
+					.AND. UF4->UF4_FILIAL+UF4->UF4_CODIGO == UF2->UF2_FILIAL+UF2->UF2_CODIGO
+
+				// Valido se beneficiario ja esta falecido
+				If Empty(UF4->UF4_FALECI)
+
+					// Valido se o reajuste esta no periodo de renovacao do ciclo
+					If Year(UF4->UF4_DTFIM) <= Year(dDataBase)
+
+						//-- Histórico UF4
+						aadd(aUF4, {"U69_CONTRA", UF2->UF2_CODIGO	})
+						aadd(aUF4, {"U69_ITEM"	, UF4->UF4_ITEM		})
+						aadd(aUF4, {"U69_NOME"	, UF4->UF4_NOME		})
+						aadd(aUF4, {"U69_TPALT"	, cOperacao			})
+						dVlrAnt := UF4->UF4_DTFIM
+
+						If RecLock("UF4", .F.)
+							UF4->UF4_DTFIM := YearSum( UF4->UF4_DTFIM, nAnosRenov )
+							UF4->( MsUnLock() )
+						EndIf
+
+						If dVlrAnt <> UF4->UF4_DTFIM
+							//-- Histórico Campos UF4
+							aCamposUF4 := RetAltCpo("UF4", UF2->UF2_CODIGO + UF4->UF4_ITEM, "UF4_DTFIM", dVlrAnt, UF4->UF4_DTFIM)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(aUF4, /*aUJ9*/, /*aUF3*/, aCamposUF4, @::oHistoricoAlteracao)
+						EndIf
+
+						//-- Limpa para proximo historico
+						aUF4 := {}
+						aCamposUF4 := {}
+						dVlrAnt := STOD(Space(8))
+
+					EndIf
+
+				EndIf
+
+				UF4->( DbSkip() )
+			EndDo
+
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+	RestArea( aAreaUF4 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::calcularIdades
+Calcula idades dos beneficiários para data base atual
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/31/2020
+@param aContrato, array, Dados do Contratos
+@return logical, lRet
+/*/
+Method calcularIdades(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local aAreaUF4 := UF4->( GetArea() )
+	Local aUF4 := {}
+	Local cOperacao := "A"
+	Local aCamposUF4 := {}
+	Local nVlrAnt := 0
+
+	// Verifica parâmetro de processamento
+	If ::cCalculaIdades == "S"
+
+		UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+			UF4->( DbSetOrder(1) ) // UF4_FILIAL+UF4_CODIGO+UF4_ITEM
+			If UF4->( MsSeek(xFilial("UF4") + UF2->UF2_CODIGO) )
+
+				While UF4->( !EOF() ) ;
+						.AND. UF4->UF4_FILIAL+UF4->UF4_CODIGO == UF2->UF2_FILIAL+UF2->UF2_CODIGO
+
+					//-- Nascimento precisa estar registrado
+					If !Empty(UF4->UF4_DTNASC) .And. Empty(UF4->UF4_DTFIM)
+						//-- Histórico UF4
+						aadd(aUF4, {"U69_CONTRA", UF2->UF2_CODIGO	})
+						aadd(aUF4, {"U69_ITEM"	, UF4->UF4_ITEM		})
+						aadd(aUF4, {"U69_NOME"	, UF4->UF4_NOME		})
+						aadd(aUF4, {"U69_TPALT"	, cOperacao			})
+
+						nVlrAnt := UF4->UF4_IDADE
+						If RecLock("UF4", .F.)
+							UF4->UF4_IDADE := U_UAgeCalculate(UF4->UF4_DTNASC, dDataBase)
+							UF4->( MsUnLock() )
+						EndIf
+
+						//-- Histórico Campos UF4
+						If nVlrAnt <> UF4->UF4_IDADE
+							aCamposUF4 := RetAltCpo("UF4", UF2->UF2_CODIGO + UF4->UF4_ITEM, "UF4_IDADE", nVlrAnt, UF4->UF4_IDADE)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(aUF4, /*aUJ9*/, /*aUF3*/, aCamposUF4, @::oHistoricoAlteracao)
+						EndIf
+					EndIf
+
+					//-- Limpa para proximo historico
+					aUF4 := {}
+					aCamposUF4 := {}
+					nVlrAnt := 0
+
+					UF4->( DbSkip() )
+				EndDo
+
+			Else
+				lRet := .F.
+				::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => Não foi possível localizar beneficiários do contrato." + CRLF
+			EndIf
+
+		Else
+			lRet := .F.
+			::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => Não foi possível localizar contrato." + CRLF
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+	RestArea( aAreaUF4 )
+
+Return(lRet)
+
+/*/{Protheus.doc} ReajusteContratosMod2::calcularNovaRegra
+Calcula nova regra e adiciona registros com valores adicionais
+@type method
+@version 1.0
+@author nata.queiroz
+@since 12/31/2020
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method calcularNovaRegra(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local aRegras := {}
+	Local nValorCobAdic := 0
+	Local aCamposUF2 := {}
+	Local cVlrAnt := ""
+	Local nVlrAnt := 0
+
+	If !Empty( ::cNovaRegra )
+
+		UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+			//-- Processa apenas se a regra for diferente da atual
+			If AllTrim(::cNovaRegra) <> AllTrim(UF2->UF2_REGRA)
+
+				//-------------------------------------//
+				//-- Atualiza nova regra no contrato --//
+				//-------------------------------------//
+				cVlrAnt := UF2->UF2_REGRA
+				If RecLock("UF2", .F.)
+					UF2->UF2_REGRA := ::cNovaRegra
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campos UF2
+				aCamposUF2 := {}
+				aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_REGRA", cVlrAnt, UF2->UF2_REGRA)
+				//-- Prepara histórico para gravação
+				PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+				//-------------------------------//
+				//-- Calcular Regras Aplicadas --//
+				//-------------------------------//
+				aRegras := CalcularRegras( aContrato[POS_CONTRATO] )
+
+				//--------------------------------------------------------------//
+				//-- Limpa registros UJ9 para incluir registros da nova regra --//
+				//--------------------------------------------------------------//
+				LimparRegistrosUJ9( aContrato[POS_CONTRATO], @::oHistoricoAlteracao )
+
+				//-----------------------------------//
+				//-- Adicionar Novos Registros UJ9 --//
+				//-----------------------------------//
+				nValorCobAdic := AdicionarRegistrosUJ9( aContrato[POS_CONTRATO] , ::cNovaRegra, aRegras, @::oHistoricoAlteracao)
+
+				//-----------------------------------------//
+				//-- Atualiza valor da cobrança adicinal --//
+				//-----------------------------------------//
+				nVlrAnt := UF2->UF2_VLCOB
+				If RecLock("UF2", .F.)
+					UF2->UF2_VLCOB := nValorCobAdic
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campos UF2
+				aCamposUF2 := {}
+				aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLCOB", nVlrAnt, UF2->UF2_VLCOB)
+				//-- Prepara histórico para gravação
+				PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+
+Return lRet
+/*/{Protheus.doc} ReajusteContratosMod2::calcularNovaTabela
+Atualiza preço dos itens e valor bruto do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/4/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method calcularNovaTabela(aContrato) Class ReajusteContratosMod2
+
+	Local aArea 				:= GetArea()
+	Local aAreaUF2 				:= UF2->( GetArea() )
+	Local aAreaUF3 				:= UF3->( GetArea() )
+	Local aUF3 					:= {}
+	Local aCamposUF2 			:= {}
+	Local aCamposUF3 			:= {}
+	Local nPrecoProduto 		:= 0
+	Local nValorBrutoContrato 	:= 0
+	Local nValorServicos 		:= 0
+	Local cOperacao		 		:= "A"
+	Local cQuery 				:= ""
+	Local cVlrAnt 				:= ""
+	Local lRet 					:= .T.
+	Local lDebitaSobMedida		:= SuperGetMv("MV_XDBSBMD", .F., .F.)
+	Local lAtualizou			:= .F.
+	Local nBenPrescritos 		:= 0
+	Local nQuantProd			:= 0
+	Local nSaldoProd			:= 0
+	Local nVlrAnt1 				:= 0
+	Local nVlrAnt2 				:= 0
+	Local nVlrAnt3 				:= 0
+	Local nVlrAnt4 				:= 0
+
+	If !Empty( ::cNovaTabela )
+
+		UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+			//-- Processa apenas se a tabela for diferente da atual
+			If AllTrim(::cNovaTabela) <> AllTrim(UF2->UF2_TABPRE)
+
+				lAtualizou := .T.
+
+				//-----------------------------------//
+				//-- Atualiza nova tabela de preço --//
+				//-----------------------------------//
+				cVlrAnt := UF2->UF2_TABPRE
+				If RecLock("UF2", .F.)
+					UF2->UF2_TABPRE := ::cNovaTabela
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campos UF2
+				aCamposUF2 := {}
+				aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_TABPRE", cVlrAnt, UF2->UF2_TABPRE)
+				//-- Prepara histórico para gravação
+				PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+				//debita saldo dos produtos sobmedida com a prescricao dos beneficiarios
+				if lDebitaSobMedida
+					nBenPrescritos := ContaPrescritos(UF2->UF2_CODIGO)
+				endif
+
+				//---------------------------------------------------------------------//
+				//-- Atualiza preços dos itens do contrato para nova tabela de preço --//
+				//---------------------------------------------------------------------//
+				UF3->( DbSetOrder(1) ) // UF3_FILIAL+UF3_CODIGO+UF3_ITEM
+				If UF3->( MsSeek(xFilial("UF3") + UF2->UF2_CODIGO) )
+					While UF3->( !EOF() .AND. UF3_FILIAL+UF3_CODIGO == xFilial("UF3")+UF2->UF2_CODIGO )
+
+						nPrecoProduto := BuscarPrecoTabela(UF2->UF2_TABPRE, UF3->UF3_PROD, @::cLogError)
+
+						If nPrecoProduto > 0
+
+							//-- Histórico UF3
+							AADD(aUF3, {"U71_CONTRA", UF2->UF2_CODIGO	})
+							AADD(aUF3, {"U71_ITEM"	, UF3->UF3_ITEM		})
+							AADD(aUF3, {"U71_TIPO"	, UF3->UF3_TIPO		})
+							AADD(aUF3, {"U71_PROD"	, UF3->UF3_PROD		})
+							AADD(aUF3, {"U71_VLUNIT", UF3->UF3_VLRUNI	})
+							AADD(aUF3, {"U71_QTD"	, UF3->UF3_QUANT	})
+							AADD(aUF3, {"U71_VLTOT"	, UF3->UF3_VLRTOT	})
+							AADD(aUF3, {"U71_TPALT"	, cOperacao			})
+
+							nVlrAnt1 := UF3->UF3_VLRUNI
+							nVlrAnt2 := UF3->UF3_VLRTOT
+							nVlrAnt3 := UF3->UF3_QUANT
+							nVlrAnt4 := UF3->UF3_SALDO
+
+							// para os itens preescritos eu debito nos itens adicionais
+							if AllTrim( UF3->UF3_TIPO ) <> "AVGBOX1.PNG"
+
+								//debita saldo dos produtos sobmedida com a prescricao dos beneficiarios
+								if lDebitaSobMedida
+									nBenPrescritos := ContaPrescritos(UF2->UF2_CODIGO)
+								endif
+
+								If nBenPrescritos > 0
+
+									nQuantProd := UF3->UF3_QUANT - nBenPrescritos
+									if nQuantProd <= 0
+										nQuantProd := 0
+									endif
+									nSaldoProd := nQuantProd
+
+								else
+									nQuantProd := UF3->UF3_QUANT
+									nSaldoProd := UF3->UF3_SALDO
+								EndIf
+
+							else
+								nQuantProd := UF3->UF3_QUANT
+								nSaldoProd := UF3->UF3_SALDO
+							endif
+
+							If UF3->(RecLock("UF3", .F.))
+								UF3->UF3_VLRUNI := nPrecoProduto
+								UF3->UF3_VLRTOT := (nPrecoProduto * nQuantProd)
+								UF3->UF3_QUANT	:= nQuantProd
+								UF3->UF3_SALDO	:= nSaldoProd
+								UF3->( MsUnLock() )
+							EndIf
+
+							if nVlrAnt1 <> UF3->UF3_VLRUNI .Or. nVlrAnt2 <> UF3->UF3_VLRTOT .Or.;
+									nVlrAnt3 <> UF3->UF3_QUANT .Or. nVlrAnt4 <> UF3->UF3_SALDO
+
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, aUF3, /*aCamposUF3*/, @::oHistoricoAlteracao)
+
+							endif
+
+							//-- Histórico Campo UF3_VLRUNI
+							If nVlrAnt1 <> UF3->UF3_VLRUNI
+
+								aCamposUF3 := {}
+								aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_VLRUNI", nVlrAnt1, UF3->UF3_VLRUNI)
+								//-- Prepara histórico para gravação
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+							EndIf
+
+							//-- Histórico Campo UF3_VLRTOT
+							If nVlrAnt2 <> UF3->UF3_VLRTOT
+								aCamposUF3 := {}
+								aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_VLRTOT", nVlrAnt2, UF3->UF3_VLRTOT)
+								//-- Prepara histórico para gravação
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+							EndIf
+
+							//-- Histórico Campo UF3_QUANT
+							If nVlrAnt3 <> UF3->UF3_QUANT
+								aCamposUF3 := {}
+								aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_QUANT", nVlrAnt3, UF3->UF3_QUANT)
+								//-- Prepara histórico para gravação
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+							EndIf
+
+							//-- Histórico Campo UF3_SALDO
+							If nVlrAnt4 <> UF3->UF3_SALDO
+								aCamposUF3 := {}
+								aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_SALDO", nVlrAnt4, UF3->UF3_SALDO)
+								//-- Prepara histórico para gravação
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+							EndIf
+
+							//-- Limpa para proximo historico
+							aUF3 := {}
+							aCamposUF3 := {}
+							nVlrAnt1 := 0
+							nVlrAnt2 := 0
+
+							//-- Calcula valor dos serviços
+							If AllTrim( UF3->UF3_TIPO ) <> "AVGBOX1.PNG"
+								nValorServicos += (nPrecoProduto * UF3->UF3_QUANT)
+							Else
+								//-- Calcula valor bruto do contrato
+								nValorBrutoContrato += (nPrecoProduto * UF3->UF3_QUANT)
+							EndIf
+
+							// se o beneficiario for prescritos e a quantidade de produto zerado
+							If nBenPrescritos > 0 .And. nQuantProd == 0
+
+								//-- Histórico UF3 - para exclusao
+								aUF3 := {}
+								AADD(aUF3, {"U71_CONTRA", UF2->UF2_CODIGO	})
+								AADD(aUF3, {"U71_ITEM"	, UF3->UF3_ITEM		})
+								AADD(aUF3, {"U71_TIPO"	, UF3->UF3_TIPO		})
+								AADD(aUF3, {"U71_PROD"	, UF3->UF3_PROD		})
+								AADD(aUF3, {"U71_VLUNIT", UF3->UF3_VLRUNI	})
+								AADD(aUF3, {"U71_QTD"	, UF3->UF3_QUANT	})
+								AADD(aUF3, {"U71_VLTOT"	, UF3->UF3_VLRTOT	})
+								AADD(aUF3, {"U71_TPALT"	, "E"				})
+
+								// prepara o historico
+								PrepararHistorico(/*aUF4*/, /*aUJ9*/, aUF3, /*aCamposUF3*/, @::oHistoricoAlteracao)
+
+								// deleto o item da UF3
+								If UF3->(RecLock("UF3", .F.))
+									UF3->(DbDelete())
+									UF3->(MsUnLock())
+								EndIf
+
+							EndIf
+
+						Else
+							lRet := .F.
+							::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => O Produto/Serviço: " + AllTrim(UF3->UF3_PROD);
+								+ " não possui preço vigente na tabela: " + AllTrim(UF2->UF2_TABPRE) + CRLF
+							Exit
+						EndIf
+
+						UF3->( DbSkip() )
+					EndDo
+				EndIf
+
+				//--------------------------------------//
+				//-- Atualiza valor bruto do contrato --//
+				//--------------------------------------//
+				nVlrAnt1 := UF2->UF2_VLRBRU
+				nVlrAnt2 := UF2->UF2_VLSERV
+				If UF2->(RecLock("UF2", .F.))
+					UF2->UF2_VLRBRU := nValorBrutoContrato
+					UF2->UF2_VLSERV := nValorServicos
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campo UF2_VLRBRU
+				If nVlrAnt1 <> UF2->UF2_VLRBRU
+					aCamposUF2 := {}
+					aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLRBRU", nVlrAnt1, UF2->UF2_VLRBRU)
+					//-- Prepara histórico para gravação
+					PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+				EndIf
+
+				//-- Histórico Campo UF2_VLSERV
+				If nVlrAnt2 <> UF2->UF2_VLSERV
+					aCamposUF2 := {}
+					aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLSERV", nVlrAnt2, UF2->UF2_VLSERV)
+					//-- Prepara histórico para gravação
+					PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+				EndIf
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	If !lAtualizou .And. lDebitaSobMedida // atualiza os produtos sob medida com a prescricao dos beneficiarios
+
+		UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+			// verifico se tem obitos a serem prescritos
+			nBenPrescritos := ContaPrescritos(UF2->UF2_CODIGO)
+
+			// para os itens preescritos eu debito nos itens adicionais
+			If nBenPrescritos > 0
+
+				cQuery := " SELECT UF3.R_E_C_N_O_ RECUF3 FROM " + RetSQLName("UF3") + " UF3 "
+				cQuery += " WHERE UF3.D_E_L_E_T_ = ' ' "
+				cQuery += " AND UF3.UF3_FILIAL = '" + xFilial("UF3") + "'"
+				cQuery += " AND UF3.UF3_CODIGO = '" + UF2->UF2_CODIGO + "'"
+				cQuery += " AND UF3.UF3_TIPO <> 'AVGBOX1.PNG' "
+
+				cQuery := ChangeQuery(cQuery)
+
+				MPSysOpenQuery(cQuery, "TRBUF3")
+
+				While TRBUF3->(!Eof())
+
+					If TRBUF3->RECUF3 > 0
+
+						UF3->(DbGoTo(TRBUF3->RECUF3))
+
+						//-- Histórico UF3
+						AADD(aUF3, {"U71_CONTRA", UF2->UF2_CODIGO	})
+						AADD(aUF3, {"U71_ITEM"	, UF3->UF3_ITEM		})
+						AADD(aUF3, {"U71_TIPO"	, UF3->UF3_TIPO		})
+						AADD(aUF3, {"U71_PROD"	, UF3->UF3_PROD		})
+						AADD(aUF3, {"U71_VLUNIT", UF3->UF3_VLRUNI	})
+						AADD(aUF3, {"U71_QTD"	, UF3->UF3_QUANT	})
+						AADD(aUF3, {"U71_VLTOT"	, UF3->UF3_VLRTOT	})
+						AADD(aUF3, {"U71_TPALT"	, cOperacao			})
+
+						nVlrAnt1 := UF3->UF3_VLRUNI
+						nVlrAnt2 := UF3->UF3_VLRTOT
+						nVlrAnt3 := UF3->UF3_QUANT
+						nVlrAnt4 := UF3->UF3_SALDO
+
+						//debita saldo dos produtos sobmedida com a prescricao dos beneficiarios
+						nQuantProd := UF3->UF3_QUANT - nBenPrescritos
+						if nQuantProd <= 0
+							nQuantProd := 0
+						endif
+
+						// novo saldo do produto
+						nSaldoProd := nQuantProd
+
+						// preco do produto personalizado
+						nPrecoProduto := UF3->UF3_VLRUNI
+
+						If UF3->(RecLock("UF3", .F.))
+							UF3->UF3_VLRTOT := (nPrecoProduto * nQuantProd)
+							UF3->UF3_QUANT	:= nQuantProd
+							UF3->UF3_SALDO	:= nSaldoProd
+							UF3->( MsUnLock() )
+						EndIf
+
+						if nVlrAnt1 <> UF3->UF3_VLRUNI .Or. nVlrAnt2 <> UF3->UF3_VLRTOT .Or.;
+								nVlrAnt3 <> UF3->UF3_QUANT .Or. nVlrAnt4 <> UF3->UF3_SALDO
+
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, aUF3, /*aCamposUF3*/, @::oHistoricoAlteracao)
+
+						endif
+
+						//-- Histórico Campo UF3_VLRUNI
+						If nVlrAnt1 <> UF3->UF3_VLRUNI
+
+							aCamposUF3 := {}
+							aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_VLRUNI", nVlrAnt1, UF3->UF3_VLRUNI)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+						EndIf
+
+						//-- Histórico Campo UF3_VLRTOT
+						If nVlrAnt2 <> UF3->UF3_VLRTOT
+							aCamposUF3 := {}
+							aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_VLRTOT", nVlrAnt2, UF3->UF3_VLRTOT)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+						EndIf
+
+						//-- Histórico Campo UF3_QUANT
+						If nVlrAnt3 <> UF3->UF3_QUANT
+							aCamposUF3 := {}
+							aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_QUANT", nVlrAnt3, UF3->UF3_QUANT)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+						EndIf
+
+						//-- Histórico Campo UF3_SALDO
+						If nVlrAnt4 <> UF3->UF3_SALDO
+							aCamposUF3 := {}
+							aCamposUF3 := RetAltCpo("UF3", UF2->UF2_CODIGO + UF3->UF3_ITEM, "UF3_SALDO", nVlrAnt4, UF3->UF3_SALDO)
+							//-- Prepara histórico para gravação
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF3, @::oHistoricoAlteracao)
+						EndIf
+
+						//-- Limpa para proximo historico
+						aUF3 := {}
+						aCamposUF3 := {}
+						nVlrAnt1 := 0
+						nVlrAnt2 := 0
+
+						//-- Calcula valor dos serviços
+						nValorServicos += (nPrecoProduto * UF3->UF3_QUANT)
+
+						// se o beneficiario for prescritos e a quantidade de produto zerado
+						If nBenPrescritos > 0 .And. nQuantProd == 0
+
+							//-- Histórico UF3 - para exclusao
+							aUF3 := {}
+							AADD(aUF3, {"U71_CONTRA", UF2->UF2_CODIGO	})
+							AADD(aUF3, {"U71_ITEM"	, UF3->UF3_ITEM		})
+							AADD(aUF3, {"U71_TIPO"	, UF3->UF3_TIPO		})
+							AADD(aUF3, {"U71_PROD"	, UF3->UF3_PROD		})
+							AADD(aUF3, {"U71_VLUNIT", UF3->UF3_VLRUNI	})
+							AADD(aUF3, {"U71_QTD"	, UF3->UF3_QUANT	})
+							AADD(aUF3, {"U71_VLTOT"	, UF3->UF3_VLRTOT	})
+							AADD(aUF3, {"U71_TPALT"	, "E"				})
+
+							// prepara o historico
+							PrepararHistorico(/*aUF4*/, /*aUJ9*/, aUF3, /*aCamposUF3*/, @::oHistoricoAlteracao)
+
+							// deleto o item da UF3
+							If UF3->(RecLock("UF3", .F.))
+								UF3->(DbDelete())
+								UF3->(MsUnLock())
+							EndIf
+
+						EndIf
+
+					EndIf
+
+					TRBUF3->( DbSkip() )
+				EndDo
+
+				//----------------------------------------//
+				//-- Atualiza valor servico no contrato --//
+				//----------------------------------------//
+				nVlrAnt2 := UF2->UF2_VLSERV
+				If UF2->(RecLock("UF2", .F.))
+					UF2->UF2_VLSERV := nValorServicos
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campo UF2_VLSERV
+				If nVlrAnt2 <> UF2->UF2_VLSERV
+					aCamposUF2 := {}
+					aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLSERV", nVlrAnt2, UF2->UF2_VLSERV)
+					//-- Prepara histórico para gravação
+					PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+				EndIf
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea( aAreaUF3 )
+	RestArea( aAreaUF2 )
+	RestArea( aArea )
+
+Return(lRet)
+
+/*/{Protheus.doc} ReajusteContratosMod2::calcularValorLiquido
+Calcula valor líquido e atualiza valor final do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/5/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method calcularValorLiquido(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local nValorLiquido := 0
+	Local aCamposUF2 := {}
+	Local nVlrAnt := 0
+	Local nVlrPFUN56VL := 0
+
+	UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+	If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+		If UF2->UF2_DESCON <= UF2->UF2_VALOR
+
+			nValorLiquido := (UF2->UF2_VLRBRU + UF2->UF2_VLSERV + UF2->UF2_VLCOB)
+
+			//Atualiza o valor de desconto de acordo com a regra e o novo valor do contrato
+			::CalcDesconto(nValorLiquido)
+
+			nValorLiquido := (UF2->UF2_VLRBRU + UF2->UF2_VLSERV + UF2->UF2_VLCOB) - UF2->UF2_DESCON
+
+			//-- Ponto Entrada para atualização do valor líquido do contrato --//
+			If ExistBlock("PFUN56VL")
+				nVlrPFUN56VL := ExecBlock("PFUN56VL", .F., .F., { nValorLiquido })
+				If ValType(nVlrPFUN56VL) == "N"
+					If nVlrPFUN56VL > 0
+						nValorLiquido := nVlrPFUN56VL
+					EndIf
+				EndIf
+			EndIf
+
+			If nValorLiquido < 0
+				lRet := .F.
+				::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => O Desconto não pode ser superior ao valor das parcelas." + CRLF
+			EndIf
+
+			//--------------------------------------//
+			//-- Atualiza valor final do contrato --//
+			//--------------------------------------//
+			If lRet
+				nVlrAnt := UF2->UF2_VALOR
+				If RecLock("UF2", .F.)
+					UF2->UF2_VALOR := nValorLiquido
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campos UF2
+				aCamposUF2 := {}
+				aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VALOR", nVlrAnt, UF2->UF2_VALOR)
+				//-- Prepara histórico para gravação
+				PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+			EndIf
+
+		Else
+			lRet := .F.
+			::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => O Desconto não pode ser superior ao valor das parcelas." + CRLF
+		EndIf
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::calcularIndice
+Calcula indice do contrato e reajusta valor adicional do contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/5/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method calcularIndice(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local lArredondaParcela := SuperGetMv("MV_XARRPRC", .F., .F.)
+	Local nIndice := 0
+	Local nValorAdicional := 0
+	Local nValorReajuste := 0
+	Local aCamposUF2 := {}
+	Local nVlrAnt := 0
+
+	If ::cCalculaIndice == "S"
+
+		UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+			nIndice := BuscarIndice(UF2->UF2_INDICE)
+			nValorAdicional := UF2->UF2_VLADIC
+
+			If lArredondaParcela
+				nValorReajuste := Round(nValorAdicional * (nIndice / 100), 1)
+			Else
+				nValorReajuste := nValorAdicional * (nIndice / 100)
+			EndIf
+
+			//-- Dados para histórico de reajuste do contrato
+			::oHistoricoReajuste["cIndice"] := AllTrim(UF2->UF2_INDICE)
+			::oHistoricoReajuste["nIndice"] := nIndice
+			::oHistoricoReajuste["nValorAdicional"] := nValorReajuste
+
+			//------------------------------------------//
+			//-- Atualiza valor adicional do contrato --//
+			//------------------------------------------//
+			nVlrAnt := UF2->UF2_VLADIC
+			If RecLock("UF2", .F.)
+				UF2->UF2_VLADIC += nValorReajuste
+				UF2->( MsUnLock() )
+			EndIf
+
+			//-- Histórico Campos UF2
+			aCamposUF2 := {}
+			aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLADIC", nVlrAnt, UF2->UF2_VLADIC)
+			//-- Prepara histórico para gravação
+			PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+		EndIf
+
+	Else
+
+		//-- Zera valor adicional do contrato caso opcao selecionada
+		If ::cZeraValorAdicional == "S"
+
+			UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+			If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+				//------------------------------------------//
+				//-- Atualiza valor adicional do contrato --//
+				//------------------------------------------//
+				nVlrAnt := UF2->UF2_VLADIC
+				If RecLock("UF2", .F.)
+					UF2->UF2_VLADIC := 0
+					UF2->( MsUnLock() )
+				EndIf
+
+				//-- Histórico Campos UF2
+				aCamposUF2 := {}
+				aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_VLADIC", nVlrAnt, UF2->UF2_VLADIC)
+				//-- Prepara histórico para gravação
+				PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::gerarParcelas
+Gera parcelas do reajuste no financeiro
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/5/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method gerarParcelas(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local nQtdParcela := SuperGetMV("MV_XQTDPAR", .F., 12)
+	Local lUsaPrimVencto := SuperGetMV("MV_XPRIMVC", .F., .F.)
+	Local nAntecipaReajuste := SuperGetMV("MV_XANTREJ", .F., 0)
+	Local cPrefixo := SuperGetMV("MV_XPREFUN", .F., "FUN")
+	Local cTipo := SuperGetMV("MV_XTRJFUN", .F., "RJ")
+	Local lConsideraAniver := SuperGetMV("MV_XPARNIV", .F., .F.)
+	Local lArredondaParcela := SuperGetMV("MV_XARRPRC", .F., .F.)
+	Local dEmissao := dDataBase
+	Local dVencimento := SToD("")
+	Local cDiaVencimento := ""
+	Local cMesAnoVencto := ""
+	Local cParcela := ""
+	Local dProximoReaj := dDataBase
+	Local cProximoReaj := ""
+	Local aRegras := {}
+	Local nValorParcela := 0
+	Local nX := 0
+
+	UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+	If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+		//-- Verifica se existe natureza cadastrada no contrato
+		If Empty(UF2->UF2_NATURE)
+			lRet := .F.
+			::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " => Não foi informada a natureza financeira do contrato." + CRLF
+		Else
+
+			// Se a quantidade de parcelas padrao for maior que a quantidade de parcelas restantes
+			If nQtdParcela > aContrato[POS_PARCREST]
+				nQtdParcela := aContrato[POS_PARCREST]
+			EndIf
+
+			//-- Busca próxima parcela disponível para geraração
+			cParcela := BuscarProximaParcela(cPrefixo, UF2->UF2_CODIGO, cTipo)
+
+			//-- Busca dia do primeiro vencimento
+			If lUsaPrimVencto
+				cDiaVencimento := IIF(!Empty(UF2->UF2_PRIMVE), SubStr(DTOS(UF2->UF2_PRIMVE),7,2), UF2->UF2_DIAVEN)
+			Else
+				cDiaVencimento := UF2->UF2_DIAVEN
+			EndIf
+
+			//-- Caso houver antecedencia ativa
+			If nAntecipaReajuste > 0
+				//-- O calculo do proximo reajuste sera baseado no ultimo reajuste do contrato
+				dProximoReaj 	:= CTOD("01/" + aContrato[POS_PROXREAJ])
+				if dProximoReaj > dDataBase
+					dVencimento 	:= MonthSum(dProximoReaj, 1)
+				else
+					dVencimento 	:= MonthSum(dDataBase, 1)
+				endIf
+			Else
+				//-- O calculo do proximo reajuste sera com base na data base do sistema
+				dProximoReaj 	:= dDataBase
+				dVencimento 	:= MonthSum(dDataBase, 1)
+			EndIf
+
+			dProximoReaj := MonthSum(dProximoReaj, nQtdParcela) // Soma a quantidade de meses para a próxima manutenção
+			cProximoReaj := StrZero(Month(dProximoReaj),2) + StrZero(Year(dProximoReaj),4)
+
+			//-- Valor do contrato
+			nValorParcela := (UF2->UF2_VALOR + UF2->UF2_VLADIC)
+
+			//-- Dados para histórico de reajuste do contrato
+			::oHistoricoReajuste["cProximoReaj"] := cProximoReaj
+			::oHistoricoReajuste["nValorNovo"] := nValorParcela
+
+			//--------------------------------------//
+			//-- Geração das parcelas do reajuste --//
+			//--------------------------------------//
+			For nX := 1 To nQtdParcela
+
+				//-- Ajusta data do primeiro vencimento
+				If cDiaVencimento > StrZero(Day(LastDate(dVencimento)),2)
+					dVencimento := LastDate(dVencimento)
+				Else
+					dVencimento := CTOD(cDiaVencimento + "/" + StrZero(Month(dVencimento),2) + "/" + StrZero(Year(dVencimento),4))
+				EndIf
+				cMesAnoVencto := SubStr(DTOC(dVencimento),4,7)
+
+				// Caso o contrato seja reajustado em atraso, corrige a data de emissao
+				dEmissao := IIF(dVencimento < dDataBase, dVencimento, dDataBase)
+
+				//-- Valida se considera aniversarios no calculo da parcela
+				If lConsideraAniver
+					aRegras  := {}
+
+					If !lArredondaParcela
+						nValorParcela := U_RFUNE040(dVencimento, UF2->UF2_CODIGO, @aRegras)
+					Else
+						nValorParcela := Round( U_RFUNE040(dVencimento, UF2->UF2_CODIGO, @aRegras), 1)
+					EndIf
+				Endif
+
+				lRet := ExecAutoFINA040(cPrefixo, UF2->UF2_CODIGO, cParcela, cTipo, UF2->UF2_NATURE, UF2->UF2_CLIENT,;
+					UF2->UF2_LOJA, dEmissao, dVencimento, nValorParcela, cMesAnoVencto, UF2->UF2_FORPG, @::cLogError)
+
+				If !lRet
+					lRet := .F.
+					Exit
+				Else
+					//-- Dados para histórico de reajuste do contrato
+					AAdd( ::oHistoricoReajuste["aTitulo"] , {cPrefixo, UF2->UF2_CODIGO, cParcela, cTipo, nValorParcela} )
+
+					// Grava composicao do valor da parcela se parametro
+					// por parcela idade estiver habilitado
+					if lConsideraAniver
+						U_RFUN40OK(UF2->UF2_CODIGO, aRegras, dDataBase)
+					Endif
+				EndIf
+
+				// Incrementa proxima parcela
+				cParcela := Soma1(cParcela)
+				dVencimento := MonthSum(dVencimento, 1)
+
+			Next nX
+
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::gravarHistoricoAlteracao
+Grava histórico de alterações realizadas no contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/8/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method gravarHistoricoAlteracao(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local aArea := GetArea()
+	Local aAreaUF2 := UF2->( GetArea() )
+	Local aAreaU68 := U68->( GetArea() )
+	Local aAreaU69 := U69->( GetArea() )
+	Local aAreaU70 := U70->( GetArea() )
+	Local aAreaU71 := U71->( GetArea() )
+	Local aAreaU73 := U73->( GetArea() )
+	Local cCodigo := ""
+	Local cUsuario := RetCodUsr()
+	Local aUF4 := {}
+	Local aUJ9 := {}
+	Local aUF3 := {}
+	Local aCampos := {}
+	Local nX := 0
+	Local nY := 0
+
+	UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+	If UF2->( MsSeek(xFilial("UF2") + aContrato[POS_CONTRATO]) )
+
+		If Len( ::oHistoricoAlteracao["aCampos"] ) > 0
+
+			aUF4 := ::oHistoricoAlteracao["aUF4"]
+			aUJ9 := ::oHistoricoAlteracao["aUJ9"]
+			aUF3 := ::oHistoricoAlteracao["aUF3"]
+			aCampos := ::oHistoricoAlteracao["aCampos"]
+
+			cCodigo := GetSXENum("U68", "U68_CODIGO")
+
+			::oHistoricoReajuste["cHistoricoAlteracao"] := cCodigo
+
+			//----------------------------//
+			//-- CABEÇALHO DA ALTERAÇÃO --//
+			//----------------------------//
+			If RecLock("U68",.T.)
+
+				U68->U68_FILIAL	:= xFilial("U68")
+				U68->U68_CODIGO	:= cCodigo
+				U68->U68_DATA	:= dDataBase
+				U68->U68_HORA	:= SubStr(Time(),1,5)
+				U68->U68_TIPO	:= "R" // C=Contrato;R=Reajuste;E=Exclusao do Reajuste
+				U68->U68_CONTRA	:= UF2->UF2_CODIGO
+				U68->U68_CLIENT	:= UF2->UF2_CLIENT
+				U68->U68_LOJA	:= UF2->UF2_LOJA
+				U68->U68_CODUSR	:= cUsuario
+
+				U68->(ConfirmSx8())
+			EndIf
+
+			//-----------------------------//
+			//-- BENEFICIARIOS ALTERADOS --//
+			//-----------------------------//
+			For nX := 1 To Len(aUF4)
+
+				If RecLock("U69",.T.)
+
+					U69->U69_FILIAL := xFilial("U69")
+					U69->U69_CODIGO	:= cCodigo
+
+					For nY := 1 To Len(aUF4[nX])
+						U69->&(aUF4[nX,nY,1]) := aUF4[nX,nY,2]
+					Next nY
+
+					U69->(MsUnLock())
+
+				EndIf
+
+			Next nX
+
+			//------------------------------------//
+			//-- COBRANCAS ADICIONAIS ALTERADAS --//
+			//------------------------------------//
+			For nX := 1 To Len(aUJ9)
+
+				If RecLock("U70",.T.)
+
+					U70->U70_FILIAL := xFilial("U70")
+					U70->U70_CODIGO	:= cCodigo
+
+					For nY := 1 To Len(aUJ9[nX])
+						U70->&(aUJ9[nX,nY,1]) := aUJ9[nX,nY,2]
+					Next nY
+
+					U70->(MsUnLock())
+
+				EndIf
+
+			Next nX
+
+			//-------------------------//
+			//-- PRODUTOS E SERVIÇOS --//
+			//-------------------------//
+			For nX := 1 To Len(aUF3)
+
+				If RecLock("U71",.T.)
+
+					U71->U71_FILIAL := xFilial("U71")
+					U71->U71_CODIGO	:= cCodigo
+
+					For nY := 1 To Len(aUF3[nX])
+						U71->&(aUF3[nX,nY,1]) := aUF3[nX,nY,2]
+					Next nY
+
+					U71->(MsUnLock())
+
+				EndIf
+
+			Next nX
+
+			//----------------------//
+			//-- CAMPOS ALTERADOS --//
+			//----------------------//
+			For nX := 1 To Len(aCampos)
+
+				If RecLock("U73",.T.)
+
+					U73->U73_FILIAL := xFilial("U73")
+					U73->U73_CODIGO	:= cCodigo
+
+					For nY := 1 To Len(aCampos[nX])
+						U73->&(aCampos[nX,nY,1]) := aCampos[nX,nY,2]
+					Next nY
+
+					U73->(MsUnLock())
+
+				EndIf
+
+			Next nX
+
+			//--------------------------------------------------------//
+			//-- LIMPA HISTORICO DE ALTERACAO PARA PROXIMO CONTRATO --//
+			//--------------------------------------------------------//
+			::oHistoricoAlteracao := JsonObject():New()
+			::oHistoricoAlteracao["aUF4"] := {}
+			::oHistoricoAlteracao["aUJ9"] := {}
+			::oHistoricoAlteracao["aUF3"] := {}
+			::oHistoricoAlteracao["aCampos"] := {}
+
+		EndIf
+
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUF2 )
+	RestArea( aAreaU68 )
+	RestArea( aAreaU69 )
+	RestArea( aAreaU70 )
+	RestArea( aAreaU71 )
+	RestArea( aAreaU73 )
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::gravarHistoricoReajuste
+Grava histórico de reajustes realizados no contrato
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/14/2021
+@param aContrato, array, Dados do Contrato
+@return logical, lRet
+/*/
+Method gravarHistoricoReajuste(aContrato) Class ReajusteContratosMod2
+	Local lRet := .T.
+	Local oAux := Nil
+	Local oStruct := Nil
+	Local cMaster := "UF7"
+	Local cDetail := "UF8"
+	Local aCpoMaster := {}
+	Local aLinha := {}
+	Local aCpoDetail := {}
+	Local oModel := FWLoadModel("RFUNA011")
+	Local nX := 1
+	Local nI := 0
+	Local nJ := 0
+	Local nPos := 0
+	Local aAux := {}
+	Local nItErro := 0
+	Local lAux := .T.
+	Local cItem := PADL("1", TamSX3("UF8_ITEM")[1], "0")
+	Local cIndice := ""
+	Local nIndice := 0
+	Local nValorAdicional := 0
+	Local aTitulo := {}
+	Local cProximoReaj := ""
+	Local nValorAnterior := 0
+	Local nValorNovo := 0
+	Local cHistoricoAlteracao := ""
+
+	cIndice := ::oHistoricoReajuste["cIndice"]
+	nIndice := ::oHistoricoReajuste["nIndice"]
+	nValorAdicional := ::oHistoricoReajuste["nValorAdicional"]
+	aTitulo := ::oHistoricoReajuste["aTitulo"]
+	cProximoReaj := ::oHistoricoReajuste["cProximoReaj"]
+	nValorAnterior := ::oHistoricoReajuste["nValorAnterior"]
+	nValorNovo := ::oHistoricoReajuste["nValorNovo"]
+	cHistoricoAlteracao := ::oHistoricoReajuste["cHistoricoAlteracao"]
+
+	aadd(aCpoMaster,{"UF7_FILIAL"	, xFilial("UF7")			})
+	aadd(aCpoMaster,{"UF7_DATA"		, dDataBase					})
+	aadd(aCpoMaster,{"UF7_CONTRA"	, aContrato[POS_CONTRATO]	})
+	aadd(aCpoMaster,{"UF7_PROREA"	, cProximoReaj				})
+	aadd(aCpoMaster,{"UF7_TPINDI"	, cIndice					})
+	aadd(aCpoMaster,{"UF7_INDICE"	, nIndice					})
+	aadd(aCpoMaster,{"UF7_VLADIC"	, nValorAdicional			})
+	aadd(aCpoMaster,{"UF7_MOD2"		, "S"						})
+	aadd(aCpoMaster,{"UF7_VLRANT"	, nValorAnterior			})
+	aadd(aCpoMaster,{"UF7_VLRNOV"	, nValorNovo				})
+	aadd(aCpoMaster,{"UF7_HISALT"	, cHistoricoAlteracao		})
+
+	For nX := 1 To Len(aTitulo)
+
+		aLinha := {}
+
+		aadd(aLinha,{"UF8_FILIAL"	, xFilial("UF8")	})
+		aadd(aLinha,{"UF8_ITEM"		, cItem				})
+		aadd(aLinha,{"UF8_PREFIX"	, aTitulo[nX,1]		})
+		aadd(aLinha,{"UF8_NUM"		, aTitulo[nX,2]		})
+		aadd(aLinha,{"UF8_PARCEL"	, aTitulo[nX,3]		})
+		aadd(aLinha,{"UF8_TIPO"		, aTitulo[nX,4]		})
+		aadd(aLinha,{"UF8_VALOR"	, aTitulo[nX,5]		})
+		aadd(aCpoDetail,aLinha)
+
+		cItem := SOMA1(cItem)
+
+	Next nX
+
+	(cDetail)->(DbSetOrder(1))
+	(cMaster)->(DbSetOrder(1))
+
+	// defino a operação de inclusão
+	oModel:SetOperation(3)
+
+	// Antes de atribuirmos os valores dos campos temos que ativar o modelo
+	lRet := oModel:Activate()
+
+	If lRet
+
+		// Instanciamos apenas a parte do modelo referente aos dados de cabeçalho
+		oAux := oModel:GetModel( cMaster + 'MASTER' )
+
+		// Obtemos a estrutura de dados do cabeçalho
+		oStruct := oAux:GetStruct()
+		aAux := oStruct:GetFields()
+
+		If lRet
+
+			For nI := 1 To Len(aCpoMaster)
+
+				// Verifica se os campos passados existem na estrutura do cabeçalho
+				If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aCpoMaster[nI][1] ) } ) ) > 0
+
+					// È feita a atribuicao do dado aos campo do Model do cabeçalho
+					If !( lAux := oModel:SetValue( cMaster + 'MASTER', aCpoMaster[nI][1], aCpoMaster[nI][2] ) )
+
+						// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+						// o método SetValue retorna .F.
+						lRet    := .F.
+						Exit
+
+					EndIf
+
+				EndIf
+
+			Next nI
+
+		EndIf
+
+	EndIf
+
+	If lRet
+
+		// Intanciamos apenas a parte do modelo referente aos dados do item
+		oAux := oModel:GetModel( cDetail + 'DETAIL' )
+
+		// Obtemos a estrutura de dados do item
+		oStruct := oAux:GetStruct()
+		aAux := oStruct:GetFields()
+
+		nItErro  := 0
+
+		For nI := 1 To Len(aCpoDetail)
+
+			// Incluímos uma linha nova
+			// ATENCAO: O itens são criados em uma estrura de grid (FORMGRID), portanto já é criada uma primeira linha
+			//branco automaticamente, desta forma começamos a inserir novas linhas a partir da 2ª vez
+
+			If nI > 1
+
+				// Incluimos uma nova linha de item
+
+				If  ( nItErro := oAux:AddLine() ) <> nI
+
+					// Se por algum motivo o metodo AddLine() não consegue incluir a linha,
+					// ele retorna a quantidade de linhas já
+					// existem no grid. Se conseguir retorna a quantidade mais 1
+					lRet    := .F.
+					Exit
+
+				EndIf
+
+			EndIf
+
+			For nJ := 1 To Len( aCpoDetail[nI] )
+
+				// Verifica se os campos passados existem na estrutura de item
+				If ( nPos := aScan( aAux, { |x| AllTrim( x[3] ) ==  AllTrim( aCpoDetail[nI][nJ][1] ) } ) ) > 0
+
+					If !( lAux := oModel:SetValue( cDetail + 'DETAIL', aCpoDetail[nI][nJ][1], aCpoDetail[nI][nJ][2] ) )
+
+						// Caso a atribuição não possa ser feita, por algum motivo (validação, por exemplo)
+						// o método SetValue retorna .F.
+						lRet    := .F.
+						nItErro := nI
+						Exit
+
+					EndIf
+
+				EndIf
+
+			Next nJ
+
+			If !lRet
+				Exit
+			EndIf
+
+		Next nI
+
+	EndIf
+
+	If lRet
+
+		// Faz-se a validação dos dados, note que diferentemente das tradicionais "rotinas automáticas"
+		// neste momento os dados não são gravados, são somente validados.
+		If ( lRet := oModel:VldData() )
+
+			// Se o dados foram validados faz-se a gravação efetiva dos dados (commit)
+			lRet := oModel:CommitData()
+		EndIf
+
+	EndIf
+
+	If !lRet
+
+		// Se os dados não foram validados obtemos a descrição do erro para gerar LOG ou mensagem de aviso
+		aErro   := oModel:GetErrorMessage()
+
+		// A estrutura do vetor com erro é:
+		//  [1] Id do formulário de origem
+		//  [2] Id do campo de origem
+		//  [3] Id do formulário de erro
+		//  [4] Id do campo de erro
+		//  [5] Id do erro
+		//  [6] mensagem do erro
+		//  [7] mensagem da solução
+		//  [8] Valor atribuido
+		//  [9] Valor anterior
+
+		AutoGrLog( "Id do formulário de origem:" + ' [' + AllToChar( aErro[1]  ) + ']' )
+		AutoGrLog( "Id do campo de origem:     " + ' [' + AllToChar( aErro[2]  ) + ']' )
+		AutoGrLog( "Id do formulário de erro:  " + ' [' + AllToChar( aErro[3]  ) + ']' )
+		AutoGrLog( "Id do campo de erro:       " + ' [' + AllToChar( aErro[4]  ) + ']' )
+		AutoGrLog( "Id do erro:                " + ' [' + AllToChar( aErro[5]  ) + ']' )
+		AutoGrLog( "Mensagem do erro:          " + ' [' + AllToChar( aErro[6]  ) + ']' )
+		AutoGrLog( "Mensagem da solução:       " + ' [' + AllToChar( aErro[7]  ) + ']' )
+		AutoGrLog( "Valor atribuido:           " + ' [' + AllToChar( aErro[8]  ) + ']' )
+		AutoGrLog( "Valor anterior:            " + ' [' + AllToChar( aErro[9]  ) + ']' )
+
+		If nItErro > 0
+			AutoGrLog( "Erro no Item: " + ' [' + AllTrim( AllToChar( nItErro  ) ) + ']' )
+		EndIf
+
+		::cLogError += "Contrato " + aContrato[POS_CONTRATO] + " ExecAuto RFUNA011" + CRLF
+		::cLogError += AllTrim( MostraErro('/temp') ) + CRLF
+
+	EndIf
+
+	//-------------------------------------------------------//
+	//-- Limpa histórico de reajuste para próximo contrato --//
+	//-------------------------------------------------------//
+	::oHistoricoReajuste := JsonObject():New()
+	::oHistoricoReajuste["cIndice"] := ""
+	::oHistoricoReajuste["nIndice"] := 0
+	::oHistoricoReajuste["nValorAdicional"] := 0
+	::oHistoricoReajuste["aTitulo"] := {}
+	::oHistoricoReajuste["cProximoReaj"] := ""
+	::oHistoricoReajuste["nValorAnterior"] := 0
+	::oHistoricoReajuste["nValorNovo"] := 0
+	::oHistoricoReajuste["cHistoricoAlteracao"] := ""
+
+	// Desativamos o Model
+	oModel:DeActivate()
+
+Return lRet
+
+/*/{Protheus.doc} ReajusteContratosMod2::gerarArquivoLogError
+Gera arquivo de log error e abri para o usuário
+@type method
+@version 1.0
+@author nata.queiroz
+@since 1/11/2021
+@return logical, lRet
+/*/
+Method gerarArquivoLogError() Class ReajusteContratosMod2
+	Local lRet := .T.
+
+	If !Empty( ::cLogError )
+		U_MsgVirtus(::cLogError , "Log Reajuste Mod 2", "RFUNA0056")
+	EndIf
+
+Return(lRet)
+
+/*/{Protheus.doc} LimparRegistrosUJ9
+Limpa registros da tabela UJ9 para contrato selecionado
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/31/2020
+@param cContrato, character, Contrato Selecionado
+@param oHistoricoAlteracao, object, Historico Alteracao
+/*/
+Static Function LimparRegistrosUJ9(cContrato, oHistoricoAlteracao)
+	Local aArea := GetArea()
+	Local aAreaUJ9 := UJ9->( GetArea() )
+	Local aUJ9 := {}
+	Local cOperacao := "E"
+
+	UJ9->( DbSetOrder(1) ) // UJ9_FILIAL+UJ9_CODIGO+UJ9_ITEM
+	If UJ9->( MsSeek(xFilial("UJ9") + cContrato) )
+		While UJ9->( !EOF() .AND. UJ9_FILIAL+UJ9_CODIGO == xFilial("UJ9")+cContrato )
+
+			//-- Histórico UJ9
+			AADD(aUJ9, {"U70_CONTRA", cContrato			})
+			AADD(aUJ9, {"U70_ITBEN"	, UJ9->UJ9_ITUF4	})
+			// AADD(aUJ9, {"U70_NOME"	, UJ9->UJ9_NOME		})
+			AADD(aUJ9, {"U70_ITEM"	, UJ9->UJ9_ITEM		})
+			AADD(aUJ9, {"U70_TIPO"	, UJ9->UJ9_TPREGR	})
+			AADD(aUJ9, {"U70_VLUNIT", UJ9->UJ9_VLUNIT	})
+			AADD(aUJ9, {"U70_QTD"	, UJ9->UJ9_QTD		})
+			AADD(aUJ9, {"U70_VLTOT"	, UJ9->UJ9_VLTOT	})
+			AADD(aUJ9, {"U70_TPALT"	, cOperacao			})
+
+			If RecLock("UJ9", .F.)
+				UJ9->( DbDelete() )
+				UJ9->( MsUnlock() )
+			EndIf
+
+			//-- Prepara histórico para gravação
+			PrepararHistorico(/*aUF4*/, aUJ9, /*aUF3*/, /*aCampos*/, @oHistoricoAlteracao)
+
+			//-- Limpa para proximo historico
+			aUJ9 := {}
+
+			UJ9->( DbSkip() )
+		EndDo
+	EndIf
+
+	RestArea( aArea )
+	RestArea( aAreaUJ9 )
+
+Return
+
+/*/{Protheus.doc} AdicionarRegistrosUJ9
+Adiciona registros UJ9 e retorna valor cobrança adicional
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/4/2021
+@param cContrato, character, Contrato
+@param cRegra, character, Regra
+@param aRegras, array, Regras Aplicadas
+@param oHistoricoAlteracao, object, Historico Alteracao
+@return numeric, nValorCobAdic
+/*/
+Static Function AdicionarRegistrosUJ9(cContrato, cRegra, aRegras, oHistoricoAlteracao)
+	Local aArea := GetArea()
+	Local aAreaUJ9 := UJ9->( GetArea() )
+	Local nX := 0
+	Local nValorCobAdic := 0
+	Local aUJ9 := {}
+	Local cOperacao := "I"
+
+	For nX := 1 To Len(aRegras)
+
+		RecLock("UJ9", .T.)
+		UJ9->UJ9_FILIAL	:= xFilial("UJ9")
+		UJ9->UJ9_ITEM	:= StrZero(nX, 3)
+		UJ9->UJ9_CODIGO	:= cContrato
+		UJ9->UJ9_REGRA	:= aRegras[nX, 01]
+		UJ9->UJ9_ITUJ5 	:= aRegras[nX, 02]
+		UJ9->UJ9_TPREGR	:= aRegras[nX, 03]
+		UJ9->UJ9_VLRINI	:= aRegras[nX, 04]
+		UJ9->UJ9_VLRFIM	:= aRegras[nX, 05]
+		UJ9->UJ9_VLUNIT	:= aRegras[nX, 06]
+		UJ9->UJ9_QTD	:= aRegras[nX, 07]
+		UJ9->UJ9_VLTOT	:= aRegras[nX, 08]
+		UJ9->UJ9_ITUF4	:= aRegras[nX, 09]
+		UJ9->( MsUnlock() )
+
+		//-- Histórico UJ9
+		AADD(aUJ9, {"U70_CONTRA", cContrato			})
+		AADD(aUJ9, {"U70_ITBEN"	, UJ9->UJ9_ITUF4	})
+		AADD(aUJ9, {"U70_ITEM"	, UJ9->UJ9_ITEM		})
+		AADD(aUJ9, {"U70_TIPO"	, UJ9->UJ9_TPREGR	})
+		AADD(aUJ9, {"U70_VLUNIT", UJ9->UJ9_VLUNIT	})
+		AADD(aUJ9, {"U70_QTD"	, UJ9->UJ9_QTD		})
+		AADD(aUJ9, {"U70_VLTOT"	, UJ9->UJ9_VLTOT	})
+		AADD(aUJ9, {"U70_TPALT"	, cOperacao			})
+
+		//-- Prepara histórico para gravação
+		PrepararHistorico(/*aUF4*/, aUJ9, /*aUF3*/, /*aCampos*/, @oHistoricoAlteracao)
+
+		//-- Limpa para proximo historico
+		aUJ9 := {}
+
+		nValorCobAdic += aRegras[nX, 08]
+
+	Next nX
+
+	RestArea( aArea )
+	RestArea( aAreaUJ9 )
+
+Return nValorCobAdic
+
+/*/{Protheus.doc} CalcularRegras
+Calcula e retorna regras aplicadas
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/4/2021
+@param cContrato, character, Contrato
+@return array, aRegras
+/*/
+Static Function CalcularRegras(cContrato)
+	Local aArea			:= GetArea()
+	Local aAreaUF2		:= UF2->( GetArea() )
+	Local aAreaUF4		:= UF4->( GetArea() )
+	Local aAreaUJ7		:= UJ7->( GetArea() )
+	Local cQry			:= ""
+	Local cTipoBenef	:= ""
+	Local cTpRegra		:= ""
+	Local cRegra		:= ""
+	Local nPosTipo		:= 0
+	Local nQtd			:= 0
+	Local nIdade		:= 0
+	Local nIdadeTitular	:= 0
+	Local nValor		:= 0
+	Local nNumDep		:= 0
+	Local aRegras		:= {}
+	Local aRegrasAux	:= {}
+	Local aAux			:= {}
+	Local aTipos		:= {}
+	Local aDependentes	:= { "1", "2" } // 1 - Beneficiario 2 - Agregado 3 - Titular
+	Local lRegraValid	:= .T.
+	Local lIdadeDepOK	:= .F.
+	Local nX			:= 0
+
+	UF2->( DbSetOrder(1) ) // UF2_FILIAL+UF2_CODIGO
+	If UF2->( MsSeek(xFilial("UF2") + cContrato) )
+
+		//-------------------------------//
+		//-- CONSULTA REGRAS POR IDADE --//
+		//-------------------------------//
+
+		UF4->( DbSetOrder(1) ) // UF4_FILIAL+UF4_CODIGO+UF4_ITEM
+		If UF4->( MsSeek(xFilial("UF4") + UF2->UF2_CODIGO) )
+
+			While UF4->( !EOF() ) ;
+					.AND. UF4->UF4_FILIAL+UF4->UF4_CODIGO == UF2->UF2_FILIAL+UF2->UF2_CODIGO
+
+				If (Empty(UF4->UF4_DTFIM) .OR. (UF4->UF4_DTFIM >= dDataBase)) .AND. !Empty(UF4->UF4_DTNASC)
+
+					nIdade := UF4->UF4_IDADE
+
+					// 1 - Beneficiario 2 - Agregado 3 - Titular
+					cTipoBenef := UF4->UF4_TIPO
+
+					//valida o tipo de regra
+					If UF4->UF4_TIPO == '3'
+						cTpRegra := "T"
+						nIdadeTitular := nIdade
+					Else
+						cTpRegra := "I"
+					EndIf
+
+					// Valida se possui regra especifica para o beneficiario
+					If !Empty( UF4->UF4_REGRA )
+						cRegra := UF4->UF4_REGRA
+					Else
+						cRegra := UF2->UF2_REGRA
+					EndIf
+
+					If Select("QRYUJ5") > 0
+						QRYUJ5->(DbCloseArea())
+					EndIf
+
+					cQry := " SELECT "
+					cQry += " 	UJ5_CODIGO AS CODIGO_REGRA, "
+					cQry += " 	UJ6_REGRA AS ITEM_REGRA, "
+					cQry += " 	UJ6_TPREGR AS TIPO_REGRA, "
+					cQry += " 	UJ6_VLRINI AS LIMITE_INICIAL, "
+					cQry += " 	UJ6_VLRFIM AS LIMITE_FINAL, "
+					cQry += " 	UJ6_VLRCOB AS VALOR, "
+					cQry += " 	UJ6_INDIVI AS INDIVIDUAL "
+					cQry += " FROM " + RETSQLNAME("UJ5") + " UJ5 "
+					cQry += " INNER JOIN " + RETSQLNAME("UJ6") + " UJ6 "
+					cQry += " 	ON UJ6.D_E_L_E_T_= ' ' "
+					cQry += " 		AND UJ6.UJ6_FILIAL = UJ5.UJ5_FILIAL "
+					cQry += " 		AND UJ6.UJ6_CODIGO = UJ5.UJ5_CODIGO "
+					cQry += " 		AND UJ6.UJ6_TPBENE = '" + cTipoBenef + "' "
+					cQry += " 		AND UJ6.UJ6_TPREGR = '" + cTpRegra + "' "
+					cQry += " 		AND UJ6.UJ6_VLRINI <=  " + cValToChar(nIdade)
+					cQry += " 		AND UJ6.UJ6_VLRFIM >=  " + cValToChar(nIdade)
+					cQry += " 	WHERE UJ5.D_E_L_E_T_= ' ' "
+					cQry += " 		AND UJ5_FILIAL = '" + xFilial("UJ5") + "' "
+					cQry += " 		AND UJ5_CODIGO = '" + cRegra + "' "
+					cQry := ChangeQuery(cQry)
+
+					MPSysOpenQuery( cQry, "QRYUJ5" )
+
+					If QRYUJ5->( !Eof() )
+						While QRYUJ5->( !Eof() )
+
+							aAux := {}
+
+							nValor := QRYUJ5->VALOR
+
+							AADD(aAux, QRYUJ5->CODIGO_REGRA		) // Código da Regra
+							AADD(aAux, QRYUJ5->ITEM_REGRA		) // Item da Regra
+							AADD(aAux, QRYUJ5->TIPO_REGRA		) // Tipo da Regra
+							AADD(aAux, QRYUJ5->LIMITE_INICIAL	) // Limite Inicial
+							AADD(aAux, QRYUJ5->LIMITE_FINAL		) // Limite Final
+							AADD(aAux, nValor					) // Valor Unitário
+							AADD(aAux, 1						) // Quantidade
+							AADD(aAux, nValor					) // Valor Total
+							AADD(aAux, UF4->UF4_ITEM			) // Item do Beneficiário
+							AADD(aAux, UF4->UF4_NOME			) // Nome do Beneficiário
+
+							AADD(aRegrasAux , aAux)
+
+							QRYUJ5->( DbSkip() )
+
+						EndDo
+					EndIf
+
+					If Select("QRYUJ5") > 0
+						QRYUJ5->( DbCloseArea() )
+					EndIf
+
+					// Titular e beneficiario com regra especificia nao entra para contagem de beneficiarios
+					If cTipoBenef <> "3" .AND. Empty( UF4->UF4_REGRA )
+
+						// Valida se o tipo de beneficario ja existe no array de aTipos para pesquisar as regras por quantidade
+						nPosTipo := aScan( aTipos, { |x| Alltrim(x[1]) == Alltrim(cTipoBenef) } )
+
+						If nPosTipo > 0
+							aTipos[nPosTipo, 2] += 1
+						Else
+							AADD(aTipos, {cTipoBenef, 1})
+						EndIf
+
+					EndIf
+
+				EndIf
+
+				UF4->( DbSkip() )
+			EndDo
+
+		EndIf
+
+		//------------------------------------//
+		//-- CONSULTA REGRAS POR QUANTIDADE --//
+		//------------------------------------//
+
+		For nX := 1 To Len(aTipos)
+
+			If Select("QRYUJ5") > 0
+				QRYUJ5->( DbCloseArea() )
+			EndIf
+
+			cQry := " SELECT "
+			cQry += " UJ5.UJ5_CODIGO AS CODIGO_REGRA, "
+			cQry += " UJ6.UJ6_REGRA AS ITEM_REGRA, "
+			cQry += " UJ6.UJ6_TPREGR AS TIPO_REGRA, "
+			cQry += " UJ6.UJ6_VLRINI AS LIMITE_INICIAL, "
+			cQry += " UJ6.UJ6_VLRFIM AS LIMITE_FINAL, "
+			cQry += " UJ6.UJ6_VLRCOB AS VALOR, "
+			cQry += " UJ6.UJ6_INDIVI AS INDIVIDUAL "
+			cQry += " FROM "
+			cQry += " " + RetSqlName("UJ5") + " UJ5 "
+			cQry += " INNER JOIN "
+			cQry += " " + RetSqlName("UJ6") + " UJ6 "
+			cQry += " ON ( "
+			cQry += " 	UJ6.D_E_L_E_T_ <> '*' "
+			cQry += " 	AND UJ5.UJ5_FILIAL = UJ6.UJ6_FILIAL "
+			cQry += " 	AND UJ5.UJ5_CODIGO = UJ6_CODIGO "
+			cQry += "	AND UJ6.UJ6_TPREGR = 'N' "
+			cQry += " 	AND UJ6.UJ6_TPBENE = '" + aTipos[nX,1] + "' "
+			cQry += " 	AND UJ6.UJ6_VLRINI <= " + cValToChar(aTipos[nX,2])
+			cQry += " 	AND UJ6.UJ6_VLRFIM >= " + cValToChar(aTipos[nX,2])
+			cQry += " ) "
+			cQry += " WHERE "
+			cQry += " 	UJ5.UJ5_FILIAL = '" + xFilial("UJ5") + "' "
+			cQry += " 	AND UJ5.UJ5_CODIGO = '" + cRegra + "' "
+			cQry := ChangeQuery(cQry)
+
+			MPSysOpenQuery( cQry, "QRYUJ5" )
+
+			If QRYUJ5->( !Eof() )
+				While QRYUJ5->( !Eof() )
+
+					aAux := {}
+
+					If QRYUJ5->INDIVIDUAL == "S"
+						nQtd := aTipos[nX,2] - QRYUJ5->LIMITE_INICIAL + 1
+					Else
+						nQtd := 1
+					EndIf
+
+					AADD(aAux, QRYUJ5->CODIGO_REGRA		) // Código da Regra
+					AADD(aAux, QRYUJ5->ITEM_REGRA		) // Item da Regra
+					AADD(aAux, QRYUJ5->TIPO_REGRA		) // Tipo da Regra
+					AADD(aAux, QRYUJ5->LIMITE_INICIAL	) // Limite Inicial
+					AADD(aAux, QRYUJ5->LIMITE_FINAL		) // Limite Final
+					AADD(aAux, QRYUJ5->VALOR			) // Valor Unitário
+					AADD(aAux, nQtd						) // Quantidade
+					AADD(aAux, QRYUJ5->VALOR * nQtd		) // Valor Total
+					AADD(aAux, ""						) // Item do Beneficiário
+					AADD(aAux, ""						) // Nome do Beneficiário
+
+					AADD(aRegrasAux , aAux)
+
+					QRYUJ5->( DbSkip() )
+
+				EndDo
+			EndIf
+
+			If Select("QRYUJ5") > 0
+				QRYUJ5->( DbCloseArea() )
+			EndIf
+
+		Next nX
+
+		//-----------------------------------------------------//
+		//-- VALIDAÇÃO DAS CONDIÇÕES DE COBRANÇAS ADICIONAIS --//
+		//-----------------------------------------------------//
+
+		For nX := 1 To Len(aTipos)
+
+			// Verifica os tipos de beneficiários que são considerados como dependente
+			If aScan( aDependentes, { |x| Alltrim(x) == Alltrim(aTipos[nX, 1]) } ) > 0
+				nNumDep += aTipos[nX, 2]
+			EndIf
+
+		Next nX
+
+		// Verifica todas as regras consultadas
+		For nX := 1 To Len(aRegrasAux)
+
+			lRegraValid := .T.
+			lIdadeDepOK	:= .F.
+
+			// Verifica se existe uma condição para a regra
+			UJ7->(DbSetOrder(1)) // UJ7_FILIAL + UJ7_CODIGO + UJ7_REGRA + UJ7_ITEM
+			If UJ7->(MsSeek(xFilial("UJ7") + aRegrasAux[nX,1] + aRegrasAux[nX,2]))
+
+				While UJ7->( !Eof() ) .AND. UJ7->UJ7_FILIAL == xFilial("UJ7") ;
+						.AND. UJ7->UJ7_CODIGO == aRegrasAux[nX,1] ;
+						.AND. UJ7->UJ7_REGRA == aRegrasAux[nX,2]
+
+					If UJ7->UJ7_TPCOND == "I" // Tipo de condição = Idade do Dependente
+
+						UF4->( DbSetOrder(1) ) // UF4_FILIAL+UF4_CODIGO+UF4_ITEM
+						If UF4->( MsSeek(xFilial("UF4") + UF2->UF2_CODIGO) )
+
+							While UF4->( !EOF() ) ;
+									.AND. UF4->UF4_FILIAL+UF4->UF4_CODIGO == UF2->UF2_FILIAL+UF2->UF2_CODIGO
+
+								// Verifica se o tipo do beneficiario é considerado como dependente
+								If aScan( aDependentes, { |x| Alltrim(x) == Alltrim( UF4->UF4_TIPO ) } ) > 0
+
+									// Se a idade do dependente estiver no intervalo definido
+									If UF4->UF4_IDADE >= UJ7->UJ7_VLRINI .AND. UF4->UF4_IDADE <= UJ7->UJ7_VLRFIM
+										lIdadeDepOK := .T.
+										Exit
+									EndIf
+
+								EndIf
+
+								UF4->( DbSkip() )
+							EndDo
+
+						EndIf
+
+						// Se não foram encontrados dependentes com idade dentro do intervalo da regra
+						If !lIdadeDepOK
+							lRegraValid := .F.
+							Exit
+						EndIf
+
+					ElseIf UJ7->UJ7_TPCOND == "T" // Tipo de condição = Idade do Titular
+
+						// Se a idade do titular não estiver no intervalo definido
+						If !( nIdadeTitular >= UJ7->UJ7_VLRINI .AND. nIdadeTitular <= UJ7->UJ7_VLRFIM )
+							lRegraValid := .F.
+							Exit
+						EndIf
+
+					ElseIf UJ7->UJ7_TPCOND == "N" // Tipo de condição = Numero de dependentes
+
+						// Se o número de dependentes não estiver no intervalo definido
+						If !( nNumDep >= UJ7->UJ7_VLRINI .AND. nNumDep <= UJ7->UJ7_VLRFIM )
+							lRegraValid := .F.
+							Exit
+						EndIf
+
+					EndIf
+
+					UJ7->( DbSkip() )
+
+				EndDo
+
+			EndIf
+
+			// Se a regra foi validada
+			If lRegraValid
+				AADD(aRegras, aRegrasAux[nX])
+			EndIf
+
+		Next nX
+
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+	RestArea(aAreaUF4)
+	RestArea(aAreaUJ7)
+
+Return aRegras
+
+/*/{Protheus.doc} BuscarPrecoTabela
+Busca preço do produto informado
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/4/2021
+@param cTabela, character, Tabela de Preço
+@param cProduto, character, Produto
+@param cLogError, character, cLogError
+@return numeric, nPreco
+/*/
+Static Function BuscarPrecoTabela(cTabela, cProduto, cLogError)
+	Local cQry		:= ""
+	Local nPreco	:= 0
+
+	If Select("QRYTAB") > 0
+		QRYTAB->( DbCloseArea() )
+	EndIf
+
+	cQry := " SELECT "
+	cQry += " DA1_PRCVEN PRECO, "
+	cQry += " DA1_DATVIG VIGENCIA "
+	cQry += " FROM "
+	cQry += + RetSQLName("DA1")
+	cQry += " WHERE "
+	cQry += " D_E_L_E_T_ <> '*' "
+	cQry += " AND DA1_FILIAL = '"+xFilial("DA1")+"' "
+	cQry += " AND DA1_CODPRO = '"+AllTrim(cProduto)+"' "
+	cQry += " AND DA1_CODTAB = '"+AllTrim(cTabela)+"' "
+	cQry += " ORDER BY DA1_DATVIG DESC "
+	cQry := ChangeQuery(cQry)
+
+	MPSysOpenQuery( cQry, "QRYTAB" )
+
+	If QRYTAB->( !EOF() )
+		// Verifica se o preço está vigente
+		If STOD(QRYTAB->VIGENCIA) <= dDataBase
+			nPreco := QRYTAB->PRECO
+		Else
+			cLogError += "O Produto/Serviço: " + AllTrim(cProduto);
+				+ " não possui preço vigente na tabela: " + AllTrim(cTabela) + CRLF
+		EndIf
+	Else
+		cLogError += "O Produto/Serviço: " + AllTrim(cProduto);
+			+ " não foi encontrado na tabela: " + AllTrim(cTabela) + CRLF
+	EndIf
+
+	If Select("QRYTAB") > 0
+		QRYTAB->( DbCloseArea() )
+	EndIf
+
+Return(nPreco)
+
+/*/{Protheus.doc} BuscarIndice
+Busca valor do indice selecionado
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/5/2021
+@param cIndice, character, Código do Indice
+@return numeric, nIndice
+/*/
+Static Function BuscarIndice(cIndice)
+	Local cQry			:= ""
+	Local nIndice		:= 0
+	Local dDataRef		:= dDataBase
+
+	If Select("QRY") > 0
+		QRY->(DbCloseArea())
+	EndIf
+
+	cQry := " SELECT "
+	cQry += " COUNT(*) QTDCAD, "
+	cQry += " SUM(U29.U29_INDICE) AS INDICE "
+	cQry += " FROM "
+	cQry += + RetSqlName("U22") + " U22 "
+	cQry += " INNER JOIN "
+	cQry += + RetSqlName("U28") + " U28 "
+	cQry += "    INNER JOIN "
+	cQry += +    RetSqlName("U29") + " U29 "
+	cQry += "    ON ( "
+	cQry += "        U29.D_E_L_E_T_ <> '*' "
+	cQry += "        AND U28.U28_CODIGO = U29.U29_CODIGO "
+	cQry += "        AND U28.U28_ITEM = U29.U29_IDANO "
+	cQry += "        AND U29.U29_FILIAL = '" + xFilial("U29") + "' "
+	cQry += "    ) "
+	cQry += " ON ( "
+	cQry += "    U28.D_E_L_E_T_ <> '*' "
+	cQry += "    AND U22.U22_CODIGO = U28.U28_CODIGO "
+	cQry += "    AND U28.U28_FILIAL = '" + xFilial("U28") + "' "
+	cQry += "    ) "
+	cQry += " WHERE "
+	cQry += " U22.D_E_L_E_T_ <> '*' "
+	cQry += " AND U22.U22_FILIAL = '" + xFilial("U22") + "' "
+	cQry += " AND U22.U22_STATUS IN ('A','S') "
+
+	If !Empty(cIndice)
+		cQry += " AND U22.U22_CODIGO = '" + cIndice + "' "
+	EndIf
+
+	cQry += " AND U28.U28_ANO + U29.U29_MES "
+	cQry += " BETWEEN '" + AnoMes(MonthSub(dDataRef,11)) + "'  AND  '" + AnoMes(dDataRef) + "' "
+	cQry := ChangeQuery(cQry)
+
+	MPSysOpenQuery( cQry, "QRY" )
+
+	If QRY->(!Eof())
+		nIndice := Round( QRY->INDICE, TamSX3("U29_INDICE")[2] )
+	EndIf
+
+	//-- Zera indice em caso de valor negativo
+	If nIndice < 0
+		nIndice := 0
+	EndIf
+
+	QRY->( DbCloseArea() )
+
+	If Select("QRY") > 0
+		QRY->(DbCloseArea())
+	EndIf
+
+Return(nIndice)
+
+/*/{Protheus.doc} BuscarProximaParcela
+Busca próxima parcela do contrato
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/6/2021
+@param cPrefixo, character, Prefixo do Título
+@param cNumero, character, Número do Título
+@param cTipo, character, Tipo do Título
+@return character, cRet
+/*/
+Static Function BuscarProximaParcela(cPrefixo, cNumero, cTipo)
+	Local cRet := ""
+	Local cQry := ""
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	EndIf
+
+	cQry := " SELECT "
+	cQry += " MAX(SE1.E1_PARCELA) AS ULTIMA_PARCELA "
+	cQry += " FROM "
+	cQry += " " + RetSqlName("SE1") + " SE1 "
+	cQry += " WHERE "
+	cQry += " SE1.D_E_L_E_T_ <> '*' "
+	cQry += " AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQry += " AND SE1.E1_PREFIXO = '" + cPrefixo + "' "
+	cQry += " AND SE1.E1_XCTRFUN = '" + cNumero + "' "
+	cQry += " AND SE1.E1_TIPO = '" + cTipo + "' "
+
+	// Verifica se o campo de importacao esta ativo na base
+	If SE1->(FieldPos("E1_XIMP")) > 0
+		cQry += " AND ( SE1.E1_PARCELA < '900' OR E1_XIMP = ' ' )"
+	endif
+
+	cQry := ChangeQuery(cQry)
+
+	MPSysOpenQuery( cQry, "QRYSE1" )
+
+	// Se existir títulos com este tipo
+	If QRYSE1->(!Eof()) .AND. !Empty(QRYSE1->ULTIMA_PARCELA)
+		cRet := Soma1(QRYSE1->ULTIMA_PARCELA)
+	Else
+		cRet := PadL("1", TamSX3("E1_PARCELA")[1], "0")
+	EndIf
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	EndIf
+
+Return(cRet)
+
+/*/{Protheus.doc} ExecAutoFINA040
+ExecAuto da rotina FINA040
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/6/2021
+@param cPrefixo, character, Prefixo
+@param cContrato, character, Contrato
+@param cParcela, character, Parcela
+@param cTipo, character, Tipo
+@param cNatureza, character, Natureza
+@param cCliente, character, Cliente
+@param cLoja, character, Loja
+@param dEmissao, date, Emissao
+@param dVencimento, date, Vencimento
+@param nValorParcela, numeric, Valor da Parcela
+@param cMesAnoVencto, character, Mes e Ano Vencimento
+@param cFormaPagto, character, Forma de Pagamento
+@param cLogError, character, Log Error
+@return logical, lRet
+/*/
+Static Function ExecAutoFINA040(cPrefixo, cContrato, cParcela, cTipo, cNatureza, cCliente,;
+		cLoja, dEmissao, dVencimento, nValorParcela, cMesAnoVencto, cFormaPagto, cLogError)
+
+	Local aArea			:= GetArea()
+	Local aAreaSE1		:= SE1->(GetArea())
+	Local aFin040 		:= {}
+	Local lRet 			:= .T.
+	Local nMVPar01Bkp	:= 0	// variavel para backup de parametro do FIN040
+	Local nMVPar02Bkp	:= 0	// variavel para backup de parametro do FIN040
+	Local nMVPar03Bkp	:= 0	// variavel para backup de parametro do FIN040
+	Local nMVPar04Bkp	:= 0	// variavel para backup de parametro do FIN040
+	Local nMVPar05Bkp	:= 0	// variavel para backup de parametro do FIN040
+
+	Private lMsErroAuto := .F.
+	Private lMsHelpAuto := .T.
+
+	// pergunte da rotina FINA040 - FIN040
+	Pergunte("FIN040",.F.)
+
+	// faco backupdos valores dos parametros
+	nMVPar01Bkp	:= MV_PAR01
+	nMVPar02Bkp	:= MV_PAR02
+	nMVPar03Bkp	:= MV_PAR03
+	nMVPar04Bkp	:= MV_PAR04
+	nMVPar05Bkp	:= MV_PAR05
+
+	// atribuo os valores default do grupo de perguntas FIN040
+	SetMVValue("FIN040","MV_PAR01", 2) // mostra lanc contab? 2-Nao
+	SetMVValue("FIN040","MV_PAR02", 2) // contab. tit. provisor? 2-Nao
+	SetMVValue("FIN040","MV_PAR03", 2) // contab. on-line? 2-Nao
+	SetMVValue("FIN040","MV_PAR04", 1) // rateia valro? 1-Bruto
+	SetMVValue("FIN040","MV_PAR05", 2) // valores acessoarios inclusao? 2-Nao
+
+	AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")			, Nil } )
+	AAdd(aFin040, {"E1_PREFIXO"	, cPrefixo					, Nil } )
+	AAdd(aFin040, {"E1_NUM"		, cContrato					, Nil } )
+	AAdd(aFin040, {"E1_PARCELA"	, cParcela					, Nil } )
+	AAdd(aFin040, {"E1_TIPO"	, cTipo		 				, Nil } )
+	AAdd(aFin040, {"E1_NATUREZ"	, cNatureza					, Nil } )
+	AAdd(aFin040, {"E1_CLIENTE"	, cCliente					, Nil } )
+	AAdd(aFin040, {"E1_LOJA"	, cLoja						, Nil } )
+	AAdd(aFin040, {"E1_EMISSAO"	, dEmissao					, Nil } )
+	AAdd(aFin040, {"E1_VENCTO"	, dVencimento				, Nil } )
+	AAdd(aFin040, {"E1_VENCREA"	, DataValida(dVencimento)	, Nil } )
+	AAdd(aFin040, {"E1_VALOR"	, nValorParcela				, Nil } )
+	AAdd(aFin040, {"E1_XCTRFUN"	, cContrato					, Nil } )
+	AAdd(aFin040, {"E1_XPARCON"	, cMesAnoVencto				, Nil } )
+	AAdd(aFin040, {"E1_XFORPG"	, cFormaPagto				, Nil } )
+
+	//===============================================================================
+	// == PONTO DE ENTRADA PARA MANIPULACAO DO FINANCEIRO DA ATIVACAO DO CONTRATO ==
+	//==============================================================================
+	if ExistBlock("UF040PCO")
+
+		aFin040 := AClone(ExecBlock( "UF040PCO", .F. ,.F., { aFin040 } ))
+
+		// valido o conteudo retornado pelo
+		if len(aFin040) == 0 .Or. ValType( aFin040 ) <> "A"
+			lRet	:= .F.
+			MsgAlert("Estrutura do Array de títulos da Ativacao inválida.", "UF040PCO")
+		endIf
+
+	endIf
+
+	If lRet
+
+		//-- Operação Inclusão
+		SE1->(MSExecAuto({|x,y| FINA040(x,y)}, aFin040, 3))
+
+		If lMsErroAuto
+
+			lRet := .F.
+			cLogError += "Contrato " + cContrato + " ExecAuto FINA040" + CRLF
+			cLogError += AllTrim( MostraErro('/temp') ) + CRLF
+
+		EndIf
+
+		//restauro os valores originais dos parametros da FIN040
+		SetMVValue("FIN040","MV_PAR01", nMVPar01Bkp) // mostra lanc contab?
+		SetMVValue("FIN040","MV_PAR02", nMVPar02Bkp) // contab. tit. provisor?
+		SetMVValue("FIN040","MV_PAR03", nMVPar03Bkp) // contab. on-line?
+		SetMVValue("FIN040","MV_PAR04", nMVPar04Bkp) // rateia valro?
+		SetMVValue("FIN040","MV_PAR05", nMVPar05Bkp) // valores acessoarios inclusao?
+
+	EndIf
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} PrepararHistorico
+Prepara dados de histórico para gravação
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/8/2021
+@param aUF4, array, aUF4
+@param aUJ9, array, aUJ9
+@param aUF3, array, aUF3
+@param aCampos, array, aCampos
+@param oHistoricoAlteracao, object, oHistoricoAlteracao
+/*/
+Static Function PrepararHistorico(aUF4, aUJ9, aUF3, aCampos, oHistoricoAlteracao)
+	Default aUF4 := {}
+	Default aUJ9 := {}
+	Default aUF3 := {}
+	Default aCampos := {}
+	Default oHistoricoAlteracao := Nil
+
+	If oHistoricoAlteracao <> Nil
+
+		//-- Beneficiários
+		If Len(aUF4) > 0
+			If aScan( oHistoricoAlteracao["aUF4"], {|x| x[1][2]+x[2][2] == aUF4[1][2]+aUF4[2][2] } ) == 0
+				AADD( oHistoricoAlteracao["aUF4"], aUF4 )
+			EndIf
+		EndIf
+
+		//-- Cobranças Adicionais
+		If Len(aUJ9) > 0
+			AADD( oHistoricoAlteracao["aUJ9"], aUJ9 )
+		EndIf
+
+		//-- Produtos e Serviços
+		If Len(aUF3) > 0
+			AADD( oHistoricoAlteracao["aUF3"], aUF3 )
+		EndIf
+
+		//-- Campos
+		If Len(aCampos) > 0
+			AADD( oHistoricoAlteracao["aCampos"], aCampos )
+		EndIf
+
+	EndIf
+
+Return
+
+/*/{Protheus.doc} RetAltCpo
+Retorna array estruturado para gravacao do historico de alteracao de campo
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/8/2021
+@param cAliasUtil, character, cAliasUtil
+@param cChave, character, cChave
+@param cCampoAlias, character, cCampoAlias
+@param xVlrAnt, param_type, xVlrAnt
+@param xVlrPos, param_type, xVlrPos
+@return array, aItens
+/*/
+Static Function RetAltCpo(cAliasUtil, cChave, cCampoAlias, xVlrAnt, xVlrPos)
+	Local cTipo := TamSX3(cCampoAlias)[3]
+	Local aItens := {}
+
+	Default cAliasUtil := ""
+	Default cChave := ""
+	Default cCampoAlias := ""
+	Default xVlrAnt := Nil
+	Default xVlrPos := Nil
+
+	if !Empty(cAliasUtil) .And. !Empty(cTipo)
+		aadd(aItens,{"U73_ALIAS"	, cAliasUtil})
+		aadd(aItens,{"U73_CHAVE"	, cChave})
+		aadd(aItens,{"U73_TIPCPO"	, cTipo})
+		aadd(aItens,{"U73_CAMPO"	, cCampoAlias })
+
+		if cTipo == "C"
+
+			aadd(aItens,{"U73_CVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_CVLPOS"	, xVlrPos})
+
+		elseif cTipo == "N"
+
+			aadd(aItens,{"U73_NVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_NVLPOS"	, xVlrPos})
+
+		elseif cTipo == "D"
+
+			aadd(aItens,{"U73_DVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_DVLPOS"	, xVlrPos})
+
+		elseif cTipo == "L"
+
+			aadd(aItens,{"U73_LVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_LVLPOS"	, xVlrPos})
+
+		elseif cTipo == "M"
+
+			aadd(aItens,{"U73_MVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_MVLPOS"	, xVlrPos})
+
+		endif
+	endif
+
+Return aItens
+
+/*/{Protheus.doc} ValReajuste
+Valido 
+@type function
+@version 1.0
+@author g.sampaio
+@since 12/11/2021
+@param cCodContrato, character, codigo do contrato
+@param cProxReajuste, character, data do proximo reajuste
+@return logical, retorno se ja existe reajuste gerado
+/*/
+Static Function ValReajuste( cCodContrato, cProxReajuste, cLogError )
+
+	Local cQuery 			As Character
+	Local dProximoReaj 		As Date
+	Local dVencimento 		As Date
+	Local lRetorno 			As Logical
+	Local nAntecipaReajuste As Numeric
+	Local nQtdParcela 		As Numeric
+
+	Default cCodContrato 	:= ""
+	Default cProxReajuste	:= ""
+
+	// atribuo valor as variaveis
+	cQuery				:= ""
+	lRetorno			:= .T.
+	nAntecipaReajuste 	:= SuperGetMV("MV_XANTREJ", .F., 0)
+	nQtdParcela 		:= SuperGetMV("MV_XQTDPAR", .F., 12)
+	dProximoReaj 		:= dDataBase
+	dVencimento 		:= SToD("")
+
+	//-- Caso houver antecedencia ativa
+	If nAntecipaReajuste > 0
+		//-- O calculo do proximo reajuste sera baseado no ultimo reajuste do contrato
+		dProximoReaj 	:= CTOD("01/" + cProxReajuste)
+		if dProximoReaj > dDataBase
+			dVencimento 	:= MonthSum(dProximoReaj, 1)
+		else
+			dVencimento 	:= MonthSum(dDataBase, 1)
+		endIf
+	Else
+		//-- O calculo do proximo reajuste sera com base na data base do sistema
+		dProximoReaj 	:= dDataBase
+		dVencimento 	:= MonthSum(dDataBase, 1)
+	EndIf
+
+	dProximoReaj := MonthSum(dProximoReaj, nQtdParcela) // Soma a quantidade de meses para a próxima manutenção
+	cProxReajuste := StrZero(Month(dProximoReaj),2) + StrZero(Year(dProximoReaj),4)
+
+	if Select("TRBUF7") > 0
+		TRBUF7->(DbCloseArea())
+	endIf
+
+	// montagem da query
+	cQuery := "	SELECT UF7.UF7_CONTRA "
+	cQuery += " FROM " + RetSQLName("UF7") + " UF7 (NOLOCK)"
+	cQuery += " WHERE UF7.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UF7.UF7_HISALT <> ' ' "
+	cQuery += " AND UF7.UF7_CONTRA = '" + cCodContrato + "' "
+	cQuery += " AND UF7.UF7_PROREA = '" + cProxReajuste + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBUF7" )
+
+	if TRBUF7->(!Eof())
+		cLogError += "" + CRLF
+		cLogError += "Contrato " + cCodContrato + " ja existe para o periodo, com proximo reajuste para " + cProxReajuste + "." + CRLF
+		cLogError += "" + CRLF
+
+		lRetorno := .F.
+	endIf
+
+	if Select("TRBUF7") > 0
+		TRBUF7->(DbCloseArea())
+	endIf
+
+Return(lRetorno)
+
+Method CalcDesconto(nVlrBrutoCont) Class ReajusteContratosMod2
+
+	Local aArea			:= GetArea()
+	Local aAreaUF2		:= UF2->(GetArea())
+	Local nVlrRegra		:= 0
+	Local nVlrReal		:= 0
+	Local nVlrDescAnt	:= 0
+	Local nVlrDescRAnt	:= 0
+	Local nValor		:= 0
+
+//-- Aplica desconto de regra, caso houver regra cadastrada
+	UJZ->( dbSetOrder(2) ) //-- UJZ_FILIAL+UJZ_CODIGO+UJZ_FORPG
+	If UJZ->( MsSeek(xFilial("UJZ") + UF2->UF2_REGRA + UF2->UF2_FORPG) )
+
+		nVlrDescAnt		:= UF2->UF2_DESCON
+		nVlrDescRAnt	:= UF2->UF2_DESREG
+		nVlrRegra		:= UJZ->UJZ_VALOR
+		nVlrReal		:= nVlrBrutoCont - (UF2->UF2_DESCON - UF2->UF2_DESREG)
+
+		If UJZ->UJZ_TPDESC == "R"
+			nDescon := nVlrRegra
+		Else
+			nDescon := ((nVlrReal * nVlrRegra) / 100)
+		EndIf
+
+		//-- Novo valor do contrato
+		nValor := nVlrReal - nDescon
+
+		If nValor > 0
+			RecLock("UF2", .F.)
+			UF2->UF2_DESCON := (UF2->UF2_DESCON - UF2->UF2_DESREG) + nDescon
+			UF2->UF2_DESREG := nDescon
+			UF2->( MsUnlock() )
+		EndIf
+
+		//-- Histórico Campos UF2 - DESCONTO
+		aCamposUF2 := {}
+		aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_DESCON", nVlrDescAnt, UF2->UF2_DESCON)
+		//-- Prepara histórico para gravação
+		PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @self:oHistoricoAlteracao)
+
+		//-- Histórico Campos UF2 - DESCONTO REGRA
+		aCamposUF2 := {}
+		aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_DESREG", nVlrDescRAnt, UF2->UF2_DESREG)
+		//-- Prepara histórico para gravação
+		PrepararHistorico(/*aUF4*/, /*aUJ9*/, /*aUF3*/, aCamposUF2, @::oHistoricoAlteracao)
+
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUF2)
+
+Return(Nil)
+
+/*/{Protheus.doc} ContaPrescritos
+Conta e atualiza a quantidade de beneficiarios que possui produtos sob medida debitado
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 7/18/2023
+@param cContrato, character, Codigo do Contrato
+@return variant, Quantidade de beneficiarios debitados
+/*/
+Static Function ContaPrescritos(cContrato)
+
+	Local aArea 		:= GetArea()
+	Local aAreaUF4		:= UF4->(GetArea())
+	Local cQuery 		:= ""
+	Local nTotPrescrito	:= 0
+
+	// faco a query para consulta os beneficiarios prescritos
+	cQuery := " SELECT UF4.R_E_C_N_O_ RECUF4 FROM " + RetSQLName("UF4") + " UF4 "
+	cQuery += " WHERE UF4.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UF4.UF4_FILIAL = '" + xFilial("UF4") + "' "
+	cQuery += " AND UF4.UF4_CODIGO = '" + cContrato + "' "
+	cQuery += " AND UF4.UF4_DTFIM <> ' ' "
+	cQuery += " AND UF4.UF4_DTFIM <= '" + DtoS(dDataBase) + "' "
+	cQuery += " AND UF4.UF4_DEBPRE <> 'S' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBUF4")
+
+	While TRBUF4->(!Eof())
+
+		// verifico se o recno e menor que zero
+		If TRBUF4->RECUF4 > 0
+
+			// total de beneficiarios que prescreveram
+			nTotPrescrito++
+
+			// posiciono no registro do beneficiario
+			UF4->(DbGoTo(TRBUF4->RECUF4))
+
+			If UF4->(RecLock("UF4",.F.))
+				UF4->UF4_DEBPRE := "S"
+				UF4->(MsUnlock())
+			Else
+				UF4->(DisarmTransaction())
+			EndIf
+
+		EndIf
+
+		TRBUF4->(DbSkip())
+	EndDo
+
+	RestArea(aAreaUF4)
+	RestArea(aArea)
+
+Return(nTotPrescrito)

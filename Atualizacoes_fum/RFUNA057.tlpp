@@ -1,0 +1,251 @@
+#include "totvs.ch"
+#include "fwmvcdef.ch"
+#include "topconn.ch"
+#include 'FWEditPanel.CH'
+
+/*/{Protheus.doc} RFUNA057
+Inclusao de Plano Empresarial - Contrato Pai
+@type function
+@version 1.0  
+@author g.sampaio
+@since 26/07/2022
+/*/
+User function RFUNA057()
+
+	Local lPlanoEmp				:= SuperGetMV("MV_XPLNEMP", .F., .F.) // habilito o uso do plano empresarial
+	Local oBrowse 				:= Nil
+	Local aRotManut				:= {}
+	Local aRotMedicao			:= {}
+	Local aRotTermo				:= {}
+	Local lTermoCustomizado		:= SuperGetMV("MV_XTERMOC", .F., .F.) // parametro para informar se utilizo a impressao de termos customizada
+	Local lNovPnFin				:= SuperGetMV("MV_XNVPNFN", .F., .F.) // Habilita o novo painel financeiro
+
+	Private aRotina   		:= {}
+	Private oTotais			:= NIL
+	Private oStatus			:= NIL
+	Private oBkpCtr			:= NIL
+	Private cPlanoBkp		:= ""
+	Private nReajBkp		:= 0
+	Private cAdesIgualPar	:= ""
+
+	// ManutenÃ§Ã£o financeira
+	aadd(aRotManut , {"Resetar"		,"U_RFUNA009()", 0, 4})
+	aadd(aRotManut , {"Painel"		, IIF(lNovPnFin, "U_RUTILE46()", "U_RFUNE024()"), 0, 4})
+	aadd(aRotManut , {"Liquidacao"	,"U_RFUNE043(UF2->UF2_CODIGO)", 0, 4})
+
+	// rotinas de medicao de contratos
+	aadd(aRotMedicao , {"Medição"					, "U_RFUNA059()" , 0, 4})
+	aadd(aRotMedicao , {"Histórico de Medições"		, "U_RFUNA058()" , 0, 4})
+	
+	// verifico se o cliente optou pela customizacao de termo
+	If lTermoCustomizado
+
+		// verifico se o ponto de entrada de termo de cliente esta compilado na base do cliente
+		If ExistBlock("PTERMOCLI")
+
+			// impressÃ£o de termos customizados pelo cliente
+			aadd(aRotTermo ,{"Impressao Termo","U_PTERMOCLI()", 0, 2})
+
+		Else
+
+			// impressÃ£o de termos pelo modelo padrÃ£o do sistema (modelo word)
+			aadd(aRotTermo ,{"Impressao Termo","U_RUTILE28(UF2->UF2_CODIGO)", 0, 2})
+
+		EndIf
+
+	Else// caso nao estiver coloco a impressao de termo padrao do template (modelo word)
+
+		// impressÃ£o de termos pelo modelo padrÃ£o do sistema (modelo word)
+		aadd(aRotTermo ,{"Impressao Termo","U_RUTILE28(UF2->UF2_CODIGO)", 0, 2})
+
+	EndIf
+
+	ADD OPTION aRotina Title 'Pesquisar'   						Action 'PesqBrw'          	OPERATION 01 ACCESS 0
+	ADD OPTION aRotina Title 'Visualizar'  						Action 'VIEWDEF.RFUNA002' 	OPERATION 02 ACCESS 0
+	ADD OPTION aRotina Title 'Incluir'     						Action 'VIEWDEF.RFUNA002' 	OPERATION 03 ACCESS 0
+	ADD OPTION aRotina Title 'Alterar'     						Action 'VIEWDEF.RFUNA002' 	OPERATION 04 ACCESS 0
+	ADD OPTION aRotina Title 'Excluir'     						Action 'VIEWDEF.RFUNA002' 	OPERATION 05 ACCESS 0
+	ADD OPTION aRotina Title 'Imprimir'    						Action 'VIEWDEF.RFUNA002' 	OPERATION 08 ACCESS 0
+	ADD OPTION aRotina Title 'Legenda'     						Action 'U_FUNA002LEG()' 	OPERATION 10 ACCESS 0
+	ADD OPTION aRotina Title 'Ativar'     						Action 'U_RFUNA004()'	 	OPERATION 11 ACCESS 0
+	ADD OPTION aRotina Title "Reativar"							Action 'U_RFUNA025()'		OPERATION 13 ACCESS 0
+	ADD OPTION aRotina Title "Cancelar"							Action 'U_RFUNA015()'		OPERATION 13 ACCESS 0
+	ADD OPTION aRotina Title 'Transferencia de Titularidade'	Action 'U_RFUNA006()' 		OPERATION 04 ACCESS 0
+	ADD OPTION aRotina Title 'Contratos Filhos'					Action 'U_RFUNA57C()' 		OPERATION 04 ACCESS 0
+	ADD OPTION aRotina Title 'Medição'   						Action aRotMedicao 			OPERATION 04 ACCESS 0	
+	ADD OPTION aRotina Title 'Manutencao Financeira'			Action aRotManut			OPERATION 04 ACCESS 0
+	ADD OPTION aRotina Title "Gerador de Termos"				Action aRotTermo			OPERATION 12 ACCESS 0
+	ADD OPTION aRotina Title "Consulta Contratos"				Action 'U_RFUNA022()'		OPERATION 01 ACCESS 0
+	ADD OPTION aRotina Title "Banco de Conhecimento"			Action "MSDOCUMENT"			OPERATION 04 ACCESS 0
+
+	if lPlanoEmp
+
+		oBrowse := FWmBrowse():New()
+		oBrowse:SetAlias("UF2")
+		oBrowse:SetDescription("Contrato Funerario Empresarial")
+		oBrowse:AddLegend("UF2_STATUS == 'P'", "WHITE"	, "Pre-cadastrado")
+		oBrowse:AddLegend("UF2_STATUS == 'A'", "GREEN"	, "Ativo")
+		oBrowse:AddLegend("UF2_STATUS == 'S'", "ORANGE"	, "Suspenso")
+		oBrowse:AddLegend("UF2_STATUS == 'C'", "BLUE"	, "Cancelado")
+		oBrowse:AddLegend("UF2_STATUS == 'F'", "RED"	, "Finalizado")
+
+		//oBrowse:SetAttach( .T. )
+
+		oBrowse:SetFilterDefault("UF2_PLNEMP == '1' .AND. UF2_TPPLEM == 'P'")
+
+		oBrowse:Activate()
+
+	else
+		MsgAlert("Plano Empresarial nao esta habilitado para esta empresa!")
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ViewDef
+Funcao da view de dados MVC
+@type function
+@version 10
+@author g.sampaio
+@since 07/07/2021
+@return object, objeto da view de dados
+/*/
+Static Function ViewDef()
+
+	// Cria um objeto de Modelo de Dados baseado no ModelDef do fonte informado
+	Local oModel   		:= FWLoadModel("RFUNA002")
+	Local oView			:= FWLoadView("RFUNA002")
+
+Return(oView)
+
+/*/{Protheus.doc} RFUNA57A
+Consulta especifica para consulta de planos, 
+para inclusao do plano empresarial
+PLNEMP
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/07/2021
+@return logical, retorno sobre o uso da consulta
+/*/
+User Function RFUNA57A()
+
+	Local lRetorno := .T.
+
+	Public __cRetPlnEmp := ""
+
+	If FWIsInCallStack("U_RFUNA057") // inclusao de plano empresarial
+		lRetorno := ConPad1(,,, "UF0EMP")
+	else
+		lRetorno := ConPad1(,,, "UF0")
+	endIf
+
+	//valido se houve retorno da consulta padrao
+	if Len(aCpoRet) > 0
+		__cRetPlnEmp := aCpoRet[1] // codigo do plano
+	endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FUNA57AR
+Retorno da consulta especifica RFUNA57A
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/07/2021
+@return character, retorno da consulta
+/*/
+User Function FUNA57AR()
+Return(__cRetPlnEmp)
+
+/*/{Protheus.doc} RFUNA57A
+Consulta de Clientes do plano empresarial
+CLIEMP
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/07/2021
+@return logical, retorno sobre o uso da consulta
+/*/
+User Function RFUNA57B()
+
+	Local lRetorno := .T.
+
+	Public __cRetCliJur	:= ""
+	Public __cRetLojJur	:= ""
+
+	If FWIsInCallStack("U_RFUNA057") // inclusao de plano empresarial
+		lRetorno := ConPad1(,,, "SA1JUR")
+	else
+		lRetorno := ConPad1(,,, "SA1VIR")
+	endIf
+
+	//valido se houve retorno da consulta padrao
+	if Len(aCpoRet) > 0
+		__cRetCliJur := aCpoRet[1] // codigo
+		__cRetLojJur := aCpoRet[2] // loja
+	endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FUNA57AR
+Retorno da consulta especifica RFUNA57B - Codigo do Cliente
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/07/2021
+@return character, retorno da consulta
+/*/
+User Function FUNA57BR()
+Return(__cRetCliJur)
+
+/*/{Protheus.doc} FUNA57BL
+Retorno da consulta especifica RFUNA57B - Loja
+@type function
+@version 1.0
+@author g.sampaio
+@since 13/07/2021
+@return character, retorno da consulta
+/*/
+User Function FUNA57BL()
+Return(__cRetLojJur)
+
+User Function RFUNA57C()
+
+	Local cRotBkp 	:= FunName()
+	Local oBrowse	:= Nil
+
+	Private aRotina			:= {}
+	Private oTotais			:= NIL
+	Private oBkpCtr			:= NIL
+	Private cPlanoBkp		:= ""
+	Private nReajBkp		:= 0
+	Private cAdesIgualPar	:= ""
+
+	Default cContrato := ""
+
+	SetFunName("RFUNA002")
+
+	If ExistBlock("PEFUN02BR")
+		oBrowse := ExecBlock("PEFUN02BR", .F., .F., { oBrowse })
+	EndIf
+
+	oBrowse := FWmBrowse():New()
+	oBrowse:SetAlias("UF2")
+	oBrowse:SetDescription("Contrato Funerário")
+	oBrowse:AddLegend("UF2_STATUS == 'P'", "WHITE"	, "Pre-cadastrado")
+	oBrowse:AddLegend("UF2_STATUS == 'A'", "GREEN"	, "Ativo")
+	oBrowse:AddLegend("UF2_STATUS == 'S'", "ORANGE"	, "Suspenso")
+	oBrowse:AddLegend("UF2_STATUS == 'C'", "BLUE"	, "Cancelado")
+	oBrowse:AddLegend("UF2_STATUS == 'F'", "RED"	, "Finalizado")
+
+	// Filtra contrato selecionado
+	If !Empty(UF2->UF2_CODIGO)		
+		oBrowse:SetFilterDefault("UF2_PLNEMP == '1' .AND. UF2_TPPLEM == 'F' .AND. UF2_CTRPAI = '" + AllTrim(UF2->UF2_CODIGO) + "' ")
+	EndIf
+
+	oBrowse:SetAttach( .T. )
+	oBrowse:Activate()
+
+	SetFunName(cRotBkp)
+
+Return(Nil)

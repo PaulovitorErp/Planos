@@ -1,0 +1,895 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+
+/*/{Protheus.doc} RFUNA055
+Reajuste de Contratos Modelo 2
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+/*/
+User Function RFUNA055()
+	Local aRegra		:= {}
+	Local cPerg			:= "RFUNA055"
+	Local cContratoDe	:= ""
+	Local cContratoAte	:= ""
+	Local cRegra		:= ""
+	Local lContinua		:= .T.
+
+	if lContinua
+
+		// cria as perguntas na SX1
+		AjustaSX1(cPerg)
+
+		// enquanto o usuário não cancelar a tela de perguntas
+		While lContinua
+
+			// chama a tela de perguntas
+			lContinua := Pergunte(cPerg, .T.)
+
+			If lContinua
+				cContratoDe		:= MV_PAR01
+				cContratoAte	:= MV_PAR02
+				cRegra			:= MV_PAR03
+
+				// monto o array de regras
+				aRegra	:= StrTokArr(cRegra,";")
+
+				If ValidarPergunte(cContratoAte, aRegra)
+
+					MsAguarde( {|| ConsultaContratos(cContratoDe, cContratoAte, aRegra)},;
+						"Aguarde", "Consultando contratos...", .F. )
+
+				EndIf
+
+			EndIf
+
+		EndDo
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidarPergunte
+Valida preencimento da funcao Pergunte
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param cContratoDe, character, Filtro DE
+@param cContratoAte, character, Filtro ATE
+@param cRegra, character, Regra
+@return logical, lRet
+/*/
+Static Function ValidarPergunte(cContratoAte, aRegra)
+	Local lRet 		As Logical
+	Local nI		As Numeric
+
+	Default cContratoAte	:= ""
+	Default aRegra			:= {}
+
+	// atribuo valor as variaveis
+	lRet	:= .T.
+	nI		:= 0
+
+	if Empty(cContratoAte)
+		Alert("Informe o final do intervalo de contratos.")
+		lRet := .F.
+
+	elseIf Len(aRegra) == 0
+		Alert("Informe a regra de reajuste.")
+		lRet := .F.
+
+	endIf
+
+	if lRet
+
+		for nI := 1 to Len(aRegra)
+
+			if ValidarRegraUI4(aRegra[nI])
+				Alert("Regra digitada não existe.")
+				lRet := .F.
+			elseIf ValidarRegraUI5(aRegra[nI])
+				Alert("Regra não tem definições vigentes para o período atual.")
+				lRet := .F.
+			endIf
+
+			if !lRet
+				Exit
+			endIf
+
+		next nI
+
+	endIf
+
+Return(lRet)
+
+/*/{Protheus.doc} ValidarRegraUI5
+Valida se existe regra vigente para o periodo atual
+e retorno falso pois existe regra com periodo vigente
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+@param cRegra, character, Codigo da Regra
+@return logical, lRet - retorno falso pois existe regra com periodo vigente
+/*/
+Static Function ValidarRegraUI5(cRegra)
+
+	Local aArea 	As Array
+	Local aAreaUI5 	As Array
+	Local cQuery 	As Character
+	Local cDataRef	As Character
+	Local lRet 		As Logical
+
+	Default cRegra	:= ""
+
+	// atribuo o valor as variaveis
+	aArea 		:= GetArea()
+	aAreaUI5 	:= UI5->( GetArea() )
+	cQuery 		:= ""
+	cDataRef	:= Dtos(dDataBase)
+	lRet 		:= .T.
+
+	if Select("TRBUI5") > 0
+		TRBUI5->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT UI5.UI5_CODIGO, UI5.UI5_VIGINI, UI5.UI5_VIGFIM "
+	cQuery += " FROM " + RetSqlName("UI5") + " UI5 "
+	cQuery += " WHERE UI5.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND UI5.UI5_CODIGO IN " + FormatIn( AllTrim(cRegra), ";" )
+	cQuery += " 	AND '" + cDataRef + "' >= UI5.UI5_VIGINI "
+	cQuery += " 	AND '" + cDataRef + "'<= UI5.UI5_VIGFIM "
+
+	MPSysOpenQuery( cQuery, "TRBUI5" )
+
+	if TRBUI5->(!Eof())
+		lRet := .F.
+	endIf
+
+	if Select("TRBUI5") > 0
+		TRBUI5->(DbCloseArea())
+	endIf
+
+Return(lRet)
+
+/*/{Protheus.doc} ConsultaContratos
+Consulta contratos pendentes de reajuste e apresenta em browse
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param cContratoDe, character, Filtro DE
+@param cContratoAte, character, Filtro ATE
+@param cRegra, character, Regra
+/*/
+Static Function ConsultaContratos(cContratoDe, cContratoAte, aRegra)
+	Local aButtons			:= {}
+	Local aObjects			:= {}
+	Local aSizeAut			:= MsAdvSize()
+	Local aInfo				:= {}
+	Local aPosObj			:= {}
+	Local nTotalReg			:= 0
+	Local nTotalSel			:= 0
+	Local oDlg				:= Nil
+	Local oGrid				:= Nil
+	Local oPn1				:= Nil
+	Local oPn2				:= Nil
+	Local oPn3				:= Nil
+	Local oTotal			:= Nil
+	Local oGetTotal			:= Nil
+	Local oSelecioados		:= Nil
+	Local oGetSelecionados	:= Nil
+
+	// Largura, Altura, Modifica largura, Modifica altura
+	aAdd( aObjects, { 100,	100, .T., .T. } )
+
+	aInfo	:= { aSizeAut[ 1 ], aSizeAut[ 2 ], aSizeAut[ 3 ], aSizeAut[ 4 ], 2, 2 }
+	aPosObj	:= MsObjSize( aInfo, aObjects, .T. )
+
+	DEFINE MSDIALOG oDlg TITLE "Contratos Pendentes de Reajuste" FROM aSizeAut[7],0 TO aSizeAut[6],aSizeAut[5] OF oMainWnd PIXEL COLORS 0, 16777215 PIXEL
+
+	@ 001,000 MSPANEL oPn1 SIZE 150, 050 OF oDlg
+	@ 001,000 MSPANEL oPn2 SIZE 150, 050 OF oPn1
+	@ 001,000 MSPANEL oPn3 SIZE 150, 050 OF oPn1
+
+	oPn1:Align  := CONTROL_ALIGN_ALLCLIENT
+	oPn2:Align  := CONTROL_ALIGN_TOP
+	oPn3:Align  := CONTROL_ALIGN_BOTTOM
+
+	oPn2:nHeight := (oMainWnd:nClientHeight / 2) + 300
+	oPn3:nHeight := (oMainWnd:nClientHeight - oPn2:nHeight ) - 100
+
+	@ 000, 005 SAY oTotal PROMPT "Total de Registros:" SIZE 100, 007 OF oPn3 Font oFont COLOR CLR_RED PIXEL
+	@ 000, 090 MSGET oGetTotal VAR nTotalReg SIZE 100, 007 When .F. OF oPn3 HASBUTTON PIXEL COLOR CLR_BLACK Picture "@E 999999999"
+
+	@ 000, 210 SAY oSelecioados PROMPT "Quantidade Selecionada:" SIZE 100, 007 OF oPn3 COLORS CLR_RED Font oFont COLOR CLR_BLACK PIXEL
+	@ 000, 300 MSGET oGetSelecionados VAR nTotalSel SIZE 100, 007 When .F. OF oPn3 HASBUTTON PIXEL COLOR CLR_BLACK Picture "@E 999999999"
+
+	EnchoiceBar(oDlg, {|| ConfirmarReajustes(oGrid, @oDlg) },{|| oDlg:End()},,aButtons)
+
+	// Grid de contratos
+	oGrid := MsGridContratos(oPn2, aPosObj)
+
+	// Duplo clique grid
+	oGrid:oBrowse:bLDblClick := {|| DuploClique(oGrid, oGetSelecionados, @nTotalSel) }
+
+	// Clique no cabecalho da grid
+	oGrid:oBrowse:bHeaderClick := {|| MarcarTodos(oGrid, oGetSelecionados, @nTotalSel) }
+
+	If !RefreshGrid(oGrid, cContratoDe, cContratoAte, aRegra, oGetTotal, @nTotalReg )
+		Alert("Não foram encontrados contratos pendentes de reajuste.")
+		oDlg:End()
+	EndIf
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} MsGridContratos
+Cria objeto Grid para apresentar os contratos
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param aPosObj, array, Posicionamento Tela
+@return object, oMsNewGetDados
+/*/
+Static Function MsGridContratos(oPanel, aPosObj)
+	Local oMsNewGetDados	:= Nil
+	Local nX				:= 1
+	Local aHeaderEx 		:= {}
+	Local aColsEx 			:= {}
+	Local aFieldFill 		:= {}
+	Local aFields 			:= {"MARK","CONTRATO","REGRA","DESCREGRA","PROX_REAJ","PARC_REST","CLIENTE","LOJA","NOME","VALOR_CONTRATO"}
+	Local aAlterFields 		:= {}
+
+	For nX := 1 To Len(aFields)
+
+		if aFields[nX] == "MARK"
+			Aadd(aHeaderEx, {"","MARK","@BMP",2,0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "CONTRATO"
+			Aadd(aHeaderEx, {"Contrato","CONTRATO","@!",TamSX3("UF2_CODIGO")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "REGRA"
+			Aadd(aHeaderEx, {"Regra Reaj.","REGRA","@!",TamSX3("UI4_CODIGO")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "DESCREGRA"
+			Aadd(aHeaderEx, {"Desc.Regra","DESCREGRA","@!",TamSX3("UI4_DESCRI")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "PROX_REAJ"
+			Aadd(aHeaderEx, {"Reajuste","PROX_REAJ","@R 99/9999",6,0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "PARC_REST"
+			Aadd(aHeaderEx, {"Parcelas Restantes","PARC_REST",PesqPict("UF2","UF2_QTPARC"),TamSX3("UF2_QTPARC")[1],0,"","€€€€€€€€€€€€€€","N","","","",""})
+		elseif aFields[nX] == "NOME"
+			Aadd(aHeaderEx, {"Nome","NOME",PesqPict("SA1","A1_NOME"),TamSX3("A1_NOME")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "CLIENTE"
+			Aadd(aHeaderEx, {"Cliente","CLIENTE","@!",TamSX3("UF2_CLIENT")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "LOJA"
+			Aadd(aHeaderEx, {"Loja","LOJA","@!",TamSX3("UF2_LOJA")[1],0,"","€€€€€€€€€€€€€€","C","","","",""})
+		elseif aFields[nX] == "VALOR_CONTRATO"
+			Aadd(aHeaderEx, {"Valor Contrato","VALOR_CTR",PesqPict("SE1","E1_VALOR"),TamSX3("E1_VALOR")[1],TamSX3("E1_VALOR")[2],"","€€€€€€€€€€€€€€","N","","","",""})
+		endif
+
+	Next nX
+
+	For nX := 1 To Len(aHeaderEx)
+
+		if aHeaderEx[nX,2] == "MARK"
+			Aadd(aFieldFill, "UNCHECKED")
+		elseif aHeaderEx[nX,8] == "C"
+			Aadd(aFieldFill, "")
+		elseif aHeaderEx[nX,8] == "N"
+			Aadd(aFieldFill, 0)
+		elseif aHeaderEx[nX,8] == "D"
+			Aadd(aFieldFill, CTOD("  /  /    "))
+		elseif aHeaderEx[nX,8] == "L"
+			Aadd(aFieldFill, .F.)
+		endif
+
+	Next nX
+
+	Aadd(aFieldFill, .F.)
+	Aadd(aColsEx, aFieldFill)
+
+	oMsNewGetDados := MsNewGetDados():New( aPosObj[1,1], aPosObj[1,2], aPosObj[1,3], aPosObj[1,4],;
+		GD_UPDATE, "AllwaysTrue", "AllwaysTrue",, aAlterFields,, 999, "AllwaysTrue",;
+		"", "AllwaysTrue", oPanel, aHeaderEx, aColsEx)
+
+Return(oMsNewGetDados)
+
+/*/{Protheus.doc} RefreshGrid
+Consulta contratos pendentes e atualiza grid de contratos
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param oGrid, object, Grid de Contratos
+@param cContratoDe, character, Filtro DE
+@param cContratoAte, character, Filtro ATE
+@return logical, lRet
+/*/
+Static Function RefreshGrid(oGrid, cContratoDe, cContratoAte, aRegra, oGetTotal, nTotalReg)
+
+	Local lRet				:= .F.
+	Local nI				:= 0
+	Local cQry 				:= ""
+	Local aFieldFill		:= {}
+	Local cTipoParc			:= SuperGetMv("MV_XTIPFUN",.F.,"AT")
+	Local cTipoRJ			:= SuperGetMv("MV_XTRJFUN",.F.,"RJ") // tipo do título
+	Local cTipoAdt			:= SuperGetMv("MV_XTIPADT",.F.,"ADT")
+	Local lConsCttSusp		:= SuperGetMv("MV_XCONSUS",.F.,.F.)
+	Local lReajustaAdt		:= SuperGetMv("MV_XREJADT",.F.,.F.)
+	Local nAntecRJ          := SuperGetMv("MV_XANTREJ", .F., 0) //-- Quantidade de meses
+	Local dDtFinRJ			:= dDataBase
+	Local cPlanos			:= ""
+	Local cBancoDeDados		:= ""
+
+	Default oGrid			:= Nil
+	Default cContratoDe		:= ""
+	Default cContratoAte	:= ""
+	Default aRegra			:= {}
+
+	oGrid:Acols := {}
+
+	// pego o banco de dados da aplicacao
+	cBancoDeDados := TcGetDB()
+
+	// caso nao tenha retorno coloco o conteudo padrao
+	if Empty(cBancoDeDados)
+		cBancoDeDados	:= "MSSQL" // conteudo padrao para SQL Server
+	endIf
+
+
+	for nI := 1 to Len(aRegra)
+
+		cPlanos 		:= AllTrim(Posicione("UI4", 1, xFilial("UI4") + aRegra[nI], "UI4_PLANOS"))
+		cDescriRegra 	:= AllTrim(Posicione("UI4", 1, xFilial("UI4") + aRegra[nI], "UI4_DESCRI"))
+
+		//---------------------------------------------------------------------------------//
+		//-- Verifica se existe antecendência ativa para realização do reajuste.         --//
+		//-- Caso houver, aplica a antecendência na data base para filtro dos contratos. --//
+		//---------------------------------------------------------------------------------//
+		If nAntecRJ > 0
+			dDtFinRJ := MonthSum(dDataBase, nAntecRJ)
+		EndIf
+
+		// verifico se não existe este alias criado
+		If Select("QRY") > 0
+			QRY->(DbCloseArea())
+		EndIf
+
+		if Alltrim(Upper(cBancoDeDados)) == "MSSQL" // sql server
+
+			cQry := " SELECT "
+			cQry += " UF2.UF2_CODIGO AS CONTRATO, "
+			cQry += " UF2.UF2_CLIENT AS CLIENTE, "
+			cQry += " UF2.UF2_LOJA AS LOJA, "
+			cQry += " UF2.UF2_VALOR AS VALOR_INICIAL, "
+			cQry += " UF2.UF2_VLADIC AS VALOR_ADICIONAL, "
+			cQry += " UF2.UF2_QTPARC AS QTD_PARCELAS, "
+			cQry += " TITULOS_CONTRATO.PARCELAS_GERADAS AS PARCELAS_GERADAS, "
+			cQry += " UF2.UF2_QTPARC - TITULOS_CONTRATO.PARCELAS_GERADAS AS PARCELAS_RESTANTES, "
+			cQry += " ( CASE WHEN UF2.UF2_PRIMVE <> ' ' THEN SUBSTRING(UF2_PRIMVE,7,2) ELSE UF2.UF2_DIAVEN END ) AS DIA_VENCIMENTO, "
+			cQry += " ISNULL(HISTORICO_REAJUSTE.PROXIMO_REAJUSTE,'') AS PROXIMO_REAJUSTE, "
+			cQry += " TITULOS_ATIVACAO.ULTIMO_VENCIMENTO, "
+			cQry += " ISNULL(HISTORICO_REAJUSTE.PROXIMO_REAJUSTE,TITULOS_ATIVACAO.ULTIMO_VENCIMENTO) AS DATA_REAJUSTE "
+			cQry += " FROM "
+			cQry += " " + RetSqlName("UF2") + " UF2 (NOLOCK)"
+
+			cQry += " LEFT JOIN "
+			cQry += " 	( "
+			cQry += " 		SELECT "
+			cQry += " 		UF7.UF7_CONTRA AS CODIGO_CONTRATO, "
+			cQry += " 		MAX(SUBSTRING(UF7.UF7_PROREA,3,4) + SUBSTRING(UF7.UF7_PROREA,1,2)) AS PROXIMO_REAJUSTE "
+			cQry += " 		FROM "
+			cQry += "       " + RetSqlName("UF7") + " UF7 (NOLOCK)"
+			cQry += " 		WHERE "
+			cQry += " 		UF7.D_E_L_E_T_ <> '*' "
+			cQry += " 		AND UF7.UF7_FILIAL = '" + xFilial("UF7") + "' "
+			cQry += " 		GROUP BY UF7.UF7_CONTRA "
+			cQry += " 	) AS HISTORICO_REAJUSTE "
+			cQry += " 	ON UF2.UF2_CODIGO = HISTORICO_REAJUSTE.CODIGO_CONTRATO "
+
+			cQry += " LEFT JOIN "
+			cQry += " 	( "
+			cQry += " 		SELECT "
+			cQry += " 		SE1.E1_XCTRFUN AS CODIGO_CONTRATO, "
+			cQry += " 		MAX(SUBSTRING(SE1.E1_VENCTO,1,6)) AS ULTIMO_VENCIMENTO "
+			cQry += " 		FROM "
+			cQry += "       " + RetSqlName("SE1") + " SE1 "
+			cQry += " 		WHERE "
+			cQry += " 		SE1.D_E_L_E_T_ <> '*' "
+			cQry += " 		AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' (NOLOCK)"
+
+			//valido se considera Adiantamento de Parcelas para reajuste de Contratos
+			if !lReajustaAdt
+				cQry += "   	AND ( E1_TIPO IN ('"+ cTipoParc + "','" + cTipoRJ + "')"
+				cQry += "			OR E1_NUMLIQ <> ' ' )"
+			else
+				cQry += "   	AND ( E1_TIPO IN ('"+ cTipoParc + "','" + cTipoAdt + "','" + cTipoRJ + "')"
+				cQry += "			OR E1_NUMLIQ <> ' ' )"
+			EndIf
+
+			cQry += " 		AND E1_TIPOLIQ 		= ' '"
+			cQry += " 		AND E1_FATURA 		= ' '"
+
+			cQry += " 		GROUP BY SE1.E1_XCTRFUN "
+			cQry += " 	) AS TITULOS_ATIVACAO "
+			cQry += " 	ON UF2.UF2_CODIGO = TITULOS_ATIVACAO.CODIGO_CONTRATO "
+			cQry += " LEFT JOIN ( "
+			cQry += " 	SELECT "
+			cQry += " 	COUNT(*) AS PARCELAS_GERADAS, "
+			cQry += " 	SE1.E1_XCTRFUN AS CODIGO_CONTRATO "
+			cQry += " 	FROM "
+			cQry += "	" + RetSqlName("SE1") + " SE1 (NOLOCK)"
+			cQry += " 	WHERE "
+			cQry += " 	SE1.D_E_L_E_T_ <> '*' "
+			cQry += " 	AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+			cQry += " 	AND SE1.E1_XCTRFUN <> ' ' "
+			cQry += "   AND ( E1_TIPO IN ('"+ cTipoParc + "','" + cTipoAdt + "','" + cTipoRJ + "')"
+			cQry += "		OR E1_NUMLIQ <> ' ' ) "
+			cQry += " 	AND E1_TIPOLIQ 		= ' '"
+			cQry += " 	AND E1_FATURA 		= ' '"
+
+			//Nao retornar titulos de convalescente
+			if SE1->(FieldPos("E1_XCONCTR")) > 0
+				cQry += " AND SE1.E1_XCONCTR = '' "
+			endif
+
+			cQry += " 	GROUP BY SE1.E1_XCTRFUN "
+			cQry += " ) AS TITULOS_CONTRATO "
+			cQry += " ON TITULOS_CONTRATO.CODIGO_CONTRATO = UF2.UF2_CODIGO  "
+			cQry += " WHERE "
+			cQry += " UF2.D_E_L_E_T_ <> '*' "
+			cQry += " AND UF2.UF2_FILIAL = '" + xFilial("UF2") + "' "
+
+			//Valido se considera contratos suspensos no reajuste
+			If lConsCttSusp
+				cQry += " AND UF2.UF2_STATUS IN ('A','S') "
+			Else
+				cQry += " AND UF2.UF2_STATUS IN ('A') "
+			Endif
+
+			cQry += " AND UF2.UF2_DTATIV <> ' ' "
+			cQry += " AND UF2.UF2_CODIGO BETWEEN '" + cContratoDe + "' AND '" + cContratoAte + "' "
+			cQry += " AND ( "
+			cQry += " 	( "
+			cQry += " 		ISNULL(HISTORICO_REAJUSTE.CODIGO_CONTRATO,'') <> '' "
+			cQry += " 		AND HISTORICO_REAJUSTE.PROXIMO_REAJUSTE <= '" + AnoMes(dDtFinRJ) + "' "
+			cQry += " 	) "
+			cQry += " 	OR "
+			cQry += " 	( "
+			cQry += " 		ISNULL(HISTORICO_REAJUSTE.CODIGO_CONTRATO,'') = '' "
+			cQry += " 		AND TITULOS_ATIVACAO.CODIGO_CONTRATO <> '' "
+			cQry += " 		AND TITULOS_ATIVACAO.ULTIMO_VENCIMENTO <= '" + AnoMes(dDtFinRJ) + "' "
+			cQry += " 	) "
+			cQry += " ) "
+
+			if !Empty(cPlanos)
+				cQry += " 	AND UF2.UF2_PLANO IN " + FormatIn( AllTrim(cPlanos),";")
+			endif
+
+			cQry += " AND ISNULL(TITULOS_CONTRATO.PARCELAS_GERADAS, 0) < UF2.UF2_QTPARC "
+
+			If ExistBlock("PEREA55QRY")
+				cQry += ExecBlock("PEREA55QRY", .F., .F.)
+			EndIf
+
+			cQry += " ORDER BY UF2.UF2_CODIGO "
+
+		elseIf Alltrim(Upper(cBancoDeDados)) == "ORACLE" // oracle
+
+			cQry := " SELECT "
+			cQry += " UF2.UF2_CODIGO AS CONTRATO, "
+			cQry += " UF2.UF2_CLIENT AS CLIENTE, "
+			cQry += " UF2.UF2_LOJA AS LOJA, "
+			cQry += ' UF2.UF2_VALOR AS "VALOR_INICIAL", '
+			cQry += ' UF2.UF2_VLADIC AS "VALOR_ADICIONAL", '
+			cQry += ' UF2.UF2_QTPARC AS "QTD_PARCELAS", '
+			cQry += ' TITULOS_CONTRATO.PARCELAS_GERADAS AS "PARCELAS_GERADAS", '
+			cQry += ' UF2.UF2_QTPARC - TITULOS_CONTRATO.PARCELAS_GERADAS AS "PARCELAS_RESTANTES", '
+			cQry += " SUBSTR(UF2_PRIMVE, 7, 2) AS DIA_VENCIMENTO, "
+			cQry += " HISTORICO_REAJUSTE.PROXIMO_REAJUSTE AS PROXIMO_REAJUSTE, "
+			cQry += " TITULOS_ATIVACAO.ULTIMO_VENCIMENTO, "
+			cQry += " COALESCE(TRIM(HISTORICO_REAJUSTE.PROXIMO_REAJUSTE), TRIM(TITULOS_ATIVACAO.ULTIMO_VENCIMENTO)) AS DATA_REAJUSTE "
+			cQry += " FROM "
+			cQry += " " + RetSqlName("UF2") + " UF2 (NOLOCK)"
+
+			cQry += " LEFT JOIN "
+			cQry += " 	( "
+			cQry += " 		SELECT "
+			cQry += " 		UF7.UF7_CONTRA AS CODIGO_CONTRATO, "
+			cQry += " 		MAX(SUBSTRING(UF7.UF7_PROREA,3,4) + SUBSTRING(UF7.UF7_PROREA,1,2)) AS PROXIMO_REAJUSTE "
+			cQry += " 		FROM "
+			cQry += "       " + RetSqlName("UF7") + " UF7 (NOLOCK)"
+			cQry += " 		WHERE "
+			cQry += " 		UF7.D_E_L_E_T_ <> '*' "
+			cQry += " 		AND UF7.UF7_FILIAL = '" + xFilial("UF7") + "' "
+			cQry += " 		GROUP BY UF7.UF7_CONTRA "
+			cQry += " 	) HISTORICO_REAJUSTE "
+			cQry += " 	ON UF2.UF2_CODIGO = HISTORICO_REAJUSTE.CODIGO_CONTRATO "
+
+			cQry += " LEFT JOIN "
+			cQry += " 	( "
+			cQry += " 		SELECT "
+			cQry += " 		SE1.E1_XCTRFUN AS CODIGO_CONTRATO, "
+			cQry += " 		MAX(SUBSTRING(SE1.E1_VENCTO,1,6)) AS ULTIMO_VENCIMENTO "
+			cQry += " 		FROM "
+			cQry += "       " + RetSqlName("SE1") + " SE1 "
+			cQry += " 		WHERE "
+			cQry += " 		SE1.D_E_L_E_T_ <> '*' "
+			cQry += " 		AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' (NOLOCK)"
+
+			//valido se considera Adiantamento de Parcelas para reajuste de Contratos
+			if !lReajustaAdt
+				cQry += "   	AND ( E1_TIPO IN ('"+ cTipoParc + "','" + cTipoRJ + "')"
+				cQry += "			OR E1_NUMLIQ <> ' ' )"
+			else
+				cQry += "   	AND ( E1_TIPO IN ('"+ cTipoParc + "','" + cTipoAdt + "','" + cTipoRJ + "')"
+				cQry += "			OR E1_NUMLIQ <> ' ' )"
+			EndIf
+
+			cQry += " 		AND E1_TIPOLIQ 	= ' '"
+			cQry += " 		AND E1_FATURA 	= ' '"
+
+			cQry += " 		GROUP BY SE1.E1_XCTRFUN "
+			cQry += " 	) TITULOS_ATIVACAO "
+			cQry += " 	ON UF2.UF2_CODIGO = TITULOS_ATIVACAO.CODIGO_CONTRATO "
+			cQry += " LEFT JOIN ( "
+			cQry += " 	SELECT "
+			cQry += ' 	COUNT(*) AS "PARCELAS_GERADAS", '
+			cQry += " 	SE1.E1_XCTRFUN AS CODIGO_CONTRATO "
+			cQry += " 	FROM "
+			cQry += "	" + RetSqlName("SE1") + " SE1 (NOLOCK)"
+			cQry += " 	WHERE "
+			cQry += " 	SE1.D_E_L_E_T_ <> '*' "
+			cQry += " 	AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+			cQry += " 	AND SE1.E1_XCTRFUN <> ' ' "
+			cQry += "   AND ( SE1.E1_TIPO IN ('"+ cTipoParc + "','" + cTipoAdt + "','" + cTipoRJ + "')"
+			cQry += "		OR SE1.E1_NUMLIQ <> ' ' )"
+			cQry += " 	AND SE1.E1_TIPOLIQ 		= ' '"
+			cQry += " 	AND SE1.E1_FATURA 		= ' '"
+
+			//Nao retornar titulos de convalescente
+			if SE1->(FieldPos("E1_XCONCTR")) > 0
+				cQry += " AND SE1.E1_XCONCTR = '' "
+			endif
+
+			cQry += " 	GROUP BY SE1.E1_XCTRFUN "
+			cQry += " ) AS TITULOS_CONTRATO "
+			cQry += " ON TITULOS_CONTRATO.CODIGO_CONTRATO = UF2.UF2_CODIGO  "
+			cQry += " WHERE "
+			cQry += " UF2.D_E_L_E_T_ <> '*' "
+			cQry += " AND UF2.UF2_FILIAL = '" + xFilial("UF2") + "' "
+
+			//Valido se considera contratos suspensos no reajuste
+			If lConsCttSusp
+				cQry += " AND UF2.UF2_STATUS IN ('A','S') "
+			Else
+				cQry += " AND UF2.UF2_STATUS IN ('A') "
+			Endif
+
+			cQry += " AND UF2.UF2_DTATIV <> ' ' "
+			cQry += " AND UF2.UF2_CODIGO BETWEEN '" + cContratoDe + "' AND '" + cContratoAte + "' "
+			cQry += " AND TITULOS_CONTRATO.CODIGO_CONTRATO = UF2.UF2_CODIGO "
+			cQry += " AND ( "
+			cQry += " 	( "
+			cQry += " 		COALESCE(HISTORICO_REAJUSTE.CODIGO_CONTRATO, ' ') <> ' ' "
+			cQry += " 		AND HISTORICO_REAJUSTE.PROXIMO_REAJUSTE <= '" + AnoMes(dDtFinRJ) + "' "
+			cQry += " 	) "
+			cQry += " 	OR "
+			cQry += " 	( "
+			cQry += " 		COALESCE(HISTORICO_REAJUSTE.CODIGO_CONTRATO, ' ') = ' '
+			cQry += " 		AND TITULOS_ATIVACAO.CODIGO_CONTRATO <> '' "
+			cQry += " 		AND TITULOS_ATIVACAO.ULTIMO_VENCIMENTO <= '" + AnoMes(dDtFinRJ) + "' "
+			cQry += " 	) "
+			cQry += " ) "
+
+			if !Empty(cPlanos)
+				cQry += " 	AND UF2.UF2_PLANO IN " + FormatIn( AllTrim(cPlanos),";")
+			endif
+
+			If ExistBlock("PEREA55QRY")
+				cQry += ExecBlock("PEREA55QRY", .F., .F.)
+			EndIf
+
+			cQry += "AND ISNULL(TITULOS_CONTRATO.PARCELAS_GERADAS, 0) < UF2.UF2_QTPARC"
+
+			cQry += " ORDER BY UF2.UF2_CODIGO "
+
+		endIf
+
+		cQry := ChangeQuery(cQry)
+
+		MemoWrite( GetTempPath() + "ReajusteMod2_" + cBancoDeDados + "_"+ DtoS(dDataBase) + StrTran(Time(),":","")+".txt", cQry)
+
+		MPSysOpenQuery( cQry, "QRY" )
+
+		// se existir contratos pendentes de reajuste
+		If QRY->(!Eof())
+
+			While QRY->(!Eof())
+				lRet 		:= .T.
+
+				aFieldFill := {}
+
+				nValorContrato	:= QRY->VALOR_INICIAL + QRY->VALOR_ADICIONAL
+
+				AADD(aFieldFill, "UNCHECKED")
+				AADD(aFieldFill, QRY->CONTRATO)
+				AADD(aFieldFill, aRegra[nI])
+				AADD(aFieldFill, cDescriRegra)
+				AADD(aFieldFill, SubStr(QRY->DATA_REAJUSTE,5,2) + "/" + SubStr(QRY->DATA_REAJUSTE,1,4))
+				AADD(aFieldFill, QRY->PARCELAS_RESTANTES)
+				AADD(aFieldFill, QRY->CLIENTE)
+				AADD(aFieldFill, QRY->LOJA)
+				AADD(aFieldFill, Posicione("SA1",1,xFilial("SA1") + QRY->CLIENTE + QRY->LOJA,"A1_NOME"))
+				AADD(aFieldFill, nValorContrato)
+				AADD(aFieldFill, .F.)
+				AADD(oGrid:Acols, aFieldFill)
+
+				nTotalReg++
+				QRY->(DbSkip())
+
+			EndDo
+
+			oGetTotal:Refresh()
+			oGrid:oBrowse:Refresh()
+
+		endif
+
+		If Select("QRY") > 0
+			QRY->(DbCloseArea())
+		EndIf
+
+	next nI
+
+Return(lRet)
+
+/*/{Protheus.doc} DuploClique
+Acao de duplo clique na grid de contratos
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param oGrid, object, Grid de Contratos
+/*/
+Static Function DuploClique(oGrid, oGetSelecionados, nTotalSel)
+
+	If oGrid:aCols[oGrid:oBrowse:nAt][1] == "CHECKED"
+		oGrid:aCols[oGrid:oBrowse:nAt][1] := "UNCHECKED"
+		nTotalSel--
+	Else
+		oGrid:aCols[oGrid:oBrowse:nAt][1] := "CHECKED"
+		nTotalSel++
+	EndIf
+
+	oGetSelecionados:Refresh()
+	oGrid:oBrowse:Refresh()
+
+Return
+
+/*/{Protheus.doc} MarcarTodos
+Marca todos registros da grid
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/15/2021
+@param oGrid, object, Grid de Contratos
+/*/
+Static Function MarcarTodos(oGrid, oGetSelecionados, nTotalSel)
+	Local nX := 0
+	Local cMark := "CHECKED"
+
+	// zero a variavel de selecionados
+	nTotalSel  := 0
+
+	If oGrid:oBrowse:nColPos == 1
+
+		If oGrid:aCols[oGrid:oBrowse:nAt][1] == "CHECKED"
+			cMark := "UNCHECKED"
+		Else
+			cMark := "CHECKED"
+		EndIf
+
+		For nX := 1 To oGrid:oBrowse:nLen
+			oGrid:aCols[nX][1] := cMark
+			nTotalSel++
+		Next nX
+
+		oGetSelecionados:Refresh()
+		oGrid:oBrowse:Refresh()
+		oGrid:oBrowse:SetFocus()
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ConfirmarReajustes
+Envia contratos selecionados para processamento
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/30/2020
+@param oGrid, object, Grid Contratos
+@param cRegra, character, Codigo da Regra
+/*/
+Static Function ConfirmarReajustes(oGrid, oDlg)
+
+	Local aContratos 				:= {}
+	Local aDados					:= {}
+	Local cRegraReaj				:= ""
+	Local nX 						:= 0
+	Local lEnd   				 	:= .F.
+	Local nPosCtr 					:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "CONTRATO"})
+	Local nPosCli 					:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "CLIENTE"})
+	Local nPosLoja 					:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "LOJA"})
+	Local nPosProxReaj 				:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "PROX_REAJ"})
+	Local nPosParcRest 				:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "PARC_REST"})
+	Local nPosRegra					:= aScan(oGrid:aHeader,{|x| AllTrim(x[2]) == "REGRA"})
+	Local oProcess					:= Nil
+
+	If MsgYesNo("Deseja executar o reajuste dos contratos?")
+
+		For nX := 1 To Len(oGrid:aCols)
+
+			// se a linha estiver marcada
+			If oGrid:aCols[nX][1] == "CHECKED"
+
+				if Empty(cRegraReaj)
+					cRegraReaj := AllTrim(oGrid:aCols[nX][nPosRegra])
+				endif
+
+				AADD( aDados, {oGrid:aCols[nX][nPosCtr],;
+					oGrid:aCols[nX][nPosCli],;
+					oGrid:aCols[nX][nPosLoja],;
+					oGrid:aCols[nX][nPosProxReaj],;
+					oGrid:aCols[nX][nPosParcRest] })
+
+			endif
+
+			//verifico se o proximo registro e outra regra, ou se esta na ultima linha da grid.
+			//Adiciono no array aContratos, pois na funcao ProcessaContratos vai processar por regra de reajuste.
+			if Len(oGrid:aCols) == nX .Or. AllTrim(oGrid:aCols[nX][nPosRegra]) <> AllTrim(oGrid:aCols[nX + 1][nPosRegra])
+
+				AADD(aContratos, { AllTrim(cRegraReaj), aDados } )
+
+				aDados 		:= {}
+				cRegraReaj	:= ""
+
+			endif
+
+		Next nX
+
+		if Len(aContratos) > 0
+
+			oProcess := MsNewProcess():New( { | lEnd | ProcessaContratos( @oProcess, @lEnd, aContratos) }, "Reajuste Mod. 2", "Aguarde, reajustando os contratos...", .F. )
+			oProcess:Activate()
+
+		else
+
+			MsgAlert("Não foram selecionados contratos para o reajuste!")
+
+		EndIf
+
+		// fecho a janela
+		oDlg:End()
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} AjustaSX1
+Cria/Ajusta cadastro SX1
+@type function
+@version 1.0
+@author nata.queiroz
+@since 17/12/2020
+@param cPerg, character, Nome do Pergunte
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aPergSX1	:= {}
+
+	Default cPerg	:= ""
+
+	if !Empty(cPerg)
+
+		aAdd(aPergSX1,{cPerg,'01','Contrato De?'          	,'','','mv_ch1','C', TamSX3("UF2_CODIGO")[1] 	, 0, 0,'G','','MV_PAR01','','','','','','UF2ESP'})
+		aAdd(aPergSX1,{cPerg,'02','Contrato Ate?'     		,'','','mv_ch2','C', TamSX3("UF2_CODIGO")[1]    , 0, 0,'G','','MV_PAR02','','','','','','UF2ESP'})
+		aAdd(aPergSX1,{cPerg,'03','Regra'                 	,'','','mv_ch3','C', 99   						, 0, 0,'G','','MV_PAR03','','','','','','UI4MRK'})
+
+		// cria os dados da SX1
+		U_CriaSX1( aPergSX1 )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidarRegraUI4
+Valida se existe a regra preenchida
+e retorno falso pois existe regra
+@type function
+@version 1.0
+@author g.sampaio
+@since 27/03/2021
+@param cRegra, character, Codigo da Regra
+@return logical, lRet - retorno falso pois existe regra com periodo vigente
+/*/
+Static Function ValidarRegraUI4(cRegra)
+
+	Local aArea 	As Array
+	Local aAreaUI4 	As Array
+	Local lRet 		As Logical
+
+	// atribuo valor as variavel
+	aArea 		:= GetArea()
+	aAreaUI4 	:= UI4->( GetArea() )
+	lRet 		:= .T.
+
+	UI4->( DbSetOrder(1) ) // UI4_FILIAL+UI4_CODIGO+UI4_ITEM
+	If UI4->( MsSeek( xFilial("UI4") + cRegra ) )
+		lRet := .F.
+	EndIf
+
+	RestArea( aAreaUI4 )
+	RestArea( aArea )
+
+Return(lRet)
+
+/*/{Protheus.doc} ProcessaContratos
+Funcao para o processamento de reajustes
+@type function
+@version 1.0  
+@author g.sampaio
+@since 16/04/2021
+@param oProcess, object, Objeto da barra de processamento
+@param lEnd, logical, finalizar o processamento
+@param aContratos, array, Array de Contratos
+/*/
+Static Function ProcessaContratos( oProcess, lEnd, aContratos)
+
+	Local nQuantContratos			:= 0
+	Local nI						:= 0
+	Local oReajusteContratosMod2 	:= Nil
+
+	Default oProcess	:= Nil
+	Default lEnd		:= .F.
+	Default aContratos	:= {}
+
+	nQuantContratos := Len(aContratos)
+
+	// atualizo o objeto de processamento
+	oProcess:SetRegua1(nQuantContratos)
+
+	//--------------------------------------//
+	//-- Processamento Reajustes Modelo 2 --//
+	//--------------------------------------//
+	for nI := 1 to nQuantContratos
+
+		if lEnd
+			exit
+		endIf
+
+		//-- Comando para o TopConnect alterar mensagem do Monitor --//
+		FWMonitorMsg("RFUNA055: PROCESSAMENTO DE REAJUSTES MOD2 DE CONTRATOS => " + cEmpAnt + "-" + cFilAnt + " | ThreadID - " + AllTrim( cValToChar( ThreadID() ) ) )
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua1('Reajustando os contratos da Regra: ' + aContratos[nI][1] + '...')
+
+		// atualizo o objeto de processamentp
+		oProcess:SetRegua2(Len(aContratos[nI][2]))
+
+		oReajusteContratosMod2 := ReajusteContratosMod2():New(aContratos[nI][2], aContratos[nI][1])
+
+		oReajusteContratosMod2:processarReajustes( @oProcess )
+
+		// reinicio o objeto
+		FreeObj(oReajusteContratosMod2)
+		oReajusteContratosMod2 := Nil
+
+	Next nI
+
+	MsgInfo("Reajuste concluído!")
+
+Return(Nil)
