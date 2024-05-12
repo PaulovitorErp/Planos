@@ -1,0 +1,1307 @@
+#include 'totvs.ch'
+#include "fwprintsetup.ch"
+#include "fileio.ch"
+#include "rptdef.ch"
+
+#define CRLF Chr(13)+Chr(10) 	// emulo a tecla enter do teclado
+
+//Cores
+#Define COR_FUNDOTIT   	RGB(207, 207, 207)
+#Define COR_LINHA1   	RGB(238, 233, 233)
+#Define COR_LINHA2  	RGB(255, 255, 255)
+
+/*/{Protheus.doc} RUTILE32
+Classe para gerar planilha de excel
+@type function
+@version 1.0 
+@author g.sampaio
+@since 23/12/2020
+/*/
+User Function RUTILE32()
+Return(nil)
+
+/*/{Protheus.doc} VirtusRelHTML
+Classe para geracao da planilha em excell ou libreoffice
+@type class
+@version  1.0
+@author g.sampaio
+@since 27/12/2020
+/*/
+
+	Class VirtusRelHTML
+
+		Public Data cDiretorio	As Character
+		Public Data cBarra		As Character
+
+		Public Method New() Constructor	// Método Construtor
+		Public Method Imprimir()			// Método para Imprimir a Planilha
+		Public Method ValDiretorio()		// Método para validar se o diretorio existe
+
+	EndClass
+
+/*/{Protheus.doc} VirtusRelHTML::New
+Metodo construtor da Classe VirtusRelHTML
+@type method
+@version 1.0 
+@author g.sampaio
+@since 28/12/2020
+/*/
+Method New() Class VirtusRelHTML
+
+	Local cParamDir	As Character
+	Local cRemote	As Character
+	Local nPosBarra	As Character
+
+	cRemote		:= GetRemoteIniName()
+	cParamDir	:= SuperGetMV("MV_XDIRREL", .F., 'temp')
+	nPosBarra	:= IIF(At('\',cRemote)>0,At('\',cRemote),At('/',cRemote))
+	Self:cBarra	:= SubStr(cRemote,nPosBarra,1)
+
+	// seleciona o diretorio para impressao
+	Self:cDiretorio	:= tFileDialog( "All files (*.*) | All Text files (*.txt) ",;
+		'Selecao de Arquivos',, "/tmp", .F., GETF_RETDIRECTORY )
+
+	if Empty(Self:cDiretorio)
+
+		//Se for servidores, linux / unix / bsd, a barra será normal (/) e a raíz será '/'
+		If AllTrim(Self:cBarra) == "/"
+			Self:cDiretorio := "/" + AllTrim(cParamDir)
+		Else//Se não (Windows), a barra será invertida (\) e a raíz será 'C:\'
+			Self:cDiretorio := "C:\" + AllTrim(cParamDir)
+		EndIf
+
+		// faco a validacao se o diretorio 'temp' existe
+		U_UValDir( Self:cDiretorio, .T., .F. )
+
+	endIf
+
+	if SubStr(Self:cDiretorio,1,1) == "\"
+		Self:cDiretorio := SubStr(Self:cDiretorio,2)
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelHTML::Imprimir
+funcao para imprimir(gerar) a planilha
+@type method
+@version 1.0
+@author g.sampaio
+@since 28/12/2020
+@param cRelatorio, character, titulo do relatorio
+@param aCabecalho, array, titulos a serem exibidos
+@param aDados, array, dados da planilha
+/*/
+Method Imprimir( oProcess, lEnd, cRelatorio, aCabecalho, aDados) Class VirtusRelHTML
+
+	Local aArea    		As Array
+	Local aGrpImp   	As Array
+	Local aGrpEmp   	As Array
+	Local aGrpParam 	As Array
+	Local cCabHtml  	As Character
+	Local cLinFile  	As Character
+	Local cFileCont 	As Character
+	Local cArquivo  	As Character
+	Local cDescri   	As Character
+	Local cStatPath		As Character
+	Local cBGLinha		As Character
+	Local lSucess		As Logical
+	Local lContinua		As Logical
+	Local nHandle   	As Numeric
+	Local nCabecalho	As Numeric
+	Local nLinha    	As Numeric
+	Local nColuna		As Numeric
+	Local nLimite		As Numeric
+	Local nRet			As Numeric
+	Local oExcelApp 	As Object
+
+	Default cRelatorio	:= ""
+	Default aCabecalho	:= {}
+	Default aDados		:= {}
+
+	// atribuo valor nas variaveis
+	aArea    	:= GetArea()
+	nHandle   	:= 0
+	cCabHtml  	:= ""
+	cLinFile  	:= ""
+	cFileCont 	:= ""
+	cBGLinha	:= ""
+	oExcelApp 	:= Nil
+	nCabecalho	:= 0
+	nLinha    	:= 0
+	nColuna		:= 0
+	nLimite		:= 0
+	nRet		:= 0
+	aGrpImp   	:= {}
+	aGrpEmp   	:= {}
+	aGrpParam 	:= {}
+	cArquivo  	:= StrTran(Lower(cRelatorio)," ","_") + "_" + Dtos(dDatabase) + StrTran(Time(),":","") + "_" + CriaTrab( NIL, .F. )	// nome do relatorio + data + hora
+	cArqDir		:= ""
+	cDescri   	:= ""
+	cStatPath	:= ""
+	lSucess		:= .F.
+	lContinua	:= .T.
+
+	//Local onde o arquivo sera salvo.
+	cArquivo += ".html"
+	cArqDir := Self:cDiretorio + Self:cBarra + cArquivo
+
+	//Se nao foi salvo saio da geracao do excel
+	If AllTrim(cArquivo) == ".html"
+		MsgAlert("Relatório não foi salvo pelo usuário.")
+		Return
+	EndIf
+
+	//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+	//³Cria um arquivo do tipo *.xls                                                     ³
+	//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+	nHandle := FCREATE( cArqDir, 0)
+
+	//ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+	//³Verifica se o arquivo pode ser criado, caso contrario um alerta sera exibido      ³
+	//ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+	If FERROR() != 0
+		lContinua := .F.
+		Alert("Não foi possível abrir ou criar o arquivo: " + cArquivo )
+	EndIf
+
+	if lContinua
+
+		//===========================================================
+		// monta cabeçalho de pagina HTML para posterior utilização
+		//===========================================================
+		cCabHtml := "<html>" + CRLF
+		cCabHtml += "<head>" + CRLF
+		cCabHtml += "  <title>"+cRelatorio+"</title>" + CRLF
+		cCabHtml += " <style type='text/css'+ > " + CRLF
+		cCabHtml += " .text{ mso-number-format:'\@';} " + CRLF
+		cCabHtml += "</style>" + CRLF
+		cCabHtml += "</head>" + CRLF
+		cCabHtml += "<body bgcolor='#FFFFFF'>" + CRLF
+		cCabHtml += "" + CRLF
+
+		//===============================================
+		//Monta Rodape Html para posterior utilizaçao
+		//===============================================
+		cRodHtml := "</body>" + CRLF
+		cRodHtml += "</html>" + CRLF
+
+		//=========================================================
+		//Aqui começa a montagem da pagina html propriamente dita
+		//  acrescenta o cabeçalho
+		//=========================================================
+		cFileCont := cCabHtml
+
+		//===========================================================================================================================
+		// Aqui começa o corpo da pagina mesmo
+		// Inicia uma tabela html e alimenta a variavel do relatorio ja que o relatorio inteiro estara contido em apenas uma variavel
+		// estrutura basica de tabela em html
+		// <table> inicia uma tabela
+		// <TR> inicio de linha
+		// <TD> </TD> Coluna de uma tabela repetir tantas vezes quantas colunas existirem
+		// importante!!!! o numero de colunas nao podera ser alterado dentro da table ou seja todas as linhas tem que ter o mesmo
+		// numero de colunas (para aglutinar colunas é necessário utilizar um comando especifico do html, que não sera exemplificado
+		// aqui
+		// </TR> finaliza uma linha da tabela
+		// </Table> finaliza a tabela
+		// Utilizado o parametro Style das colunas para formatar cor da celula e tipo da fonte
+		//============================================================================================================================
+		cLinFile := "<Table style='background: #FFFFFF; width: 100%;' border='0' cellpadding='2' cellspacing='2'>"+ CRLF
+
+		//===============================================
+		//  Cabeçalho
+		//===============================================
+
+		//===============================================
+		//  Cabeçalho de Itens
+		//===============================================
+		cLinFile += "<TR>"
+
+		//cLinFile += "<TD class='text'> </TD>"+ CRLF
+
+		For nCabecalho := 1 To Len(aCabecalho)
+
+			// descricao da SX3
+			cDescri := GetSX3Cache(AllTrim(aCabecalho[nCabecalho]),"X3_DESCRIC")
+
+			// verifico se tem descricao da SX3
+			if Empty(cDescri)
+
+				// descricao do cabecalho do array de dados
+				cDescri := aCabecalho[nCabecalho]
+
+			endIf
+
+			//cLinFile += "<TD style='Background: #29A3F4; font-style: Bold; color:white;' ><b>"+cDescri+"</b></TD>"+ CRLF
+			cLinFile += "<TD style='Background: #4B0082; font-style: Bold; color:white;' ><b>"+cDescri+"</b></TD>"+ CRLF
+
+		Next nCabecalho
+
+		cLinFile += "</TR>"+ CRLF
+
+		// anexa a linha montada ao corpo da tabela
+		cFileCont += cLinFile
+		cLinFile := ""
+		(FWRITE(nHandle, cFileCont) )
+		cLinFile := ""
+
+		nLimite := Len(aDados)
+
+		//Laço de processamento principal, aqui é onde devera ser feito o laço de processo do programa
+		//gerando as linhas e anexando-as ao corpo da planilha
+		For nLinha := 1 To nLimite
+
+			If ValType( oProcess ) == "O"
+				// atualizo o objeto de processamento
+				oProcess:IncRegua2('Imprimindo ' + cValToChar(nLinha) + ' de  '+ cValToChar(nLimite) + '...')
+			endIf
+
+			cLinFile := "<TR> "+ CRLF
+
+			if (nLinha % 2) == 0
+				cBGLinha := "#EEE9E9" // Snow2
+			else
+				cBGLinha := "#CDC9C9" // Snow3
+			endIf
+
+			//cLinFile += "<TD class='text'> </TD>"+ CRLF
+
+			// preencho os dados das colunas
+			For nColuna := 1 To Len(aDados[nLinha])
+
+				If Empty(aDados[nLinha, nColuna, 3]) // nao tem tipo definido
+					cLinFile += "<TD class='text' style='background: "+cBGLinha+"' > "+aDados[nLinha, nColuna, 2]+"</TD>"+ CRLF
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "VALOR" 	// valor R$
+					cLinFile += "<TD class='text' style='background: "+cBGLinha+"; mso-number-format:\#\,\#\#0\.00'>"+ Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999.99" )+"</TD>"+ CRLF
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "QTD" 	// quantidade
+					cLinFile += "<TD class='text' style='background: "+cBGLinha+";mso-number-format:0'>"+ Transform(aDados[nLinha, nColuna, 2],"@E 999" )+"</TD>"+ CRLF
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "DATA"	// data
+					cLinFile += "<TD class='text' style='background: "+cBGLinha+";mso-number-format:"+'"dd\/mm\/yyyy"'+"'>"+ Dtoc( aDados[nLinha, nColuna, 2] ) + "</TD>"+ CRLF
+				EndIf
+
+			Next nColuna
+
+			cLinFile += "</TR>" + CRLF
+
+			(FWRITE(nHandle, cLinFile))
+			cLinFile := ""
+
+		Next nLinha
+
+		//Imprime Totalizadores
+		cLinFile := "<TR> "+ CRLF
+
+		cLinFile += "<TD class='text'> </TD>"+ CRLF
+
+		cLinFile += "</TR>" + CRLF
+
+		(FWRITE(nHandle, cLinFile))
+		cLinFile := ""
+
+		cLinFile := "</Table>"
+
+		(FWRITE(nHandle, cLinFile))
+
+		//Acrescenta o rodapé html
+		(FWRITE(nHandle, cRodHtml))
+
+		// fecha a tabela aberta no inicio do arquivo
+		fCLose(nHandle)
+
+		//===============================================
+		// Abre o arquivo HTML
+		//===============================================
+		if File(cArqDir) // verifico se o arquivo existe
+
+			MsgInfo("Seu arquivo foi salvo: "+cArquivo ,cRelatorio + " - Plataforma Virtus")
+
+			//Verifico se exite excel instalado
+			IncProc("Abrindo a o HTML gerada...")
+
+			nRet := ShellExecute("open", cArqDir,"", cArqDir, 1 )
+
+			If nRet <= 32
+				Aviso( "Atencao!", "Nao foi possivel abrir o objeto '" + cArquivo + "'!", { "Ok" }, 2 )
+			EndIf
+
+		else
+			MsgAlert("Não foi possível encontrar o arquivo " + cArqDir + " !")
+		endIf
+
+	endIf
+
+Return(Nil)
+
+//=====================================================================================
+//=====================================================================================
+//=====================================================================================
+// =============== CLASSE DE IMPRESSAO EM PLANILHA DA PLATAFORMA VIRTUS ===============
+//=====================================================================================
+//=====================================================================================
+//=====================================================================================
+
+/*/{Protheus.doc} VirtusRelPlanilha
+Classe para geracao da planilha em excell ou libreoffice
+@type class
+@version  1.0
+@author g.sampaio
+@since 27/12/2020
+/*/
+
+	Class VirtusRelPlanilha
+
+		Public Data cDiretorio	As Character
+		Public Data cBarra		As Character
+		Public Data cLibOffice	As Character
+
+		Public Method New() Constructor	// Método Construtor
+		Public Method Imprimir()			// Método para Imprimir a Planilha
+		Public Method ValDiretorio()		// Método para validar se o diretorio existe
+
+	EndClass
+
+/*/{Protheus.doc} VirtusRelPlanilha::New
+Metodo construtor da Classe VirtusRelPlanilha
+@type method
+@version 1.0 
+@author g.sampaio
+@since 28/12/2020
+/*/
+Method New() Class VirtusRelPlanilha
+
+	Local cParamDir		As Character
+	Local cRemote		As Character
+	Local nPosBarra		As Character
+
+	cRemote		:= GetRemoteIniName()
+	cParamDir	:= SuperGetMV("MV_XDIRREL", .F., 'temp')
+	nPosBarra	:= IIF(At('\',cRemote)>0,At('\',cRemote),At('/',cRemote))
+	Self:cLibOffice	:= "%PROGRAMFILES%" + AllTrim(SuperGetMV("MV_XLIBOFF",.F.,"\LibreOffice 5\program\scalc.exe"))
+	Self:cBarra	:= SubStr(cRemote,nPosBarra,1)
+
+	// seleciona o diretorio para impressao
+	Self:cDiretorio	:= tFileDialog( "All files (*.*) | All Text files (*.txt) ",;
+		'Selecao de Arquivos',, "/tmp", .F., GETF_RETDIRECTORY )
+
+	if Empty(Self:cDiretorio)
+
+		//Se for servidores, linux / unix / bsd, a barra será normal (/) e a raíz será '/'
+		If AllTrim(Self:cBarra) == "/"
+			Self:cDiretorio := "/" + AllTrim(cParamDir)
+		Else//Se não (Windows), a barra será invertida (\) e a raíz será 'C:\'
+			Self:cDiretorio := "C:\" + AllTrim(cParamDir)
+		EndIf
+
+		// faco a validacao se o diretorio 'temp' existe
+		U_UValDir( Self:cDiretorio, .T., .F. )
+
+	endIf
+
+	if AllTrim(Self:cBarra) == "/"
+		CHMOD(Self:cDiretorio, 777,/*uParam3*/,.T.)
+	endIf
+
+	if SubStr(Self:cDiretorio,1,1) == "\"
+		Self:cDiretorio := SubStr(Self:cDiretorio,2)
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPlanilha::Imprimir
+funcao para imprimir(gerar) a planilha
+@type method
+@version 1.0
+@author g.sampaio
+@since 28/12/2020
+@param cRelatorio, character, titulo do relatorio
+@param aCabecalho, array, titulos a serem exibidos
+@param aDados, array, dados da planilha
+/*/
+Method Imprimir( oProcess, lEnd, cRelatorio, aCabecalho, aDados) Class VirtusRelPlanilha
+
+	Local aInfoClient	As Array
+	Local aArea    		As Array
+	Local aImpPlanilha	As Array
+	Local cCabHtml  	As Character
+	Local cLinFile  	As Character
+	Local cFileCont 	As Character
+	Local cArquivo  	As Character
+	Local cArqPesq  	As Character
+	Local cDescri   	As Character
+	Local cArqDir		As Character
+	Local lAbrePlanilha	As Logical
+	Local nCabecalho	As Numeric
+	Local nLinha    	As Numeric
+	Local nColuna		As Numeric
+	Local nLimite		As Numeric
+	Local oExcelApp 	As Object
+	Local oPlanilha		As Object
+
+	Default cRelatorio	:= ""
+	Default aCabecalho	:= {}
+	Default aDados		:= {}
+
+	// atribuo valor nas variaveis
+	aArea    		:= GetArea()
+	aImpPlanilha 	:= {}
+	cCabHtml  		:= ""
+	cLinFile  		:= ""
+	cFileCont 		:= ""
+	oExcelApp 		:= Nil
+	lAbrePlanilha	:= .T.
+	nCabecalho		:= 0
+	nLinha    		:= 0
+	nColuna			:= 0
+	nLimite			:= 0
+	cArquivo		:= StrTran(Lower(cRelatorio)," ","_") + "_" + Dtos(dDatabase) + StrTran(Time(),":","") + "_" + CriaTrab( NIL, .F. ) + ".xml"	// nome do relatorio + data + hora
+	cArqDir			:= Self:cDiretorio + Self:cBarra + cArquivo
+	cArqPesq  		:= ""
+	cDescri   		:= ""
+
+	// abro o objeto do excel
+	oPlanilha := FWMSExcelEx():New()
+
+	//===============================================
+	//  Cabeçalho
+	//===============================================
+
+	oPlanilha:AddworkSheet(cRelatorio) //Não utilizar número junto com sinal de menos. Ex.: 1-
+
+	//Criando a Tabela
+	oPlanilha:AddTable(cRelatorio, cRelatorio)
+
+	//Criando Colunas
+	For nCabecalho := 1 To Len(aCabecalho)
+
+		// descricao da SX3
+		cDescri := GetSX3Cache(AllTrim(aCabecalho[nCabecalho]),"X3_DESCRIC")
+
+		// verifico se tem descricao da SX3
+		if Empty(cDescri)
+			cDescri := aCabecalho[nCabecalho] // descricao do cabecalho do array de dados
+		endIf
+
+		If Len(aDados) > 0
+			If Empty(aDados[1, nCabecalho, 3]) // nao tem tipo definido
+				oPlanilha:AddColumn(cRelatorio, cRelatorio, cDescri,2, 1) //1 = Modo Texto
+			ElseIf Alltrim(aDados[1, nCabecalho, 3]) == "VALOR" 	// valor R$
+				oPlanilha:AddColumn(cRelatorio, cRelatorio, cDescri,2, 2) //1 = Modo Texto
+			ElseIf Alltrim(aDados[1, nCabecalho, 3]) == "QTD" 	// quantidade
+				oPlanilha:AddColumn(cRelatorio ,cRelatorio, cDescri,2, 2) //1 = Modo Texto
+			ElseIf Alltrim(aDados[1, nCabecalho, 3]) == "DATA"	// data
+				oPlanilha:AddColumn(cRelatorio, cRelatorio, cDescri,2, 4) //1 = Modo Texto
+			EndIf
+		Else
+			oPlanilha:AddColumn(cRelatorio, cRelatorio, cDescri,2, 4) //1 = Modo Texto
+		EndIf
+
+	Next nCabecalho
+
+	nLimite := Len(aDados)
+
+	If nLimite > 0
+
+		//Laço de processamento principal, aqui é onde devera ser feito o laço de processo do programa
+		//gerando as linhas e anexando-as ao corpo da planilha
+		For nLinha := 1 To nLimite
+
+			aImpPlanilha := {}
+
+			If ValType( oProcess ) == "O"
+				// atualizo o objeto de processamento
+				oProcess:IncRegua2('Imprimindo ' + cValToChar(nLinha) + ' de  '+ cValToChar(nLimite) + '...')
+			endIf
+
+			// preencho os dados das colunas
+			For nColuna := 1 To Len(aDados[nLinha])
+				AAdd(aImpPlanilha, aDados[nLinha, nColuna, 2])
+			Next nColuna
+
+			oPlanilha:AddRow(cRelatorio, cRelatorio, aImpPlanilha)
+
+		Next nLinha
+
+	Else
+
+		// preencho os dados das colunas
+		For nColuna := 1 To Len(aCabecalho)
+			AAdd(aImpPlanilha, "")
+		Next nColuna
+
+		oPlanilha:AddRow(cRelatorio, cRelatorio, aImpPlanilha)
+
+	EndIf
+
+	CHMOD(cArqDir, 777,/*uParam3*/,.T.)
+
+	//Ativando o arquivo e gerando o xml
+	oPlanilha:Activate()
+	oPlanilha:GetXMLFile(cArqDir)
+
+	//===============================================
+	// Abre o Excel
+	//===============================================
+	if File(cArqDir) // verifico se o arquivo existe
+		MSGINFO("Seu arquivo foi salvo: "+cArqDir ,cRelatorio + " - Plataforma Virtus")
+
+		//Verifico se exite excel instalado
+		IncProc("Abrindo arquivo gerado...")
+
+		// pego as informacoes do remote
+		aInfoClient	:= GetRmtInfo()
+
+		if Len(aInfoClient)
+			// para MAC não abre o arquivo
+			if "MAC" $ aInfoClient[2]
+				lAbrePlanilha := .F.
+				MsgAlert("O Fabricante do Sistema Operacional não disponbiliza API para executar este arquivo automaticamente!")
+			endIf
+		endIf
+
+		if lAbrePlanilha
+
+			//Abrindo o excel e abrindo o arquivo xml
+			If !ApOleClient("MSExcel")
+				If File(Self:cLibOffice)
+					WinExec(Self:cLibOffice + " " + cArqDir)
+				Else
+					MsgAlert("Não é possível abrir a planilha neste computador o Microsoft Excel ou LibreOffice não foram encontrados!")
+				EndIf
+			Else
+				oExcelApp := MsExcel():New() 							//Abre uma nova conexão com Excel
+				oExcelApp:WorkBooks:Open(cArqDir) 	//Abre uma planilha
+				oExcelApp:SetVisible(.T.) 								//Visualiza a planilha
+				oExcelApp:Destroy()										//Encerra o processo do gerenciador de tarefas
+			EndIf
+
+		endIf
+
+	else
+		MsgAlert("Não foi possível encontrar o arquivo " + cArqDir + " !")
+	endIf
+
+Return(Nil)
+
+//=====================================================================================
+//=====================================================================================
+//=====================================================================================
+// ================= CLASSE DE IMPRESSAO EM PDF DA PLATAFORMA VIRTUS ==================
+//=====================================================================================
+//=====================================================================================
+//=====================================================================================
+
+/*/{Protheus.doc} VirtusRelPDF
+Classe para impressao do relatorio
+@type class
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+/*/
+	Class VirtusRelPDF
+
+		Public Data aPosicao			As Array
+		Public Data cDiretorio			As Character
+		Public Data cStartPath			As Character
+		Public Data cBarra				As Character
+		Public Data lAdjustToLegacy		As Logical
+		Public Data lDisableSetup		As Logical
+		Public Data nLinha				As Numeric
+		Public Data nTotAptServicos		As Numeric
+		Public Data nTotServExec		As Numeric
+		Public Data nTotServCrema		As Numeric
+		Public Data nTotServJazigo		As Numeric
+		Public Data nTotServOssuario	As Numeric
+		Public Data nTotValorServExec	As Numeric
+		Public Data nTotValorServFatu	As Numeric
+		Public Data nMargemL			As Numeric
+		Public Data nMargemR			As Numeric
+		Public Data nMargemT			As Numeric
+		Public Data nLinRodPe			As Numeric
+		Public Data nCenterPg			As Numeric
+		Public Data nPagina				As Numeric
+		Public Data nTipoFonte			As Numeric
+		Public Data nOrientImp 			As Numeric
+		Public Data oFontTitulo			As Object
+		Public Data oFontConteudo		As Object
+		Public Data oFontNConteudo		As Object
+		Public Data oFontInfoGerais		As Object
+		Public Data oFontNCab			As Object
+		Public Data oFontItens			As Object
+		Public Data oFontTotItens		As Object
+		Public Data oFontRodape			As Object
+		Public Data oFont8				As Object
+		Public Data oFont8N				As Object
+		Public Data oFont10				As Object
+		Public Data oFont10N			As Object
+		Public Data oFont12				As Object
+		Public Data oFont12N			As Object
+		Public Data oFont14				As Object
+		Public Data oFont14N			As Object
+		Public Data oFont16				As Object
+		Public Data oFont16N			As Object
+		Public Data oFont18				As Object
+		Public Data oFont18N			As Object
+
+		Public Method New(oRelPrint, cRelatorio)	Constructor			// metodo construtor
+		Public Method ImpCabecalho()									// metodo para impressao do cabecalho
+		Public Method ImpRodape()										// metodo para impressao do rodape
+		Public Method NovaPagina()										// metodo para impressao de uma nova pagina
+		Public Method ImpRelatorio()									// metodo para iniciar a impressao do corpo do relatorio do relatorio
+		Public Method Imprimir()										// metodo para impressao do relatorio
+		Public Method DefineFonteRel()									// metodo para definir o tipo de fonte utilizado no relatorio
+		Public Method MontaFillRect()									// metodo para montar o fillrect
+		Public Method ImpRelBox()										// metodo para impressao em grid
+		Public Method CountLines()
+
+	EndClass
+
+/*/{Protheus.doc} VirtusRelPDF::New
+Metodo construtor da Classe RPCGR033_Rel
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+/*/
+Method New(oRelPrint, cRelatorio, nOrientacao, nTipoFonte) Class VirtusRelPDF
+
+	Local cArquivo	As Character
+	Local cParamDir	As Character
+	Local cRemote	As Character
+	Local nPosBarra	As Character
+
+	cRemote		:= GetRemoteIniName()
+	cParamDir	:= SuperGetMV("MV_XDIRREL", .F., 'temp')
+	nPosBarra	:= IIF(At('\',cRemote)>0,At('\',cRemote),At('/',cRemote))
+	Self:cBarra	:= SubStr(cRemote,nPosBarra,1)
+
+	Default oRelPrint 	:= Nil
+	Default cRelatorio	:= ""
+	Default nOrientacao	:= 1	// 1 = Paisagem; 2 = Retrato
+	Default nTipoFonte	:= 1	// 1 = Pequeno; 2 = Medio; 3 = Grande
+
+	// alimento a variavel com o diretorio da pasta system
+	Self:cStartPath := GetPvProfString(GetEnvServer(),"StartPath","ERROR",GetAdv97())
+	Self:cStartPath += If(Right(Self:cStartPath, 1) <> "\", "\", "")
+	Self:nOrientImp	:= nOrientacao
+
+	// atribuo valor as variaveis
+	cArquivo	:= StrTran(Lower(U_SpecialNoChar(cRelatorio))," ","_") + "_" + Dtos(dDatabase) + StrTran(Time(),":","") // nome do relatorio + data + hora
+
+	// seleciona o diretorio para impressao
+	Self:cDiretorio	:= tFileDialog( "All files (*.*) | All PDF files (*.pdf) ",;
+		'Selecao de Arquivos',, "/tmp", .F., GETF_RETDIRECTORY )
+
+	if Empty(Self:cDiretorio)
+
+		//Se for servidores, linux / unix / bsd, a barra será normal (/) e a raíz será '/'
+		If AllTrim(Self:cBarra) == "/"
+			Self:cDiretorio := "/" + AllTrim(cParamDir)
+		Else//Se não (Windows), a barra será invertida (\) e a raíz será 'C:\'
+			Self:cDiretorio := "C:\" + AllTrim(cParamDir)
+		EndIf
+
+		// faco a validacao se o diretorio 'temp' existe
+		U_UValDir( Self:cDiretorio, .T., .F. )
+
+	endIf
+
+	if AllTrim(Self:cBarra) == "/"
+		CHMOD(Self:cDiretorio, 777,/*uParam3*/,.T.)
+	endIf
+
+	if SubStr(Self:cDiretorio,1,1) == "\"
+		Self:cDiretorio := SubStr(Self:cDiretorio,2)
+	endIf
+
+	// atribuo valor as variaveis logiscais da classe FWMSPrinter
+	Self:lAdjustToLegacy	:= .T.
+	Self:lDisableSetup		:= .T.
+
+	// inicio a classe de impressao
+	oRelPrint := FWMSPrinter():New( cArquivo /*Nome Arq*/, IMP_PDF, Self:lAdjustToLegacy,;
+                                        /*4-Dir. Salvar*/, Self:lDisableSetup, /*6-Classe TReport*/,;
+                                        /*7-oPrintSetup*/, /*8-Impressora Forçada*/, .T. /*lServer*/ )
+
+	oRelPrint:SetResolution(72)
+
+	// orientacao do relatorio
+	if Self:nOrientImp == 1 // paisagem
+		oRelPrint:SetLandscape()
+	elseIf Self:nOrientImp == 2 // retrato
+		oRelPrint:SetPortrait()
+	endIf
+
+	oRelPrint:SetPaperSize(DMPAPER_A4)
+	oRelPrint:SetViewPDF(.T.)
+	oRelPrint:SetMargin(60,60,60,60) // nEsquerda, nSuperior, nDireita, nInferior
+	oRelPrint:cPathPDF := Self:cDiretorio + Self:cBarra // Caso seja utilizada impressão em IMP_PDF
+	oRelPrint:GetViewPDF()
+
+	// atribuo valor as variaveis do relatorio
+	Self:nMargemL			:= 5							// margem a esquera ( -> )
+	If Self:nOrientImp == 1
+		Self:nMargemR			:= oRelPrint:nPageWidth			// margem da esqueda para direta ( <- )
+	Else
+		Self:nMargemR			:= oRelPrint:nPageWidth + 175			// margem da esqueda para direta ( <- )
+	EndIf
+
+	Self:nMargemT			:= 100							// início da margem cabeçalho(topo)
+	if Self:nOrientImp == 1 // paisagem
+		Self:nLinRodPe			:= oRelPrint:nPageHeight - 40
+	else
+		Self:nLinRodPe			:= oRelPrint:nPageHeight - 140
+	EndIf
+
+	Self:nCenterPg			:= Self:nMargemR	/ 2
+	Self:nPagina			:= 0
+	Self:nLinha				:= 0
+	Self:nTotAptServicos	:= 0
+	Self:nTotServExec	 	:= 0
+	Self:nTotServCrema		:= 0
+	Self:nTotServJazigo		:= 0
+	Self:nTotServOssuario	:= 0
+	Self:nTotValorServExec	:= 0
+	Self:nTotValorServFatu	:= 0
+	Self:nTipoFonte			:= nTipoFonte
+
+	// valor das fontes usadas no relatorio
+	Self:oFont8		:= TFont():New("ARIAL",8 ,8 ,,.F.,,,,,.F.,.F.) ///Fonte 8 Normal
+	Self:oFont8N	:= TFont():New("ARIAL",8 ,8 ,,.T.,,,,,.F.,.F.) ///Fonte 8 Negrito
+	Self:oFont10	:= TFont():New("ARIAL",10,10,,.F.,,,,,.F.,.F.) ///Fonte 10 Normal
+	Self:oFont10N	:= TFont():New("ARIAL",10,10,,.T.,,,,,.F.,.F.) ///Fonte 10 Negrito
+	Self:oFont12	:= TFont():New("ARIAL",12,12,,.F.,,,,,.F.,.F.) ///Fonte 12 Normal
+	Self:oFont12N	:= TFont():New("ARIAL",12,12,,.T.,,,,,.F.,.F.) ///Fonte 12 Negrito
+	Self:oFont14	:= TFont():New("ARIAL",14,14,,.F.,,,,,.F.,.F.) ///Fonte 14 Normal
+	Self:oFont14N	:= TFont():New("ARIAL",14,14,,.T.,,,,,.F.,.F.) ///Fonte 14 Negrito
+	Self:oFont16	:= TFont():New("ARIAL",16,16,,.F.,,,,,.F.,.F.) ///Fonte 16 Normal
+	Self:oFont16N	:= TFont():New("ARIAL",16,16,,.T.,,,,,.F.,.F.) ///Fonte 16 Negrito
+	Self:oFont18	:= TFont():New("ARIAL",18,18,,.F.,,,,,.F.,.F.) ///Fonte 18 Normal
+	Self:oFont18N	:= TFont():New("ARIAL",18,18,,.T.,,,,,.F.,.F.) ///Fonte 18 Negrito
+
+	// faco a definacao das rel
+	Self:DefineFonteRel()
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPDF::ImpCabecalho
+Impressao do Cabecalho do relatorio
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+@param cRelatorio, character, titulo do relatorio
+/*/
+Method ImpCabecalho(oRelPrint, cRelatorio, dData1, dData2, nLinhaImp, lNovaPagina) Class VirtusRelPDF
+
+	Local cEmpNome		As Character
+	Local cEmpCnpj		As Character
+	Local cEmpEnd 		As Character
+	Local cLogoPDF		As Character
+	Local nLinhaCol1	As Numeric
+	Local nLinhaCol2	As Numeric
+	Local nLinhaCol3	As Numeric
+	Local nAjustLin		As Numeric
+	Local nAjustCol		As Numeric
+
+	Default cRelatorio	:= ""
+	Default dData1		:= Stod("")
+	Default dData2		:= Stod("")
+	Default nLinhaImp	:= 180
+	Default lNovaPagina	:= .F.
+
+	// atribuo valor as variaveis
+	cEmpNome 	:= Alltrim(SM0->M0_NOMECOM)
+	cEmpCnpj 	:= Transform(SM0->M0_CGC, "@R 99.999.999/9999-99")
+	cEmpEnd 	:= Alltrim(SM0->M0_ENDCOB) + ", " + Alltrim(SM0->M0_COMPCOB) + ", " + Alltrim(SM0->M0_BAIRCOB) + ", " + Alltrim(SM0->M0_CIDCOB)+ "/" + Alltrim(SM0->M0_ESTCOB)
+	cLogoPDF	:= SuperGetMV("MV_XLOGPDF", .F., "logopdf.png")
+	nAjustLin	:= SuperGetMV("MV_XLINPDF", .F., 30)
+	nAjustCol	:= SuperGetMV("MV_XCOLPDF", .F., 150)
+
+	If !lNovaPagina
+		oRelPrint:StartPage() // Inicia uma nova pagina
+		Self:nPagina++
+	EndIf
+
+	// inicio a primeira linha de imrpressao
+	nLinhaCol1 := nLinhaImp
+	nLinhaCol2 := nLinhaImp
+	nLinhaCol3 := nLinhaImp
+
+	// impressao do titulo do relatorio
+	oRelPrint:Say(nLinhaCol1, Self:nMargemL, cRelatorio, Self:oFontTitulo)
+	nLinhaCol1+=30
+
+	// imprime as datas do relatorio
+	If !Empty(dData2)
+		oRelPrint:Say(nLinhaCol1, Self:nMargemL, "Data:", Self:oFontConteudo )
+		oRelPrint:Say(nLinhaCol1, Self:nMargemL+70, Dtoc(dData1), Self:oFontNConteudo )
+		oRelPrint:Say(nLinhaCol1, Self:nMargemL+235, " até ", Self:oFontConteudo )
+		oRelPrint:Say(nLinhaCol1, Self:nMargemL+300, Dtoc(dData2), Self:oFontNConteudo)
+	EndIf
+
+	// imprime a logo do relatorio
+	oRelPrint:SayBitMap( nLinhaCol2 - nAjustLin, Self:nCenterPg - 220 - nAjustCol, cLogoPDF)
+
+	// linha central
+	oRelPrint:Line(nLinhaCol1-60, Self:nCenterPg - 220, nLinhaCol1+50, Self:nCenterPg - 220)
+
+	// dados da empresa
+	oRelPrint:Say(nLinhaCol2, Self:nCenterPg - 200, cEmpNome, Self:oFontNConteudo ) // nome da empresa
+	nLinhaCol2+=30
+
+	oRelPrint:Say(nLinhaCol2, Self:nCenterPg - 200, cEmpCnpj, Self:oFontConteudo ) // cnpj
+	nLinhaCol2+=30
+
+	oRelPrint:Say(nLinhaCol2, Self:nCenterPg - 200, cEmpEnd, Self:oFontConteudo ) // endereco
+
+	if Self:nOrientImp == 1 // paisagem
+
+		// informacao gerais do relatorio
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-445, "Pagina: " + Strzero(Self:nPagina, 3), Self:oFontInfoGerais )// pagina
+		nLinhaCol3+=30
+
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-445, "Dt.Emissão:" + Dtoc(dDatabase), Self:oFontInfoGerais  )// dt de emissao
+		nLinhaCol3+=30
+
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-445, FunName(), Self:oFontInfoGerais  )// codigo do programa
+
+	ElseIf Self:nOrientImp == 2 // retrato
+
+		// informacao gerais do relatorio
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-555, "Pagina: " + Strzero(Self:nPagina, 3), Self:oFontInfoGerais )// pagina
+		nLinhaCol3+=30
+
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-555, "Dt.Emissão:" + Dtoc(dDatabase), Self:oFontInfoGerais  )// dt de emissao
+		nLinhaCol3+=30
+
+		oRelPrint:Say(nLinhaCol3, Self:nMargemR-555, FunName(), Self:oFontInfoGerais  )// codigo do programa
+
+	EndIf
+
+	// verifico qual linha é maior
+	if (nLinhaCol1 >= nLinhaCol2 .And. nLinhaCol1 >= nLinhaCol3)
+		Self:nLinha := nLinhaCol1
+
+	elseIf (nLinhaCol2 >= nLinhaCol1 .And. nLinhaCol2 >= nLinhaCol3)
+		Self:nLinha := nLinhaCol2
+
+	elseIf (nLinhaCol3 >= nLinhaCol1 .And. nLinhaCol3 >= nLinhaCol2)
+		Self:nLinha := nLinhaCol3
+
+	endif
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPDF::ImpRodape
+Metodo para impressao do rodape do relatorio
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+/*/
+Method ImpRodape(oRelPrint) Class VirtusRelPDF
+
+	Local lFuneraria	As Logical
+	Local lCemiterio	As Logical
+
+	// atribuo valor das variaveis
+	lFuneraria		:= SuperGetMv("MV_XFUNE",.F.,.F.)
+	lCemiterio		:= SuperGetMv("MV_XCEMI",.F.,.F.)
+
+	// linha de impressao do rodape
+	Self:nLinha := Self:nLinRodPe
+
+	// impressao da linha divisoria
+	oRelPrint:Line(Self:nLinha, Self:nMargemL, Self:nLinha, Self:nMargemR - 300)
+
+	// salto uma linha
+	Self:nLinha += 50
+
+	If Self:nOrientImp == 1
+		nPosImp := Self:nCenterPg - 200
+	ElseIf Self:nOrientImp == 2
+		nPosImp := Self:nCenterPg - 375
+	EndIf
+
+	// dizeres do rodape
+	if lFuneraria
+		oRelPrint:Say(Self:nLinha, nPosImp, "TOTVS PLATAFORMA VIRTUS ERP - PLANOS FUNERARIOS E ASSISTENCIAIS", Self:oFontRodape,,,,1) // copyright
+	elseif lCemiterio
+		oRelPrint:Say(Self:nLinha, nPosImp, "TOTVS PLATAFORMA VIRTUS ERP - GESTÃO DE CEMITÉRIOS", Self:oFontRodape,,,,1) // copyright
+	else
+		oRelPrint:Say(Self:nLinha, nPosImp, "TOTVS PLATAFORMA VIRTUS ERP", Self:oFontRodape,,,,1) // copyright
+	endIf
+
+	oRelPrint:Say(Self:nLinha, Self:nMargemR  - 350, "Pagina: " + strzero(Self:nPagina, 3), Self:oFontRodape,,,,1)// pagina
+	Self:nPagina++
+	oRelPrint:EndPage() //finaliza pagina
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPDF::ImpRelatorio
+Meotodo para impressao do reltorio
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+@param cRelatorio, character, titulo do relatorio
+@param aCabecalho, array, titulos a serem exibidos
+@param aDados, array, dados da planilha
+/*/
+Method ImpRelatorio( oProcess, lEnd, oRelPrint, cRelatorio, aTitulos, aColunas, aDados) Class VirtusRelPDF
+
+	Local nColuna 	As Numeric
+	Local nLinha	As Numeric
+	Local nLimite	As Numeric
+	Local oBrush1	As Object
+	Local oBrush2	As Object
+
+	// atribuo valor as variaveis
+	nColuna	:= 0
+	nLinha	:= 0
+	nLimite	:= 0
+	oBrush1	:= Nil
+	oBrush2 := Nil
+
+	//----------------------------------
+	// imprimir os titulos do relatorio
+	//----------------------------------
+
+	oBrush1 := TBrush():New( , COR_FUNDOTIT )
+
+	// monto o fillRect
+	Self:MontaFillRect(@oRelPrint, oBrush1)
+
+	// cabecalho
+	for nColuna := 1 to Len( aColunas )
+
+		oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], aTitulos[nColuna], Self:oFontNCab )
+
+	next nColuna
+
+	Self:nLinha+=35
+	nLimite	:= Len(aDados)
+
+	// faco a impressao dos dados
+	for nLinha := 1 to nLimite
+
+		If ValType( oProcess ) == "O"
+			// atualizo o objeto de processamento
+			oProcess:IncRegua2('Imprimindo ' + cValToChar(nLinha) + ' de  '+ cValToChar(nLimite) + '...')
+		endIf
+
+		if (nLinha % 2) == 0
+			oBrush2 := TBrush():New( , COR_LINHA1 )
+		else
+			oBrush2 := TBrush():New( , COR_LINHA2 )
+		endIf
+
+		// monto o fillRect
+		Self:MontaFillRect(@oRelPrint, oBrush2)
+
+		// percorro as colunas para impressao
+		For nColuna := 1 To Len( aColunas )
+
+			If Empty(aDados[nLinha, nColuna, 3]) // nao tem tipo definido
+				oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], aDados[nLinha,nColuna,2], Self:oFontItens )
+
+			ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "VALOR" 	// valor R$
+				oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999.99" ), Self:oFontItens )
+
+			ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "QTD" 	// quantidade
+				oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999" ), Self:oFontItens )
+
+			ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "DATA"	// data
+				oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], Dtoc( aDados[nLinha, nColuna, 2] ), Self:oFontItens )
+
+			EndIf
+
+		Next nColuna
+
+		FreeObj(oBrush2)
+		oBrush2 := Nil
+
+		Self:nLinha+=35
+
+		if Self:nLinha+60 >= Self:nLinRodPe
+			Self:NovaPagina(@oRelPrint)
+
+			// monto o fillRect
+			Self:MontaFillRect(@oRelPrint, oBrush1)
+
+			// cabecalho
+			for nColuna := 1 to Len( aColunas )
+
+				oRelPrint:Say( Self:nLinha+17, aColunas[nColuna], aTitulos[nColuna], Self:oFontNCab )
+
+			next nColuna
+
+			Self:nLinha+=35
+
+		endIf
+
+	next nLinha
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPDF::ImpRelatorio
+Meotodo para impressao do reltorio
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/01/2021
+@param cRelatorio, character, titulo do relatorio
+@param aCabecalho, array, titulos a serem exibidos
+@param aDados, array, dados da planilha
+/*/
+Method ImpRelBox( oProcess, lEnd, oRelPrint, cRelatorio, aTitulos, aColunas, aDados, lBrush) Class VirtusRelPDF
+
+	Local nColuna 	As Numeric
+	Local nLinha	As Numeric
+	Local nLimite	As Numeric
+	Local oBrush1	As Object
+	Local oBrush2	As Object
+
+	Default lBrush := .F.
+
+	// atribuo valor as variaveis
+	nColuna	:= 0
+	nLinha	:= 0
+	nLimite	:= 0
+	oBrush1	:= Nil
+	oBrush2 := Nil
+
+	//----------------------------------
+	// imprimir os titulos do relatorio
+	//----------------------------------
+
+	If lBrush
+		oBrush1 := TBrush():New( , COR_FUNDOTIT )
+
+		// monto o fillRect
+		Self:MontaFillRect(@oRelPrint, oBrush1)
+	EndIf
+
+	// cabecalho
+	for nColuna := 1 to Len( aColunas )
+
+		If nColuna <> 1
+
+			If Self:nOrientImp == 2
+
+				If nColuna <> Len( aColunas )
+					oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, aColunas[nColuna+1]-50 )
+				Else
+					oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, Self:nMargemR-275 )
+				EndIf
+
+			Else
+
+				If nColuna <> Len( aColunas )
+					oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, aColunas[nColuna+1]-50 )
+				Else
+					oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, Self:nMargemR-150 )
+				EndIf
+
+			EndIf
+
+			oRelPrint:Say( Self:nLinha+22, aColunas[nColuna], aTitulos[nColuna], Self:oFontNCab )
+
+		Else
+
+			oRelPrint:Box( Self:nLinha, aColunas[nColuna], Self:nLinha+35, aColunas[nColuna+1]-50 )
+
+			oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, aTitulos[nColuna], Self:oFontNCab )
+
+		EndIf
+
+	next nColuna
+
+	Self:nLinha+=35
+	nLimite	:= Len(aDados)
+
+	// faco a impressao dos dados
+	for nLinha := 1 to nLimite
+
+		If ValType( oProcess ) == "O"
+			// atualizo o objeto de processamento
+			oProcess:IncRegua2('Imprimindo ' + cValToChar(nLinha) + ' de  '+ cValToChar(nLimite) + '...')
+		endIf
+
+		If lBrush
+			if (nLinha % 2) == 0
+				oBrush2 := TBrush():New( , COR_LINHA1 )
+			else
+				oBrush2 := TBrush():New( , COR_LINHA2 )
+			endIf
+
+			// monto o fillRect
+			Self:MontaFillRect(@oRelPrint, oBrush2)
+		EndIf
+
+		// percorro as colunas para impressao
+		For nColuna := 1 To Len( aColunas )
+
+			If nColuna <> 1
+
+				If Self:nOrientImp == 2
+
+					If nColuna <> Len( aColunas )
+						oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, aColunas[nColuna+1]-50 )
+					Else
+						oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, Self:nMargemR-275 )
+					EndIf
+
+				Else
+
+					If nColuna <> Len( aColunas )
+						oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, aColunas[nColuna+1]-50 )
+					Else
+						oRelPrint:Box( Self:nLinha, aColunas[nColuna]-50, Self:nLinha+35, Self:nMargemR-150 )
+					EndIf
+
+				EndIf
+
+				If Empty(aDados[nLinha, nColuna, 3]) // nao tem tipo definido
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, aDados[nLinha,nColuna,2], Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "VALOR" 	// valor R$
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999.99" ), Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "QTD" 	// quantidade
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999" ), Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "DATA"	// data
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Dtoc( aDados[nLinha, nColuna, 2] ), Self:oFontItens )
+
+				EndIf
+
+			Else
+
+				oRelPrint:Box( Self:nLinha, aColunas[nColuna], Self:nLinha+35, aColunas[nColuna+1]-50 )
+
+				If Empty(aDados[nLinha, nColuna, 3]) // nao tem tipo definido
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, aDados[nLinha,nColuna,2], Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "VALOR" 	// valor R$
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999.99" ), Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "QTD" 	// quantidade
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Transform(aDados[nLinha, nColuna, 2],"@E 999,999,999" ), Self:oFontItens )
+
+				ElseIf Alltrim(aDados[nLinha, nColuna, 3]) == "DATA"	// data
+					oRelPrint:Say( Self:nLinha+22, aColunas[nColuna]+10, Dtoc( aDados[nLinha, nColuna, 2] ), Self:oFontItens )
+
+				EndIf
+
+			EndIf
+
+		Next nColuna
+
+		FreeObj(oBrush1)
+		FreeObj(oBrush2)
+		oBrush1	:= Nil
+		oBrush2 := Nil
+
+		Self:nLinha+=35
+
+		if Self:nLinha+60 >= Self:nLinRodPe
+			Self:NovaPagina(@oRelPrint)
+		endIf
+
+	next nLinha
+
+Return(Nil)
+
+Method Imprimir(oRelPrint) Class VirtusRelPDF
+
+	// faco a impressao do relatorio
+	oRelPrint:Print()
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusRelPDF::DefineFonteRel
+metodo para definir o tamanho da fonte
+@type method
+@version 1.0
+@author g.sampaio
+@since 15/01/2021
+@param nTipoFonte, numeric, tipo da fonte 1=pequena;2=medio;3=grande
+/*/
+Method DefineFonteRel() Class VirtusRelPDF
+
+	if Self:nTipoFonte == 1 // pequeno
+
+		Self:oFontTitulo		:= Self:oFont14N
+		Self:oFontConteudo		:= Self:oFont8
+		Self:oFontNConteudo		:= Self:oFont8N
+		Self:oFontInfoGerais	:= Self:oFont8
+		Self:oFontNCab			:= Self:oFont8N
+		Self:oFontItens			:= Self:oFont8
+		Self:oFontTotItens		:= Self:oFont8N
+		Self:oFontRodape		:= Self:oFont8
+
+	elseIf Self:nTipoFonte == 2 // medio
+
+		Self:oFontTitulo		:= Self:oFont16N
+		Self:oFontConteudo		:= Self:oFont10
+		Self:oFontNConteudo		:= Self:oFont10N
+		Self:oFontInfoGerais	:= Self:oFont10
+		Self:oFontNCab			:= Self:oFont10N
+		Self:oFontItens			:= Self:oFont10
+		Self:oFontTotItens		:= Self:oFont10N
+		Self:oFontRodape		:= Self:oFont8
+
+	elseIf Self:nTipoFonte == 3 // grande
+
+		Self:oFontTitulo		:= Self:oFont18N
+		Self:oFontConteudo		:= Self:oFont12
+		Self:oFontNConteudo		:= Self:oFont12N
+		Self:oFontInfoGerais	:= Self:oFont12
+		Self:oFontNCab			:= Self:oFont12N
+		Self:oFontItens			:= Self:oFont12
+		Self:oFontTotItens		:= Self:oFont12N
+		Self:oFontRodape		:= Self:oFont8
+
+	endIf
+
+Return(Nil)
+
+Method NovaPagina(oRelPrint) Class VirtusRelPDF
+
+	// faco a impressao do rodape
+	Self:ImpRodape(@oRelPrint)
+	oRelPrint:StartPage() // Inicia uma nova pagina
+	Self:nLinha := 180
+
+Return(Nil)
+
+Method MontaFillRect(oRelPrint, oBrush ) Class VirtusRelPDF
+
+	Default oBrush 		:= TBrush():New( , COR_FUNDOTIT )
+	Default lNotAjuste 	:= .T.
+
+	if Self:nTipoFonte == 1 // pequeno
+		oRelPrint:Fillrect( {Self:nLinha, Self:nMargemL-25, Self:nLinha+25, Self:nMargemR-275 }, oBrush )
+	elseIf Self:nTipoFonte == 2 // medio
+		oRelPrint:Fillrect( {Self:nLinha-10, Self:nMargemL-25, Self:nLinha+35, Self:nMargemR-275 }, oBrush )
+	elseIf Self:nTipoFonte == 3 // grande
+		oRelPrint:Fillrect( {Self:nLinha-15, Self:nMargemL-25, Self:nLinha+45, Self:nMargemR-275 }, oBrush )
+	endIf
+
+Return(Nil)
+
+Method CountLines(cString) Class VirtusRelPDF
+
+    local nCount := 1
+    local nPos := 1
+
+    // Loop enquanto encontrar novas linhas
+    While (nPos > 0)
+        nPos := At(chr(13) + chr(10), AllTrim(cString), nPos)
+        if (nPos > 0)
+            nCount++
+            nPos++
+        endif
+    EndDo
+
+Return(nCount)

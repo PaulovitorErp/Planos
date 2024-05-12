@@ -1,0 +1,138 @@
+#Include 'Protheus.ch'
+#Include 'Topconn.ch'
+
+/*/{Protheus.doc} RUTILE27
+Consulta especifica de titulos vinculados
+ao modulo de cemiterio ou planos
+
+@type function
+@version 
+@author g.sampaio
+@since 16/11/2020
+@return return_type, return_description
+/*/
+User Function RUTILE27()
+
+	Local aArea         as Array        // guarda os dados do ambiente
+	Local aDados	    as Array        // dados para multi-selecao
+	Local cTitulo	    as Character    // titulo da tela
+	Local cMvParDef	    as Character    // String de Opcoes para Retorno
+	Local cVarIni	    as Character    // Variavel de Retorno
+	Local cQuery        as Character    // query de consulta SQL
+	Local cCodModulo    as Character    // codigo do modulo que esta executando a consulta especifica
+    Local cDescriTipo   as Character    // descricao do tipo de titulo na SX5 - Tabela 05
+	Local lFuneraria	as Logical      // parametro de ativacao do modulo de funeraria e planos assistenciais
+	Local lCemiterio	as Logical      // parametro de ativacao do modulo de cemiterio
+	Local nConta		as Numeric      // variavel contadora no laco de repeticao FOR
+	Local nTamanho	    as Numeric      // tamanho do campo E1_TIPO no dicionario de dados - SX3
+
+	Static cMvRetor	    as Character
+
+	// atribuo valor as variaveis
+	aArea       := GetArea()
+	aDados	    := {}
+	cTitulo	    := "Tipos de Título"
+	cMvParDef	:= ""
+	cVarIni	    := ""
+	cQuery      := ""
+	cCodModulo  := ""
+	cMvRetor	:= ""
+	lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	nConta		:= 0
+	nTamanho	:= TamSX3("E1_TIPO")[1]
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico se a variavel ja tem conteudo
+	If !Empty(cMvRetor)
+
+		// limpo o conteudo da variavel
+		cMvRetor := ""
+
+	EndIf
+
+	if Select("TRBTIP") > 0
+		TRBTIP->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT SE1.E1_TIPO TIPO FROM " + RetSqlName("SE1") + " (NOLOCK) SE1 "
+	cQuery += " WHERE SE1.D_E_L_E_T_ = ' ' "
+
+	if cCodModulo == "C" // para cemiterio
+		cQuery += " AND SE1.E1_XCONTRA <> '' "
+	elseIf cCodModulo == "F" // para funeraria
+		cQuery += " AND SE1.E1_XCONTRA <> '' "
+	else
+		cQuery += " AND (SE1.E1_XCTRFUN <> '' OR E1.E1_XCONTRA <> '')"
+	endIf
+
+	cQuery += " GROUP BY SE1.E1_TIPO "
+
+	TcQuery cQuery New Alias "TRBTIP"
+
+	While TRBTIP->(!Eof())
+
+        // limpo a variavel
+        cDescriTipo := ""
+
+        // atribuo a descricao do tipo de titulo
+        cDescriTipo := Posicione("SX5",1,xFilial("SX5") + "05" + AllTrim(TRBTIP->TIPO),"X5_DESCRI")
+
+        // atribuo valor para multi-selecao
+		aadd(aDados, TRBTIP->TIPO + " - " + AllTrim(cDescriTipo))
+		cMvParDef += TRBTIP->TIPO
+		
+        TRBTIP->(DbSkip())
+	Enddo
+
+    // executo a funcao F_Opcoes para montar a tela de multiselecao
+	If F_Opcoes(@cVarIni, cTitulo, aDados, cMvParDef, 12, 49, .F., nTamanho, 36)
+
+        // percorro o laco de acorodo com o tamanho do campo E1_TIPO
+		For nConta := 1 To Len(cVarIni) Step nTamanho
+
+            // aplico a mascara do campo de acordo com o tamanho do campo
+			If substr(cVarIni, nConta, nTamanho) # Replicate("*",TamSX3("E1_TIPO")[1])
+
+                // aplico o separador ; caso ja exista conteudo na variavel de retonro
+				If !Empty(cMvRetor)
+					cMvRetor += ";"
+				EndIf
+
+                // alimento a variaveld e retorno
+				cMvRetor += substr(cVarIni,nConta,nTamanho)
+
+			EndIf
+
+		Next nConta
+
+	EndIf
+
+	if Select("TRBTIP") > 0
+		TRBTIP->(DbCloseArea())
+	endIf
+
+	RestArea(aArea)
+
+Return(.T.)
+
+/*/{Protheus.doc} UTILE27A
+Funcao para retorno da consulta especifica
+@type function
+@version 
+@author g.sampaio
+@since 04/03/2020
+@return return_type, return_description
+/*/
+User Function UTILE27A()
+Return(cMvRetor)

@@ -1,0 +1,391 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TBICONN.CH"
+#INCLUDE "PARMTYPE.CH"	// (Para controle dos parâmetros  utilizando o comando PARAMTYPE)
+#INCLUDE "AP5MAIL.CH"	// (Para utilizar o comando CONNECT SMTP SERVER na função LjEnvEmLP)
+#INCLUDE "FILEIO.CH"
+
+//Defines relacionados a Gravação de LOGs
+#DEFINE LOGPATH	 	"VIRTUS"			// Caminho principal (Diretorio Pai) onde os LOGs serão gravados
+#DEFINE LOGSUBPATH 	"LOGS" 				// Sub-Caminho (Diretorio Filho) onde os LOGs serão gravados
+#DEFINE CRLF      	Chr(13)+Chr(10)  	// Pula linha
+
+//Variaveis relacionadas a Gravação de LOGs
+Static lEnableLog 	:= Nil				// Variavel para controle se LOGs esta ativo.
+Static lHeadInfo 	:= .T. 				// Variavel para controlar a gravaçao das informações de Cabeçalho do LOG
+Static cFile_Log 	:= Nil				// Variavel para armazenar o nome do arquivo de LOG
+
+User Function RUTILE37()
+Return(Nil)
+
+/*/{Protheus.doc} className
+	(long_description)
+	@author user
+	@since 28/05/2020
+	@version version
+	/*/
+	Class LogVirtus
+
+		Public Data cBarra As Character
+        Public Data nStart As Numeric
+
+		Public Method New() Constructor	// Método Construtor
+		Public Method CriaLog()
+		Public Method VirtusGravaLog()
+		Public Method VirtusFilePath()
+		Public Method VirtusFileName()
+		Public Method VirtusCheckDir()
+
+	EndClass
+
+Method New() Class LogVirtus
+
+	Self:cBarra := iif(IsSrvUnix(),"/","\")
+    Self:nStart := 0
+
+Return(Nil)
+
+/*/{Protheus.doc} LogVirtus::VirtusGravaLog
+Metodo para gravar o log
+@type method
+@version 1.0  
+@author g.sampaio
+@since 29/06/2021
+@param cNumControle, Characteracter, Numero de controle para poder identificar o processo em execução. Exemplo: L1_NUM: 000001, L1_DOC: 000100,...etc
+@param cLogText, Characteracter, Texto do log
+@param lCallStack, logical, Variavel que determina se exibe a pilha de chamadas ou nao
+/*/
+Method VirtusGravaLog( cNumControl, cLogText, lCallStack) Class LogVirtus
+
+	Local cThreadID 	As Character							// Retorna o ID (número de identificação) da thread em que a chamada da função foi realizada
+	Local cProcLine 	As Character 						// Retorna o número da linha do código fonte executado que fez a chamada da geração do LOG
+	Local cFunction 	As Character		 					// Retorna o nome da funcao em execução que fez a chamada da geração do LOG
+	Local cPath 		As Character
+	Local cLogFile 		As Character
+	Local nHandle 		As Numeric
+
+	Default cNumControl     := ""                       //
+	Default cLogText        := ""                       //
+	Default lCallStack      := .F.                      //
+
+	if Self:VirtusCheckDir()
+
+		// atribuo valor as variaveis
+		cThreadID 	:= ""
+		cProcLine 	:= ""
+		cFunction 	:= ""
+		cPath 		:= ""
+		cLogFile 	:= ""
+		nHandle 	:= 0
+
+		cFunction 	:= ProcName(1) 					//Retorna o nome da funcao em execução que fez a chamada da geração do LOG
+		cThreadID 	:= AllTrim(Str(ThreadID())) 	//Retorna o ID (número de identificação) da thread em que a chamada da função foi realizada
+		cProcLine 	:= AllTrim(Str(ProcLine(1))) 	//Retorna o número da linha do código fonte executado que fez a chamada da geração do LOG
+
+		cPath       := Self:VirtusFilePath()        // Retorna o Caminho onde o arquivo de LOG será gerado
+		cLogFile    := Self:VirtusFileName(cThreadID)                            // Retorna o nome do arquivo de LOG que será gerado.
+
+		//Verifica se precisa gravar as informações de Cabeçalho do LOG
+		If lHeadInfo
+			lHeadInfo := .F. //Seta para .F., para não gerar o LOG do Cabeçalho novamente, gera apenas uma vez
+
+			GeraHeader( cPath+cLogFile )
+		EndIf
+
+		cFunction := " Function " + cFunction
+
+		cLogText := Time() + " " + "["+cThreadID+"]" + cFunction + " Line " + cProcLine + CRLF +;
+			Space(5) +  "[" + cNumControl + "] " + cLogText + CRLF
+
+		// mensagens no console log
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", cLogText, 0, (Self:nStart - Seconds()), {}) // O log de Debug somente é ativado pela chave no environment FWLOGMSG_DEBUG=1
+
+		If lCallStack //Verifica se eh para listar a pilha de chamadas
+			nX := 1
+			cCallStack := Space(5) + "Call Stacks:" + CRLF
+			While !Empty(ProcName(nX))
+				cCallStack 	+= Space(10) + "Called from "
+				cCallStack 	+= ProcName(nX)								//Retorna o nome da funcao executada
+				cCallStack 	+= " line: " + AllTrim(Str(ProcLine(nX))) + CRLF	//Retorna o número da linha do código fonte executado
+				nX++
+			End
+
+			cLogText := cLogText + cCallStack + CRLF
+		EndIf
+
+		If !File( cPath+cLogFile )	// Cria o arquivo caso ainda nao existir
+			nHandle := FCreate( cPath+cLogFile )
+			FClose( nHandle )
+		EndIf
+
+		// Grava o texto no Arquivo de LOG
+		nHandle := FOpen( cPath+cLogFile, 2 )
+		FSeek ( nHandle, 0, 2 )	// Posiciona no final do arquivo.
+		FWrite( nHandle, cLogText, Len(cLogText) )
+		FClose( nHandle )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} LogVirtus::CriaLog
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/06/2021
+@param cArqTexto, Characteracter, param_description
+@return variant, return_description
+/*/
+Method CriaLog(cArqTexto) Class LogVirtus
+
+	Local aArea 		:= GetArea()
+	Local oWriter		:= Nil
+	Local cRetorno		:= ""
+
+	Default cArqTexto	:= ""
+
+	// verifico se o fonte
+	If !Empty( cArqTexto )
+
+		// crio o objeto de escrita de arquivo
+		oWriter := FWFileWriter():New( ::cArqLog, .T.)
+
+		// crio o arquivo
+		oWriter:Write( cArqTexto )
+
+		// fecho o objeto de escrita
+		oWriter:Close()
+
+		// preencho o retorno
+		cRetorno	:= ::cArqLog
+
+	EndIf
+
+	RestArea( aArea )
+
+Return(cRetorno)
+
+/*/{Protheus.doc} LogVirtus::VirtusFilePath
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/06/2021
+@return variant, return_description
+/*/
+Method VirtusFilePath() Class LogVirtus
+
+	Local cRetorno As Character
+
+	// atribuo valor as variaveis
+	cRetorno 	:= Self:cBarra + LOGPATH + Self:cBarra + LOGSUBPATH + Self:cBarra
+
+Return(cRetorno)
+
+/*/{Protheus.doc} LogVirtus::VirtusFileName
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/06/2021
+@param cFunction, Characteracter, param_description
+@param cThreadID, Characteracter, param_description
+@return variant, return_description
+/*/
+Method VirtusFileName(cThreadID) Class LogVirtus
+
+	Default cThreadID   := AllTrim(Str(ThreadID())) 	//Retorna o ID (número de identificação) da thread em que a chamada da função foi realizada
+
+	If cFile_Log == Nil
+		If Type("cEmpAnt") != "U"  .And. Type("cFilAnt") != "U" //Verifica as variaveis empresa e filial para saber se o ambiente esta iniciado
+			if !Empty(cThreadID)
+				cFile_Log 	:= "VIRTUSLOG_" + cThreadID + "_" + cEmpAnt+cFilAnt+"_"+DToS(Date()) + CriaTrab( NIL, .F. ) + ".TXT"
+			else
+				cFile_Log 	:= "VIRTUSLOG_" + cEmpAnt+cFilAnt+"_"+DToS(Date()) + CriaTrab( NIL, .F. ) + ".TXT"
+			endIf
+		Else
+			if !Empty(cThreadID)
+				cFile_Log := "VIRTUSLOG_" + cThreadID + "_" + DToS(Date()) + CriaTrab( NIL, .F. ) + ".TXT"
+			else
+				cFile_Log := "VIRTUSLOG_"+DToS(Date()) + CriaTrab( NIL, .F. ) + ".TXT"
+			endIf
+		EndIf
+	EndIf
+
+Return(cFile_Log)
+
+/*/{Protheus.doc} GeraHeader
+description
+@type function
+@version  
+@author g.sampaio
+@since 29/06/2021
+@param cFileLog, Characteracter, param_description
+@return variant, return_description
+/*/
+Static Function GeraHeader( cFileLog )
+
+	Local cHeadInfo 	:= ""
+	Local nHandle 		:= 0
+
+	cHeadInfo :=  "############ BEGIN HEADER INFORMATION ############" + CRLF
+
+	//-------
+	// Data
+	//-------
+	cHeadInfo += "[Date: " + DToC(Date()) + "]" + CRLF
+
+	//-------
+	// Hora
+	//-------
+	cHeadInfo += "[Time: " + Time() + "]" + CRLF
+
+	//----------------------------------------------------------------------------------------
+	// Retorna o número IP (Internet Protocol) onde o Smart Client está sendo executado
+	//----------------------------------------------------------------------------------------
+	cHeadInfo += "[IP: " + GetClientIP() + "]" + CRLF
+
+	//----------------------------------------------------------------------------------------
+	// Retorna o nome da máquina (Hostname) onde o Smart Client está sendo executado
+	//----------------------------------------------------------------------------------------
+	cHeadInfo += "[Hostname: " + GetComputerName() + "]" + CRLF
+
+	//-----------------
+	// ID do Usuário
+	//-----------------
+	If Type("__cUserID") <> "U"
+		cHeadInfo += "[User ID: " + __cUserID + "]" + CRLF
+	EndIf
+
+	//-------------------
+	// Nome do Usuário
+	//-------------------
+	If Type("cUserName") <> "U"
+		cHeadInfo += "[User Name: " + cUserName + "]" + CRLF
+	EndIf
+
+	//------------------------------------------------------------------------
+	// Informações da build (ID da compilação) em uso do Application Server
+	//------------------------------------------------------------------------
+	cHeadInfo += "[Build Application Server: " + GetBuild(.F.) + "]" + CRLF
+
+	If !IsBlind()
+		//-----------------------------------------------------------------
+		// Informações da build (ID da compilação) em uso do SmartClient
+		//-----------------------------------------------------------------
+		cHeadInfo += "[Build SmartClient: " + GetBuild(.T.) + "]" + CRLF
+	EndIf
+
+	//--------------------------------------------------------------------------------------------
+	// Retorna uma string com o nome do ambiente (ENVIRONMENT) em execução no Application Server
+	//--------------------------------------------------------------------------------------------
+	cHeadInfo += "[Environment: " + GetEnvServer() + "]" + CRLF
+
+	//--------------------------------------------------------------------------------------------
+	// Verifica se a conexão efetuada com o Protheus possui ou não interface com o usuário
+	//--------------------------------------------------------------------------------------------
+	cHeadInfo += "[Interface: " + If(IsBlind(),"NO","YES") + "]" + CRLF
+
+	//--------------------------
+	// Informação do Sistema
+	//--------------------------
+	cHeadInfo += "[System: " + GetVersao() + "]" + CRLF
+
+	//---------------------------------------
+	// Informação da Versão em Utilização
+	//---------------------------------------
+	cHeadInfo += "[Version: " + GetVersao(.F.) + "]" + CRLF
+
+	//---------------------------------------
+	// Informação do Release em Utilização
+	//---------------------------------------
+	cHeadInfo += "[Release: " + GetRPORelease() + "]" + CRLF
+
+	If !IsBlind()
+		//---------------------------------------
+		// Informação da Estacao em execução
+		//---------------------------------------
+		cHeadInfo += "[Estação: " + cEstacao + "]" + CRLF
+
+		//---------------------------------------
+		// Informação do Usuario Caixa
+		//---------------------------------------
+		cHeadInfo += "[Caixa: " + xNumCaixa() + "]" + CRLF
+	EndIf
+
+	//---------------------------------------
+	//Data de fontes compilados no RPO
+	//---------------------------------------
+	cHeadInfo += "--------------------------------------------------" + CRLF
+	cHeadInfo += "List of sources: "
+	nHandle := FOpen( cFileLog, 2 ) // Abre o arquivo de LOG
+	FSeek ( nHandle, 0, 2 )	// Posiciona no final do arquivo.
+	FWrite( nHandle, cHeadInfo + CRLF, Len(cHeadInfo) + 2 )
+	FClose( nHandle ) //Fecha o arquivo de LOG
+	cHeadInfo := ""
+	cHeadInfo += "--------------------------------------------------" + CRLF
+
+	//------------------
+	//Versao da DLL
+	//------------------
+	// TO DO
+	cHeadInfo +=  "############# END HEADER INFORMATION #############"
+
+	nHandle := FOpen( cFileLog, 2 ) // Abre o arquivo de LOG
+	FSeek ( nHandle, 0, 2 )	// Posiciona no final do arquivo.
+	FWrite( nHandle, cHeadInfo + CRLF, Len(cHeadInfo) + 2 )
+	FClose( nHandle ) //Fecha o arquivo de LOG
+
+Return(Nil)
+
+/*/{Protheus.doc} LogVirtus::VirtusCheckDir
+description
+@type method
+@version 1.0
+@author g.sampaio
+@since 29/06/2021
+@return variant, return_description
+/*/
+Method VirtusCheckDir() Class LogVirtus
+	Local lRet 		:= .T.
+	Local nRet 		:= 0
+	Local cDir 		:= ""
+	Local cFileLOG 	:= Self:VirtusFilePath()+Self:VirtusFileName()
+
+    //Verifica se ja existe o diretório principal (Diretorio Pai)
+	cDir := Self:cBarra + LOGPATH
+	If !ExistDir(cDir)
+		nRet := MakeDir(cDir)
+
+		If nRet != 0			
+			FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "Não foi possível criar o diretório " + cDir +". Erro: " + cValToChar( FError() ), 0, (Self:nStart - Seconds()), {}) // O log de Debug somente é ativado pela chave no environment FWLOGMSG_DEBUG=1
+            lRet := .F.
+		EndIf
+	EndIf
+
+//Verifica se ja existe o sub-diretório onde será criado o arquivo de LOG
+	cDir := Self:cBarra + LOGPATH + Self:cBarra + LOGSUBPATH
+	If !ExistDir(cDir)
+		nRet := MakeDir(cDir)
+
+		If nRet != 0			
+            FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "Não foi possível criar o diretório " + cDir +". Erro: " + cValToChar( FError() ), 0, (Self:nStart - Seconds()), {}) // O log de Debug somente é ativado pela chave no environment FWLOGMSG_DEBUG=1
+			lRet := .F.
+		EndIf
+	EndIf
+
+	If lRet
+		If !File( cFileLOG )	// Cria o arquivo caso ainda nao existir
+
+			nHandle := FCreate( cFileLOG )
+			If nHandle == -1				
+                FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "Erro ao tentar criar o arquivo de LOG [" + cFileLOG + "] - Erro " + STR(FERROR()), 0, (Self:nStart - Seconds()), {}) // O log de Debug somente é ativado pela chave no environment FWLOGMSG_DEBUG=1
+			Else
+				FClose( nHandle )
+			EndIf
+		Else
+			lHeadInfo := .F.
+		EndIf
+	EndIf
+
+Return(lRet)

@@ -1,0 +1,301 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} RUTILE29
+Consulta de tabelas(SX2) para termos
+baseado no conteudo das tabelas vinculadas a rotina 
+na tabel UJO
+
+Consulta SXB - UJOSX2
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/11/2020
+@return logical, retorno logico da consulta
+/*/
+User Function RUTILE29(lRetItem)
+
+	Local aBrwSX2       as Array
+	Local cCodRotina    as Character
+	Local cGetPesquisa  as Character
+	Local lRetorno      as Logical
+	Local oBtnFiltrar 	as Object
+	Local oBtnLimpar    as Object
+	Local oBtnConfirmar as Object
+	Local oBtnCancelar  as Object
+	Local oGetPesquisa  as Object
+	Local oGrpPesquisa  as Object
+	Local oGrpTabelas   as Object
+	Local oSayTabela    as Object
+	Local oDlgSX2       as Object
+	Local oBrwSX2       as Object
+
+	Public __xRetTabela := ""
+
+	Default lRetItem	:= .F.
+
+	// inicio o valor das variaveis
+	aBrwSX2         := {}
+	cCodRotina      := M->UJJ_ROTINA
+	cGetPesquisa    := Space(20)
+	lRetorno        := .T.
+	oBrwSX2         := Nil
+	oDlgSX2         := Nil
+
+	DEFINE MSDIALOG oDlgSX2 TITLE "Tabelas Termos" FROM 000, 000  TO 300, 500 COLORS 0, 16777215 PIXEL
+
+	@ 003, 002 GROUP oGrpPesquisa TO 036, 247 PROMPT "Consulta Tabela" OF oDlgSX2 COLOR 0, 16777215 PIXEL
+
+	@ 015, 010 SAY oSayTabela PROMPT "Tabela" SIZE 025, 007 OF oDlgSX2 COLORS 0, 16777215 PIXEL
+	@ 014, 039 MSGET oGetPesquisa VAR cGetPesquisa SIZE 117, 010 OF oDlgSX2 COLORS 0, 16777215 PIXEL
+
+	@ 015, 162 BUTTON oBtnLimpar PROMPT "Limpar" SIZE 037, 012 OF oDlgSX2 PIXEL ACTION( Limpar( @cGetPesquisa, @oGetPesquisa, @oDlgSX2, cCodRotina, @oBrwSX2, @aBrwSX2 ) )
+	@ 015, 203 BUTTON oBtnFiltrar PROMPT "Filtrar" SIZE 037, 012 OF oDlgSX2 PIXEL ACTION( Filtrar( cGetPesquisa, @oDlgSX2, cCodRotina, @oBrwSX2, @aBrwSX2 ) )
+
+	@ 039, 003 GROUP oGrpTabelas TO 144, 246 PROMPT "Tabelas de Termos" OF oDlgSX2 COLOR 0, 16777215 PIXEL
+
+	// browse das tabelas vinculados a rotina para a geracao do relatorio
+	FWBrowseSX2RotinasTermos(cCodRotina, @oBrwSX2, @aBrwSX2, @oDlgSX2, lRetItem)
+
+	@ 125, 200 BUTTON oBtnConfirmar PROMPT "Confirmar" SIZE 037, 012 OF oDlgSX2 PIXEL ACTION(__xRetTabela := DbClickSX2( oBrwSX2:nAt, aBrwSX2, @oDlgSX2, lRetItem) )
+	@ 125, 160 BUTTON oBtnCancelar PROMPT "Cancelar" SIZE 037, 012 OF oDlgSX2 PIXEL ACTION(oDlgSX2:End())
+
+	ACTIVATE MSDIALOG oDlgSX2 CENTERED
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FWBrowseSX2RotinasTermos
+funcao para montar uma lista das tabelas da SX2 
+relacionado a rotina preenchido no cadastro do 
+termo.
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/11/2020
+/*/
+Static Function FWBrowseSX2RotinasTermos(cCodRotina, oBrwSX2, aBrwSX2, oDlgSX2, lRetItem)
+
+	Default cCodRotina  := ""
+	Default oBrwSX2     := Nil
+	Default aBrwSX2     := {}
+	Default oDlgSX2     := Nil
+
+	// executa a query e preencho o array de browse
+	ExeQuery( cCodRotina, @aBrwSX2 )
+
+	@ 049, 008 LISTBOX oBrwSX2 Fields HEADER "Item","Tabela","Descrição da Tabela" SIZE 233, 072 OF oDlgSX2 PIXEL ColSizes 50,50
+	oBrwSX2:SetArray(aBrwSX2)
+	oBrwSX2:bLine := {|| {;
+		aBrwSX2[oBrwSX2:nAt,1],;
+		aBrwSX2[oBrwSX2:nAt,2],;
+		aBrwSX2[oBrwSX2:nAt,3];
+		}}
+
+	// DoubleClick event
+	oBrwSX2:bLDblClick := {|| __xRetTabela := DbClickSX2( oBrwSX2:nAt, aBrwSX2, @oDlgSX2, lRetItem),;
+		oBrwSX2:DrawSelect()}
+
+Return(Nil)
+
+/*/{Protheus.doc} DbClickSX2
+funcao de duplo clique
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/11/2020
+@param nLinhaBrowse, numeric, param_description
+@param oBrwSX2, object, param_description
+@return return_type, return_description
+/*/
+Static Function DbClickSX2( nLinhaBrowse, aBrwSX2, oDlgSX2, lRetItem)
+
+	Local cRetorno 		as Character
+
+	Default nLinhaBrowse	:= 0
+
+	// declaro valor as variaveis
+	cRetorno    := ""
+
+	// pego o alias da tabela
+	If lRetItem
+		cRetorno    := aBrwSX2[nLinhaBrowse, 1]
+	Else
+		cRetorno    := aBrwSX2[nLinhaBrowse, 2]
+	EndIf
+
+	// se o retorno tem conteudo fecho a tela do browse
+	if !Empty(cRetorno)
+		oDlgSX2:End()
+	endIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} UTILE29A
+Funcao de retorno da consulta especififca 
+para o programa RUTILE29A.
+
+@type function
+@version 1.0 
+@author g.sampaio
+@since 23/11/2020
+@return return_type, return_description
+/*/
+User Function UTILE29A()
+Return(__xRetTabela)
+
+/*/{Protheus.doc} Limpar
+Funcao para limpar o campo pesquisa
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 24/11/2020
+@param cGetPesquisa, character, param_description
+@param oGetPesquisa, object, param_description
+@param oDlgSX2, object, param_description
+@param cCodRotina, character, param_description
+@param oBrwSX2, object, param_description
+@param aBrwSX2, array, param_description
+@return return_type, return_description
+/*/
+Static Function Limpar( cGetPesquisa, oGetPesquisa, oDlgSX2, cCodRotina, oBrwSX2, aBrwSX2 )
+
+	Default cGetPesquisa	:= ""
+	Default oGetPesquisa	:= Nil
+	Default oDlgSX2			:= Nil
+	Default cCodRotina		:= ""
+	Default aBrwSX2			:= {}
+
+	// limpor a variavel
+	cGetPesquisa	:= Space(20)
+
+	// executa a query e preencho o array de browse
+	ExeQuery( cCodRotina, @aBrwSX2 )
+
+	oBrwSX2:SetArray(aBrwSX2)
+	oBrwSX2:bLine := {|| {;
+		aBrwSX2[oBrwSX2:nAt,1],;
+		aBrwSX2[oBrwSX2:nAt,2],;
+		aBrwSX2[oBrwSX2:nAt,3];
+		}}
+
+	if ValType( oGetPesquisa ) == "O"
+		oGetPesquisa:Refresh()
+	endIf
+
+	if ValType( oBrwSX2 ) == "O"
+		oBrwSX2:Refresh()
+	endIf
+
+	if ValType( oDlgSX2 ) == "O"
+		oDlgSX2:Refresh()
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} Filtrar
+funcao para filtrar o que foi digitado na pequisa
+
+@type function
+@version 
+@author g.sampaio
+@since 24/11/2020
+@param cGetPesquisa, character, param_description
+@param oDlgSX2, object, param_description
+@param cCodRotina, character, param_description
+@param oBrwSX2, object, param_description
+@param aBrwSX2, array, param_description
+@return return_type, return_description
+/*/
+Static Function Filtrar( cGetPesquisa, oDlgSX2, cCodRotina, oBrwSX2, aBrwSX2 )
+
+	Default cGetPesquisa	:= ""
+	Default oGetPesquisa	:= Nil
+	Default oDlgSX2			:= Nil
+	Default cCodRotina		:= ""
+	Default aBrwSX2			:= {}
+
+	// executa a query e preencho o array de browse
+	ExeQuery( cCodRotina, @aBrwSX2, cGetPesquisa )
+
+	oBrwSX2:SetArray(aBrwSX2)
+	oBrwSX2:bLine := {|| {;
+		aBrwSX2[oBrwSX2:nAt,1],;
+		aBrwSX2[oBrwSX2:nAt,2],;
+		aBrwSX2[oBrwSX2:nAt,3];
+		}}
+
+	if ValType( oBrwSX2 ) == "O"
+		oBrwSX2:Refresh()
+	endIf
+
+	if ValType( oDlgSX2 ) == "O"
+		oDlgSX2:Refresh()
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} ExeQuery
+description
+@type function
+@version 
+@author g.sampaio
+@since 24/11/2020
+@param cCodRotina, character, param_description
+@param @aBrwSX2, param_type, param_description
+@return return_type, return_description
+/*/
+Static Function ExeQuery( cCodRotina, aBrwSX2, cGetPesquisa )
+
+	Local cQuery as Character
+
+	Default cCodRotina  	:= ""
+	Default aBrwSX2     	:= {}
+	Default cGetPesquisa	:= ""
+
+	// inicio o valor das variaveis
+	cQuery := ""
+
+	// limpo o array de dados
+	aBrwSX2	:= {}
+
+	if Select("TRBSX2") > 0
+		TRBSX2->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT UJO.UJO_SEQ AS ITEM, SX2.X2_CHAVE TABELA, SX2.X2_NOME DESCRICAO FROM " + RetSqlName("UJO") + " UJO "
+	cQuery += " INNER JOIN " + RetSqlName("SX2") + " SX2 ON SX2.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SX2.X2_CHAVE = UJO.UJO_CDOM "
+	cQuery += " WHERE UJO.D_E_L_E_T_ = ' '"
+	cQuery += " AND UJO.UJO_FILIAL = '" + xFilial("UJO") + "' "
+	cQuery += " AND UJO.UJO_CODIGO = '" + cCodRotina + "' "
+
+	// verifico se tenho algo a pesquisar
+	if !empty(cGetPesquisa)
+		cQuery += " AND (SX2.X2_CHAVE LIKE '%"+ AllTrim(Upper(cGetPesquisa))+"%' OR SX2.X2_NOME LIKE '%"+AllTrim(cGetPesquisa)+"%')"
+	endIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, 'TRBSX2' )
+
+	while TRBSX2->(!Eof())
+
+		// Insert items here
+		Aadd(aBrwSX2,{ TRBSX2->ITEM, TRBSX2->TABELA, Upper(TRBSX2->DESCRICAO)})
+
+		TRBSX2->(DbSkip())
+	endDo
+
+	if Len(aBrwSX2) == 0
+		Aadd(aBrwSX2,{ "", ""})
+	endIf
+
+	if Select("TRBSX2") > 0
+		TRBSX2->(DbCloseArea())
+	endIf
+
+Return(Nil)

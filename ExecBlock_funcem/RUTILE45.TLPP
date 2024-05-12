@@ -1,0 +1,543 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE45
+Rotina de Integracao de Empresas
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/08/2021
+@param cTpIntegracao, character, tipo de integracao
+@param cContrato, character, codigo do contrato
+/*/
+User Function RUTILE45(cFilialOri, cTpIntegracao, cContrato, cCodApontamento)
+
+	Local aArea                 As Array
+	Local aAreaUF2              As Array
+	Local aBrwIntegracao        As Array
+	Local cGetContrato          As Character
+	Local cGetCliente           As Character
+	Local cGetLoja              As Character
+	Local cGetDescriCliente     As Character
+	Local cGetPlano             As Character
+	Local cGetDescriPlano       As Character
+	Local oBtnFechar            As Object
+	Local oBtnEstornar        	As Object
+	Local oBtnServicos          As Object
+	Local oGetContrato          As Object
+	Local oGetCliente           As Object
+	Local oGetLoja              As Object
+	Local oGetDescriCliente     As Object
+	Local oGetPlano             As Object
+	Local oGetDescriPlano       As Object
+	Local oGrpContOrigem        As Object
+	Local oGrpContIntegracao    As Object
+	Local oSayContrato          As Object
+	Local oSayCliente           As Object
+	Local oSayLoja              As Object
+	Local oSayDescriCliente     As Object
+	Local oSayPlano             As Object
+	Local oSayDescriPlano       As Object
+	Local oDlgIntEmp            As Object
+	Local oBrwIntegracao        As Object
+
+	Default cFilialOri		:= ""
+	Default cTpIntegracao	:= ""
+	Default cContrato		:= ""
+	Default cCodApontamento	:= ""
+
+	// atribuo valor as variaveis
+	aArea               := GetArea()
+	aAreaUF2            := UF2->(GetArea())
+	aBrwIntegracao      := {}
+	cGetContrato        := ""
+	cGetCliente         := ""
+	cGetLoja            := ""
+	cGetDescriCliente   := ""
+	cGetPlano           := ""
+	cGetDescriPlano     := ""
+	oBtnFechar          := Nil
+	oBtnEstornar        := Nil
+	oBtnServicos        := Nil
+	oGetContrato        := Nil
+	oGetCliente         := Nil
+	oGetLoja            := Nil
+	oGetDescriCliente   := Nil
+	oGetPlano           := Nil
+	oGetDescriPlano     := Nil
+	oGrpContOrigem      := Nil
+	oGrpContIntegracao  := Nil
+	oSayContrato        := Nil
+	oSayCliente         := Nil
+	oSayLoja            := Nil
+	oSayDescriCliente   := Nil
+	oSayPlano           := Nil
+	oSayDescriPlano     := Nil
+	oDlgIntEmp          := Nil
+	oBrwIntegracao      := Nil
+
+	UF2->(DbSetOrder(1))
+	if cTpIntegracao == "2" .And. UF2->( MsSeek( U_IntRetFilial("UF2", cFilialOri) + cContrato ) )
+
+		// pego as informacoes para o browse
+		cGetContrato        := UF2->UF2_CODIGO
+		cGetPlano           := UF2->UF2_PLANO
+		cGetDescriPlano     := Posicione( "UF0", 1, U_IntRetFilial("UF0", cFilialOri)+UF2->UF2_PLANO, "UF0_DESCRI")
+		cGetCliente         := UF2->UF2_CLIENT
+		cGetLoja            := UF2->UF2_LOJA
+		cGetDescriCliente   := Posicione( "SA1", 1, U_IntRetFilial("SA1", cFilialOri)+UF2->UF2_CLIENT+UF2->UF2_LOJA, "A1_NOME" )
+
+		DEFINE MSDIALOG oDlgIntEmp TITLE "Integração de Empresas" FROM 000, 000  TO 400, 800 COLORS 0, 16777215 PIXEL
+
+		@ 003, 003 GROUP oGrpContOrigem TO 070, 400 PROMPT "Contrato de Origem" OF oDlgIntEmp COLOR 0, 16777215 PIXEL
+
+		// dados do contrato e plano
+		@ 012, 008 SAY oSayContrato PROMPT "Contrato" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 020, 010 MSGET oGetContrato VAR cGetContrato SIZE 060, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		@ 012, 085 SAY oSayPlano PROMPT "Plano" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 020, 083 MSGET oGetPlano VAR cGetPlano SIZE 060, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		@ 012, 156 SAY oSayDescriPlano PROMPT "Descrição" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 020, 154 MSGET oGetDescriPlano VAR cGetDescriPlano SIZE 168, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		// dados do cliente
+		@ 037, 008 SAY oSayCliente PROMPT "Cliente" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 045, 010 MSGET oGetCliente VAR cGetCliente SIZE 060, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		@ 037, 085 SAY oSayLoja PROMPT "Loja" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 045, 083 MSGET oGetLoja VAR cGetLoja SIZE 032, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		@ 037, 127 SAY oSayDescriCliente PROMPT "Descrição" SIZE 025, 007 OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+		@ 045, 125 MSGET oGetDescriCliente VAR cGetDescriCliente SIZE 198, 010 WHEN .F. OF oDlgIntEmp COLORS 0, 16777215 PIXEL
+
+		@ 070, 003 GROUP oGrpContIntegracao TO 170, 400 PROMPT "Contratos Integracao" OF oDlgIntEmp COLOR 0, 16777215 PIXEL
+		BrwIntegracao(UF2->UF2_MSFIL, UF2->UF2_CODIGO, @aBrwIntegracao, @oBrwIntegracao, @oDlgIntEmp, cCodApontamento)
+
+		@ 179, 354 BUTTON oBtnFechar PROMPT "Fechar" SIZE 037, 012 OF oDlgIntEmp PIXEL ACTION(oDlgIntEmp:End())
+		@ 179, 312 BUTTON oBtnEstornar PROMPT "Estornar" SIZE 037, 012 OF oDlgIntEmp PIXEL ACTION( ExcIntegracao( @oDlgIntEmp, aBrwIntegracao[oBrwIntegracao:nAt,2], aBrwIntegracao[oBrwIntegracao:nAt,3] ) )
+		@ 179, 269 BUTTON oBtnServicos PROMPT "Serviços" SIZE 037, 012 OF oDlgIntEmp PIXEL ACTION( ServIntegracao( @aBrwIntegracao, @oBrwIntegracao, @oDlgIntEmp, aBrwIntegracao[oBrwIntegracao:nAt,2], aBrwIntegracao[oBrwIntegracao:nAt,3], cCodApontamento) )
+
+		ACTIVATE MSDIALOG oDlgIntEmp CENTERED
+
+	else
+
+		// mensagem para o usuario
+		MsgAlert("O contrato não tem integração!", "Integração de Empresas")
+
+	endIf
+
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwIntegracao
+browse da tela principal de contratos
+vinculados a integracao de empresas
+@type function
+@version 1.0
+@author g.sampaio
+@since 12/08/2021
+@param cFilialOri, character, param_description
+@param cContrato, character, param_description
+@param aBrwIntegracao, array, param_description
+@param oBrwIntegracao, object, param_description
+@param oDlgIntEmp, object, param_description
+@param cCodApontamento, character, param_description
+@return variant, return_description
+/*/
+Static Function BrwIntegracao(cFilialOri, cContrato, aBrwIntegracao, oBrwIntegracao, oDlgIntEmp, cCodApontamento)
+
+	Local aAux		As Array
+	Local cQuery    As Character
+	Local cAliasTab As Character
+
+	// atribui valor as variaveis
+	aAux		:= {}
+	cQuery      := ""
+	cAliasTab   := ""
+
+	cQuery := " SELECT "
+	cQuery += " U00.U00_STATUS, "
+	cQuery += " U00.U00_FILIAL, "
+	cQuery += " U00.U00_CODIGO, "
+	cQuery += " U00.U00_PLANO, "
+	cQuery += " U00.U00_DESCPL, "
+	cQuery += " U00.U00_NOMCLI, "
+	cQuery += " ( SELECT "
+	cQuery += " COUNT(*) "
+	cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = U00.U00_FILIAL "
+	cQuery += " AND UJV.UJV_CONTRA = U00.U00_CODIGO) QTD_SERVICOS, "
+	cQuery += " ( SELECT "
+	cQuery += " COUNT(*) "
+	cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = U00.U00_FILIAL "
+	cQuery += " AND UJV.UJV_CONTRA = U00.U00_CODIGO "
+	cQuery += " AND UJV.UJV_STENDE = 'E') QTD_ENDERECADOS "
+	cQuery += " FROM " + RetSQLName("U00") + " U00 "
+
+	if !Empty(cCodApontamento)
+		cQuery += " INNER JOIN " + RetSQLName("UJV") + " UJV ON UJV.D_E_L_E_T_ = ' '
+		cQuery += " AND UJV.UJV_FILIAL = U00.U00_FILIAL
+		cQuery += " AND UJV.UJV_CONTRA = U00.U00_CODIGO
+		cQuery += " AND UJV.UJV_TPAPON = '2'
+		cQuery += " AND UJV.UJV_FILINT	= '"+cFilialOri+"' "
+		cQuery += " AND UJV.UJV_CTRINT	= '"+cContrato+"' "
+		cQuery += " AND UJV.UJV_APTINT	= '"+cCodApontamento+"' "
+	endIf
+
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U00.U00_TPCONT = '2' "
+	cQuery += " AND U00.U00_FILINT = '"+cFilialOri+"' "
+	cQuery += " AND U00.U00_CTRINT = '"+cContrato+"' "
+
+	cAliasTab := FwExecCachedQuery():OpenQuery( cQuery,/*cAlias*/, /*aSetField*/, /*cDriver*/, "240", "60")
+
+	// Insert items here
+	if (cAliasTab)->(!Eof())
+
+		While (cAliasTab)->(!Eof())
+			aAux := {}
+			Aadd(aAux, (cAliasTab)->U00_STATUS )
+			Aadd(aAux, (cAliasTab)->U00_FILIAL )
+			Aadd(aAux, (cAliasTab)->U00_CODIGO )
+			Aadd(aAux, (cAliasTab)->U00_PLANO )
+			Aadd(aAux, (cAliasTab)->U00_DESCPL )
+			Aadd(aAux, (cAliasTab)->U00_NOMCLI )
+			Aadd(aAux, (cAliasTab)->QTD_SERVICOS )
+			Aadd(aAux, iif((cAliasTab)->QTD_ENDERECADOS > 0,"S","N") )
+			Aadd(aBrwIntegracao,aAux)
+
+			(cAliasTab)->(DbSkip())
+		EndDo
+
+	else
+		Aadd(aBrwIntegracao,{"","","","","","",0,"N"})
+	endIf
+
+	@ 083, 008 LISTBOX oBrwIntegracao Fields HEADER "","Filial","Contrato","Produto","Descrição","Empresa","Servicos","Enderecado?" SIZE 383, 084 OF oDlgIntEmp PIXEL ColSizes 50,50
+	oBrwIntegracao:SetArray(aBrwIntegracao)
+	oBrwIntegracao:bLine := {|| {;
+		RetLegCtrStatus(aBrwIntegracao[oBrwIntegracao:nAt,1]),;
+		aBrwIntegracao[oBrwIntegracao:nAt,2],;
+		aBrwIntegracao[oBrwIntegracao:nAt,3],;
+		aBrwIntegracao[oBrwIntegracao:nAt,4],;
+		aBrwIntegracao[oBrwIntegracao:nAt,5],;
+		aBrwIntegracao[oBrwIntegracao:nAt,6],;
+		Transform(aBrwIntegracao[oBrwIntegracao:nAt,7], "@E 999"),;
+		aBrwIntegracao[oBrwIntegracao:nAt,8];
+		}}
+
+	// DoubleClick event
+	oBrwIntegracao:bLDblClick := {|| ServIntegracao( @aBrwIntegracao, @oBrwIntegracao, @oDlgIntEmp, aBrwIntegracao[oBrwIntegracao:nAt,2], aBrwIntegracao[oBrwIntegracao:nAt,3], cCodApontamento),;
+		oBrwIntegracao:DrawSelect()}
+
+Return(Nil)
+
+/*/{Protheus.doc} ServIntegracao
+Dialog de serviços da integracao
+@type function
+@version 1.0 
+@author g.sampaio
+@since 12/08/2021
+@param aBrwIntegracao, array, param_description
+@param oBrwIntegracao, object, param_description
+@param oDlgIntEmp, object, param_description
+@param cFilialDest, character, param_description
+@param cContraDest, character, param_description
+@param cCodApontamento, character, param_description
+@return variant, return_description
+/*/
+Static Function ServIntegracao( aBrwIntegracao, oBrwIntegracao, oDlgIntEmp, cFilialDest, cContraDest, cCodApontamento)
+
+	Local aBrwServIntegracao 	As Array
+	Local oBrwServIntegracao	As Object
+	Local oBtnFechar			As Object
+	Local oBtnEstornar			As Object
+	Local oGrpServIntegracao	As Object
+	Local oDlgServIntegracao	As Object
+
+	Default	aBrwIntegracao	:= {}
+	Default oBrwIntegracao	:= Nil
+	Default oDlgIntEmp		:= Nil
+	Default cFilialDest		:= ""
+	Default cContraDest		:= ""
+	Default cCodApontamento	:= ""
+
+	// atribui valor as variaveis
+	aBrwServIntegracao 	:= {}
+	oBrwServIntegracao	:= Nil
+	oBtnFechar			:= Nil
+	oBtnEstornar		:= Nil
+	oGrpServIntegracao	:= Nil
+	oDlgServIntegracao	:= Nil
+
+	DEFINE MSDIALOG oDlgServIntegracao TITLE "Serviços Executados" FROM 000, 000  TO 300, 800 COLORS 0, 16777215 PIXEL
+
+	@ 001, 003 GROUP oGrpServIntegracao TO 127, 396 PROMPT "Serviços - Contratos de Integração" OF oDlgServIntegracao COLOR 0, 16777215 PIXEL
+	BrwServicosInt(cFilialDest, cContraDest, @aBrwServIntegracao, @oBrwServIntegracao, @oDlgServIntegracao,cCodApontamento)
+
+	@ 131, 307 BUTTON oBtnEstornar PROMPT "Estornar" SIZE 037, 012 OF oDlgServIntegracao PIXEL ACTION(ExcIntegracao( @oDlgServIntegracao,;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,2], aBrwServIntegracao[oBrwServIntegracao:nAt,3], aBrwServIntegracao[oBrwServIntegracao:nAt,4]))
+
+	@ 132, 355 BUTTON oBtnFechar PROMPT "Fechar" SIZE 037, 012 OF oDlgServIntegracao PIXEL ACTION(oDlgServIntegracao:End())
+
+	ACTIVATE MSDIALOG oDlgServIntegracao CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwServicosInt
+Browse dos apontamentos de serviços da
+integracao
+@type function
+@version 1.0 
+@author g.sampaio
+@since 12/08/2021
+@param cFilialDest, character, param_description
+@param cContraDest, character, param_description
+@param aBrwServIntegracao, array, param_description
+@param oBrwServIntegracao, object, param_description
+@param oDlgServIntegracao, object, param_description
+@param cCodApontamento, character, param_description
+@return variant, return_description
+/*/
+Static Function BrwServicosInt(cFilialDest, cContraDest, aBrwServIntegracao, oBrwServIntegracao, oDlgServIntegracao,cCodApontamento)
+
+	Local aAux		As Array
+	Local cQuery    As Character
+	Local cAliasTab As Character
+
+	// atribui valor as variaveis
+	cQuery := ""
+
+	cQuery := " SELECT "
+	cQuery += " UJV.UJV_STATUS,"
+	cQuery += " UJV.UJV_STENDE,"
+	cQuery += " UJV.UJV_FILIAL, "
+	cQuery += " UJV.UJV_CONTRA, "
+	cQuery += " UJV.UJV_CODIGO, "
+	cQuery += " UJV.UJV_DATA, "
+	cQuery += " UJV.UJV_SERVIC, "
+	cQuery += " (SELECT SB1.B1_DESC FROM " + RetSQLName("SB1") + " SB1 "
+	cQuery += " WHERE SB1.D_E_L_E_T_ = ' ' AND SB1.B1_FILIAL = '" + U_IntRetFilial("SB1", cFilialDest) +  "' "
+	cQuery += " AND SB1.B1_COD = UJV.UJV_SERVIC ) DESC_SERVIC, "
+	cQuery += " UJV.UJV_FILINT, "
+	cQuery += " UJV.UJV_CTRINT, "
+	cQuery += " UJV.UJV_APTINT "
+	cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = '" + cFilialDest + "'"
+	cQuery += " AND UJV.UJV_CONTRA = '" + cContraDest + "'
+	cQuery += " AND UJV.UJV_TPAPON = '2' " // apontamento de integracao
+
+	cAliasTab := FwExecCachedQuery():OpenQuery( cQuery,/*cAlias*/, /*aSetField*/, /*cDriver*/, "240", "60")
+
+	// Insert items here
+	if (cAliasTab)->(!Eof())
+
+		While (cAliasTab)->(!Eof())
+			aAux := {}
+			Aadd(aAux, (cAliasTab)->UJV_STATUS )
+			Aadd(aAux, (cAliasTab)->UJV_FILIAL )
+			Aadd(aAux, (cAliasTab)->UJV_CONTRA )
+			Aadd(aAux, (cAliasTab)->UJV_CODIGO )
+			Aadd(aAux, (cAliasTab)->UJV_DATA )
+			Aadd(aAux, (cAliasTab)->UJV_SERVIC )
+			Aadd(aAux, (cAliasTab)->DESC_SERVIC )
+			Aadd(aAux, (cAliasTab)->UJV_STENDE )
+			Aadd(aAux, (cAliasTab)->UJV_FILINT )
+			Aadd(aAux, (cAliasTab)->UJV_CTRINT )
+			Aadd(aAux, (cAliasTab)->UJV_APTINT )
+			Aadd(aBrwServIntegracao,aAux)
+
+			(cAliasTab)->(DbSkip())
+		EndDo
+
+	else
+		Aadd(aBrwServIntegracao,{"","","","","","","","","","",""})
+	endIf
+
+	@ 011, 006 LISTBOX oBrwServIntegracao Fields HEADER "","Fil.Cemiterio","Ctr.Cemiterio","Apto.Cemiterio","Data","Servico","Desc.Servico","Status Endereço","Fil.Origem","Ctr.Origem","Apto.Origem" SIZE 386, 113 OF oDlgServIntegracao PIXEL ColSizes 50,50
+	oBrwServIntegracao:SetArray(aBrwServIntegracao)
+	oBrwServIntegracao:bLine := {|| {;
+		RetLegAptStatus(aBrwServIntegracao[oBrwServIntegracao:nAt,1], aBrwServIntegracao[oBrwServIntegracao:nAt,8]),;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,2],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,3],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,4],;
+		Dtoc(Stod(aBrwServIntegracao[oBrwServIntegracao:nAt,5])),;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,6],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,7],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,8],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,9],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,10],;
+		aBrwServIntegracao[oBrwServIntegracao:nAt,11];
+		}}
+
+Return(Nil)
+
+/*/{Protheus.doc} RetLegCtrStatus
+Funcao para retornar a legenda do status
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/08/2021
+@param cStatus, character, status do contrato
+@return object, retorna o objeto com a cor
+/*/
+Static Function RetLegCtrStatus(cStatus)
+
+	Local oRetorno				:= Nil
+
+	Default cStatus	:= ""
+
+	if cStatus == "P"
+		oRetorno := LoadBitmap( GetResources(), "BR_BRANCO")
+	elseIf cStatus == "A"
+		oRetorno := LoadBitmap( GetResources(), "BR_VERDE")
+	elseIf cStatus == "S"
+		oRetorno := LoadBitmap( GetResources(), "BR_LARANJA")
+	elseIf cStatus == "C"
+		oRetorno := LoadBitmap( GetResources(), "BR_AZUL")
+	elseIf cStatus == "F"
+		oRetorno := LoadBitmap( GetResources(), "BR_VERMELHO")
+	else
+		oRetorno := LoadBitmap( GetResources(), "BR_CINZA")
+	endIf
+
+Return(oRetorno)
+
+/*/{Protheus.doc} RetLegCtrStatus
+Funcao para retornar a legenda do status
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/08/2021
+@param cStatus, character, status do contrato
+@return object, retorna o objeto com a cor
+/*/
+Static Function RetLegAptStatus(cStatus, cStatusEnd)
+
+	Local oRetorno				:= Nil
+
+	Default cStatus	:= ""
+
+	if cStatus == "E" .And. cStatusEnd == "X"
+		oRetorno := LoadBitmap( GetResources(), "BR_AMARELO")
+	elseif cStatus == "E" .And. cStatusEnd == "R"
+		oRetorno := LoadBitmap( GetResources(), "BR_LARANJA")
+	elseif cStatus == "E" .And. cStatusEnd == "E"
+		oRetorno := LoadBitmap( GetResources(), "BR_VERDE")
+	elseif cStatus == "F"
+		oRetorno := LoadBitmap( GetResources(), "BR_VERMELHO")
+	EndIf
+
+Return(oRetorno)
+
+/*/{Protheus.doc} ExcIntegracao
+description
+@type function
+@version  
+@author g.sampaio
+@since 10/08/2021
+@param oDlgInt, object, param_description
+@param cFilContrato, character, param_description
+@param cContratoDestino, character, param_description
+@param cApotamentoDestino, character, param_description
+@return variant, return_description
+/*/
+Static Function ExcIntegracao( oDlgInt, cFilContrato, cContratoDestino, cApotamentoDestino )
+
+	Local lContinua				As Logical
+	Local oIntegraEmpresas		As Object
+
+	Default cFilContrato		:= ""
+	Default cContratoDestino	:= ""
+	Default cApotamentoDestino	:= ""
+
+	// atribui valor as variaveis
+	lContinua			:= .T.
+	oIntegraEmpresas	:= IntegraEmpresas():New(UF2->UF2_MSFIL, UF2->UF2_CODIGO)
+
+	// mensagem para confirmar a opção do usuário
+	if MsgYesNo("Deseja realizar o estorno da integração de empresas?", "Integração de Empresas")
+
+		// valido as integracoes
+		if oIntegraEmpresas:ValidaCtrDestino( cFilContrato, cContratoDestino, cApotamentoDestino)
+
+			// verifico o status do apontamento
+			if !oIntegraEmpresas:StatusAptIntegracao()
+				lContinua := .F.
+				Help( ,, 'Help - INTEGRACAOEMPRESAS',, 'Nao e possivel excluir o Apontamento de Servico, pois o apontamento do módulo de cemiterio está finalizado com o vinculo de integracao de empresas!', 1, 0 )
+			endIf
+
+			// nao permito a exclusao de apontament
+			if lContinua .And. oIntegraEmpresas:EnderecoIntegracao()
+				lContinua := .F.
+				Help( ,, 'Help - INTEGRACAOEMPRESAS',, 'Nao e possivel excluir o Apontamento de Servico, pois existe endereçamento no módulo de cemiterio com o vinculo de integracao de empresas!', 1, 0 )
+			endIf
+
+			if lContinua
+
+				// caso tenha o apontamento preenchido
+				if !Empty(cApotamentoDestino)
+
+					cQuery := " SELECT "
+					cQuery += " COUNT(*) CONT_APT"
+					cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+					cQuery += " AND UJV.UJV_FILIAL = '" + oIntegraEmpresas:cFilialDes + "'"
+					cQuery += " AND UJV.UJV_CONTRA = '" + oIntegraEmpresas:cContratoDes + "'"
+					cQuery += " AND UJV.UJV_FILINT = '" + oIntegraEmpresas:cFilialOri + "'"
+					cQuery += " AND UJV.UJV_CTRINT = '" + oIntegraEmpresas:cContratoOri + "'"
+					cQuery += " AND UJV.UJV_TPAPON = '2' " // apontamento de integracao
+
+					cAliasTab := FwExecCachedQuery():OpenQuery( cQuery,/*cAlias*/, /*aSetField*/, /*cDriver*/, "240", "60")
+
+					if (cAliasTab)->(!Eof())
+
+						if (cAliasTab)->CONT_APT > 1
+
+							// faco a exclusao do apontamento integracao
+							if oIntegraEmpresas:ExcluiAptIntegracao()
+								MsgInfo("Estorno do apontamento de serviços cemitério concluído com sucesso!")
+							endIf
+
+						else
+
+							// faco a exclusao da integracao
+							if oIntegraEmpresas:ExcluiIntegracao()
+								MsgInfo("Estorno do contrato de cemitério concluído com sucesso!")
+							endIf
+
+						endIf
+
+					else
+
+						// faco a exclusao do apontamento integracao
+						if oIntegraEmpresas:ExcluiAptIntegracao()
+							MsgInfo("Estorno do apontamento de serviços cemitério concluído com sucesso!")
+						endIf
+
+					endIf
+
+				else
+
+					// faco a exclusao da integracao
+					if oIntegraEmpresas:ExcluiIntegracao()
+						MsgInfo("Estorno do contrato de cemitério concluído com sucesso!")
+					endIf
+
+				endIf
+
+				oDlgInt:End()
+
+			endIf
+
+		endIf
+
+	else
+
+		Alert("Operação cancelada pelo usuário!")
+
+	endIf
+
+Return(Nil)

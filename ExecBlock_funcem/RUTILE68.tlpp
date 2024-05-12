@@ -1,0 +1,605 @@
+#include "totvs.ch"
+#include 'topconn.ch'
+
+
+/*/{Protheus.doc} RUTILE68
+Rotina para geracao de projeto a partir do apontamento de servico
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/20/2023
+@param cCodModulo, character, Codigo do Modulo C=Cemiterio F=Funeraria
+@param nAcao, numeric, Acao do usuario 3=Inclusao 2=Visualizacao 5=Exclusao
+@param cApontamento, character, Codigo do Apontamento
+@return logical, Projeto gerado com sucesso
+/*/
+User Function RUTILE68(cCodModulo,nAcao,cApontamento)
+
+Local aArea     := GetArea()
+Local aAreaUJV  := {}
+Local aAreaUJX  := {}
+Local aRetorno  := {}
+Local lRetorno  := .T.
+
+Private cCadastro	:= "Projetos"
+
+Private aRotina := {	{ "Pesquisar"	    ,"AxPesqui"		,0	,1	,0	,.F.	}	,;	//"Pesquisar"
+						{ "Visualizar"	    ,"AT700Visua"	,0	,2	,0	,.T.	}	,;	//"Visualizar"
+						{ "Incluir"	        ,"AT700Inclu"	,0	,3	,0	,.T.	}	,;	//"Incluir"
+						{ "Alterar"	        ,"AT700Alter"	,0	,4	,0	,.T.	}	,;	//"Alterar"
+						{ "Exclui"	        ,"AT700Exclu"	,0	,5	,0	,.T.	}	,;	//"Exclui"
+						{ "Programacao"	    ,"AT700Progr"	,0	,5	,0	,.T.	}	,;	//"Programacao"
+						{ "Pedido"	        ,"AT700Ped"		,0	,5	,0	,.T.	}	,;	//"Pedido"
+						{ "Conhecimento"	,"MsDocument"	,0	,4	,0	,.T.	}	}	//"Conhecimento"
+
+if cCodModulo == "C"
+
+    aAreaUJV    := UJV->(GetArea())    
+    aAreaUJX    := UJX->(GetArea())
+
+    //inclusao de projeto
+    if nAcao == 3
+
+        UJV->(DbSetOrder(1)) //UJV_FILIAL + UJV_CODIGO 
+
+        if UJV->(MsSeek(xFilial("UJV")+cApontamento))
+            
+            if Empty(UJV->UJV_PROJET)
+                
+                FWMsgRun(,{|oSay| aRetorno := GeraProjeto(cCodModulo,cApontamento)},'Aguarde...','Gerando Projeto x Tarefas do Apontamento!')
+
+                lRetorno := aRetorno[1]
+
+                if lRetorno
+
+                    MsgInfo("Projeto: " + aRetorno[2] + " gerado com sucesso!")
+                    
+                endif
+            else
+                lRetorno := .F.
+                Help(,,'Help',,"Apontamento já possui projeto vinculado!",1,0)
+            endif
+
+        endif
+
+    elseif nAcao == 2
+        
+        ABH->(DbSetOrder(1)) //ABH_FILIAL+ABH_PROJET 
+
+        if ABH->(MsSeek(xFilial("ABH")+UJV->UJV_PROJET))
+
+            AT700Visua("ABH",ABH->(Recno()),2)
+        
+        endif
+    elseif nAcao == 5
+    
+        ABH->(DbSetOrder(1)) //ABH_FILIAL+ABH_PROJET 
+
+        if ABH->(MsSeek(xFilial("ABH")+UJV->UJV_PROJET))
+
+            lRetorno := AT700Exclu("ABH",ABH->(Recno()),5)
+
+            if lRetorno
+               
+                DesvinculaProjetoOS(UJV->UJV_PROJET)
+
+            endif
+
+        
+        endif
+
+    endif
+
+    RestArea(aAreaUJV)
+    RestArea(aAreaUJX)
+
+endif
+
+
+RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} GeraProjeto
+Funcao para consultar os dados do apontamento e processar geracao do projeto
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/20/2023
+@param cCodModulo, character, Codigo do Modulo C=Cemiterio F=Funeraria
+@param cApontamento, character, Codigo do Apontamento
+@return logical, Projeto gerado com sucesso
+/*/
+Static Function GeraProjeto(cCodModulo,cApontamento)
+
+Local cQuery        := ""
+Local cCliente      := ""
+Local cLoja         := ""
+Local cItemABI      := "0"
+Local cItemABJ      := "0"
+Local cOldServico   := ""
+Local cProjetoExist := ""
+Local cCodProjeto   := ""
+Local lGerouABH     := .F.
+Local lRetorno      := .T.
+
+if MsgYesNo("Deseja vincular o apontamento a projeto existente?")
+
+    cProjetoExist := SelProjeto()
+
+endif 
+
+if cCodModulo == "C"
+   
+    cQuery := " SELECT 
+    cQuery += " UZX_SERVIC SERVICO,
+    cQuery += " UZY_ITEM TAREFA,
+    cQuery += " UZY_DESCRI DESCRICAO,
+    cQuery += " UZY_TMPPRE TEMPO,
+    cQuery += " 'UJV' TAB
+    cQuery += " FROM " + RetSQLName("UZX") + " UZX
+    cQuery += " INNER JOIN " + RetSQLName("UZY") + " UZY 
+    cQuery += " ON UZX.D_E_L_E_T_ = ' ' 
+    cQuery += " AND UZY.D_E_L_E_T_ = ' ' 
+    cQuery += " AND UZX.UZX_FILIAL = UZY.UZY_FILIAL
+    cQuery += " AND UZX.UZX_CODIGO = UZY.UZY_CODIGO
+    cQuery += " LEFT JOIN " + RetSQLName("UJV") + " UJV
+    cQuery += " ON UJV.D_E_L_E_T_ = ' ' 
+    cQuery += " AND UZX.UZX_SERVIC = UJV.UJV_SERVIC
+    cQuery += " AND UJV.UJV_FILIAL = '" + xFilial("UJV")+ "'
+    cQuery += " WHERE "
+    cQuery += " UZX_FILIAL = '" + xFilial("UZX") + "'  "
+    cQuery += " AND UJV.UJV_CODIGO = '" + cApontamento + "'
+    
+    cQuery += " UNION 
+    
+    cQuery += " SELECT "
+    cQuery += " UZX_SERVIC SERVICO, "
+    cQuery += " UZY_ITEM TAREFA, "
+    cQuery += " UZY_DESCRI DESCRICAO, "
+    cQuery += " UZY_TMPPRE TEMPO, "
+    cQuery += " 'UJX' TAB "
+    cQuery += " FROM " + RetSQLName("UZX") + " UZX "
+    cQuery += " INNER JOIN " + RetSQLName("UZY") + " UZY  "
+    cQuery += " ON UZX.D_E_L_E_T_ = ' '  "
+    cQuery += " AND UZY.D_E_L_E_T_ = ' '  "
+    cQuery += " AND UZX.UZX_FILIAL = UZY.UZY_FILIAL "
+    cQuery += " AND UZX.UZX_CODIGO = UZY.UZY_CODIGO "
+    cQuery += " LEFT JOIN " + RetSQLName("UJX") + " UJX "
+    cQuery += " ON UJX.D_E_L_E_T_ = ' '  "
+    cQuery += " AND UZX.UZX_SERVIC = UJX.UJX_SERVIC "
+    cQuery += " AND UJX.UJX_FILIAL = '" + xFilial("UJX") + "' "
+    cQuery += " WHERE  "
+    cQuery += " UZX_FILIAL = '" + xFilial("UZX") + "'  "
+    cQuery += " AND UJX.UJX_CODIGO = '" + cApontamento + "'  "
+    cQuery += " ORDER BY TAB "
+
+    cQuery := ChangeQuery(cQuery)
+
+    if Select("QRYUZX") > 0 
+    
+        QRYUZX->(DbCloseArea())
+
+    endif
+
+	MPSysOpenQuery( cQuery, "QRYUZX" )
+
+    if QRYUZX->(!Eof())
+        
+        Begin Transaction 
+
+            While QRYUZX->(!Eof())
+
+                //se o usuario selecionou um projeto existente, apenas acrescente as tabelas ABI e ABJ
+                if Empty(cProjetoExist)
+
+                    if !lGerouABH
+
+                        UJV->(DBSetOrder(1)) //UJV_FILIAL + UJV_CODIGO
+
+                        if UJV->(MsSeek(xFilial("UJV")+cApontamento))
+
+                            if !Empty(UJV->UJV_CODCLI)
+
+                                cCliente    := UJV->UJV_CODCLI
+                                cLoja       := UJV->UJV_LOJCLI
+
+                            else
+                                
+                                cCliente    := UJV->UJV_CLIENT
+                                cLoja       := UJV->UJV_LOJA
+
+                            endif
+
+                            //gera cabecalho do projeto
+                            cCodProjeto := GeraABH(cCodModulo,cApontamento,cCliente,cLoja,;
+                                            UJV->UJV_DTSEPU,QRYUZX->SERVICO,UJV->UJV_NOME,UJV->UJV_OBS)
+                            
+                        endif
+
+                    endif
+                    
+                    lGerouABH := .T.
+
+                    //Gera Etapas do Projeto
+                    if cOldServico <> QRYUZX->SERVICO
+
+                        cOldServico := QRYUZX->SERVICO
+
+                        cItemABI    := StrZero(Val(Soma1(cItemABI)),TamSX3("ABI_ETAPA")[1])
+
+                        GeraABI(cCodProjeto,cItemABI,QRYUZX->SERVICO,UJV->UJV_DTSEPU)
+
+                        cItemABJ    := "0"
+                    endif
+
+                    cItemABJ    := StrZero(Val(Soma1(cItemABJ)),TamSX3("ABJ_ITEM")[1])
+                    
+                    //Gera Tarefas da Etapa do Projeto
+                    GeraABJ(cCodProjeto,cItemABI,cItemABJ,QRYUZX->TAREFA,QRYUZX->DESCRICAO,QRYUZX->TEMPO)
+                
+                else
+
+                    //Gera Etapas do Projeto
+                    if cOldServico <> QRYUZX->SERVICO
+
+                        cOldServico := QRYUZX->SERVICO
+
+                        if cItemABI == "0"
+                            cItemABI := ProxABI(cProjetoExist)
+                        else
+                            cItemABI    := StrZero(Val(Soma1(cItemABI)),TamSX3("ABI_ETAPA")[1])
+                        endif
+
+                        GeraABI(cProjetoExist,cItemABI,QRYUZX->SERVICO,UJV->UJV_DTSEPU)
+
+                        cItemABJ    := "0"
+                    
+                    endif
+
+                    cItemABJ    := StrZero(Val(Soma1(cItemABJ)),TamSX3("ABJ_ITEM")[1])
+                    
+                    //Gera Tarefas da Etapa do Projeto
+                    GeraABJ(cProjetoExist,cItemABI,cItemABJ,QRYUZX->TAREFA,QRYUZX->DESCRICAO,QRYUZX->TEMPO)
+
+                endif
+
+                QRYUZX->(DbSkip())            
+
+            EndDo
+            
+            if !Empty(cProjetoExist)
+                cCodProjeto := cProjetoExist
+            endif
+            
+            Reclock("UJV",.F.)
+            UJV->UJV_PROJET := cCodProjeto
+            UJV->(MsUnlock())
+            
+        End Transaction 
+    else
+        
+        lRetorno := .F.
+        Help(,,'Help',,"Nao Foi encontrato Servicos x Tarefas para os produtos do Apontamento de Serviço!",1,0)
+
+    endif
+
+endif
+
+Return({lRetorno,cCodProjeto})
+
+/*/{Protheus.doc} ProxABI
+Consulta Maior Item da tabela ABI do projeto a ser vinculado os servicos
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 8/23/2023
+@param cCodProjeto, character, Codigo do Projeto
+@return Character, Proximo Item da ABI
+/*/
+Static Function ProxABI(cCodProjeto)
+
+Local aArea     := GetArea()
+Local cQuery    := ""
+Local cRetorno  := "00"
+
+
+cQuery := " SELECT MAX(ABI_ITEM) ITEM "
+cQuery += " FROM " + RetSQLName("ABI") + " "
+cQuery += " WHERE D_E_L_E_T_ = ' ' "
+cQuery += " AND ABI_FILIAL = '" + xFilial("ABI") + "' "
+cQuery += " AND ABI_PROJET = '" + cCodProjeto + "' "
+
+if Select("QRYABI") > 0 
+    
+    QRYABI->(DbCloseArea())
+
+endif
+
+MPSysOpenQuery( cQuery, "QRYABI" )
+
+if QRYABI->(!Eof())
+
+    cRetorno := Soma1(QRYABI->ITEM)
+
+endif
+
+RestArea(aArea)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} GeraABH
+Funcao para gerar Cabecalho do Projeto
+@type function
+@version 1.0
+@author raphaelgarcia
+@since 8/20/2023
+@param cCodModulo, character, Codigo do Modulo C=Cemiterio F=Funeraria
+@param cApontamento, character, Codigo do Apontamento
+@param cCliente, character, Codigo do Cliente do Projeto
+@param cLoja, character, Loja do Cliente do Projeto
+@param dDataServico, date, Data do Servico
+@param cServico, character, Codigo do Servico
+@param cNomeFalecido, character, Nome do Falecido se houver
+@param cObsApto, character, Observacao do Apontamento
+@return Character, Codigo do Projeto gerado
+/*/
+Static Function GeraABH(cCodModulo,cApontamento,cCliente,cLoja,dDataServico,cServico,cNomeFalecido,cObsApto)
+
+Local aArea         := GetArea()
+Local aEnchoice     := {}
+Local cProjeto      := ""
+Local cNomeCliente  := ""
+Local cDescProjeto  := ""
+Local cCodFab       := ""
+Local cLojaFa       := ""
+Local cNumSer       := ""
+
+
+if !Empty(cNomeFalecido)
+   cDescProjeto := "PROJETO APTO: " + cApontamento + " FALECIDO: " + Alltrim(cNomeFalecido) + " " 
+
+else   
+    
+    cNomeCliente := Alltrim(RetField("SA1",1,xFilial("SA1")+cCliente+cLoja,"A1_NOME"))
+
+    DescProjeto := "PROJETO APTO: " + cApontamento + " CLIENTE: " + Alltrim(cNomeCliente) + " " 
+
+endif
+
+// pego o próximo código do Projeto
+cProjeto := GetSx8Num("ABH","ABH_PROJET")
+
+ABH->(DbSetOrder(1)) // ABH_FILIAL+ABH_PROJET
+While ABH->(DbSeek(xFilial("ABH") + cProjeto))
+    ABH->(ConfirmSX8())
+    cProjeto := GetSx8Num("ABH","ABH_PROJET")
+EndDo
+
+// se ja estiver em uso eu pego um novo numero para o projeto
+While !MayIUseCode("ABH"+xFilial("ABH")+cProjeto) // Reserva nome no semaforo
+    ABH->(ConfirmSX8())
+    cProjeto := GetSx8Num("ABH","ABH_PROJET")
+EndDo
+
+
+Reclock("ABH",.T.)
+
+ABH->ABH_FILIAL  := xFilial("ABH")
+ABH->ABH_PROJET  := cProjeto
+ABH->ABH_CODCLI  := cCliente
+ABH->ABH_LOJA    := cLoja
+ABH->ABH_DESCRI  := cDescProjeto
+ABH->ABH_REFER   := dDatabase
+ABH->ABH_ENTREG  := dDataServico
+ABH->ABH_CODPRO  := cServico
+ABH->ABH_SITUAC  := "1"
+ABH->ABH_MOEDA   := 1
+
+ABH->(MsUnlock())
+
+If !Empty(cObsApto)
+    MSMM(NIL,TamSx3("ABH_MEMO1")[1],NIL, cObsApto,1,NIL,NIL, "ABH","ABH_CODMEM")
+EndIf
+
+cCodFab   := CriaVar( "AA3_CODFAB", .F. )
+cLojaFa   := CriaVar( "AA3_LOJAFA", .F. )
+
+cNumSer   := "PROJETO " + ABH->ABH_PROJET   
+        
+aEnchoice := {}                                                                                
+aAdd( aEnchoice, { "AA3_DTVEND", dDataBase       } )   
+aAdd( aEnchoice, { "AA3_DTINST", ABH->ABH_ENTREG } )   	    
+
+AtTrfEqpto(cCodFab,cLojaFa,ABH->ABH_CODPRO,cNumSer,ABH->ABH_CODCLI,ABH->ABH_LOJA,,,aEnchoice)
+
+RestArea(aArea)
+
+Return(cProjeto)
+
+/*/{Protheus.doc} GeraABI
+Funcao para Gerar Etapas do Projeto
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 8/20/2023
+@param cCodProjeto, character, Codigo do Projeto
+@param cItemABI, character, Item da Etapa do Projeto
+@param cServico, character, Codigo do Servico
+@param dDataServico, date, Data do Servico
+/*/
+Static Function GeraABI(cCodProjeto,cItemABI,cServico,dDataServico)
+
+Local aArea         := GetArea()
+Local cDescProduto  := ""
+Local cOcorrencia   := SuperGetMv("MV_XOCOPAD",,"000001")
+
+cDescProduto := Alltrim(RetField("SB1",1,xFilial("SB1")+cServico,"B1_DESC"))
+
+RecLock( "ABI", .T. ) 		
+ABI->ABI_FILIAL     := xFilial( "ABI") 
+ABI->ABI_PROJET     := cCodProjeto
+ABI->ABI_ITEM       := cItemABI
+ABI->ABI_ETAPA      := cItemABI
+ABI->ABI_DESCRI     := cDescProduto
+ABI->ABI_CODPRO     := cServico
+ABI->ABI_CODPRB     := cOcorrencia
+ABI->ABI_SITATU     := "1"
+ABI->ABI_INIPRV     := dDatabase
+ABI->ABI_FIMPRV     := dDataServico
+ABI->(MsUnlock())
+
+RestArea(aArea)
+
+Return()
+
+/*/{Protheus.doc} GeraABJ
+Funcao para gerar Tarefas da etapa do projeto
+@type function
+@version 1.0
+@author raphaelgarcia
+@since 8/20/2023
+@param cCodProjeto, character, Codigo do Projeto
+@param cItemABI, character, Item da Etapa do Projeto
+@param cItemABJ, character, Item da Tarefa do Projeto
+@param cTarefa, character, Tarefa do Projeto
+@param cDescTarefa, character, Descricao da Tarefa
+@param cTempoPrev, character, Tempo Medio
+/*/
+Static Function GeraABJ(cCodProjeto,cItemABI,cItemABJ,cTarefa,cDescTarefa,cTempoPrev)
+Local aArea         := GetArea()
+
+RecLock( "ABJ", .T. ) 		
+ABJ->ABJ_FILIAL := xFilial( "ABJ") 
+ABJ->ABJ_PROJET := cCodProjeto
+ABJ->ABJ_ITEM   := cItemABI
+ABJ->ABJ_SUBITE := cItemABJ
+ABJ->ABJ_TAREFA := cTarefa
+ABJ->ABJ_DESCRI := cDescTarefa
+ABJ->ABJ_TPREVI := cTempoPrev
+ABJ->ABJ_TORCAD := cTempoPrev
+ABJ->ABJ_SITUAC := "2" //Nao Concluida
+ABJ->ABJ_SITATU := "1" //Normal
+
+ABJ->(MsUnlock())
+
+RestArea(aArea)
+
+Return()
+
+/*/{Protheus.doc} SelProjeto
+Tela de Selecao de Projeto
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 8/23/2023
+@return Character, Codigo do Projeto selecionado
+/*/
+Static Function SelProjeto()                        
+
+Local cDescricao    := Space(TamSx3("ABH_DESCRI")[1])
+Local cCodigo       := Space(TamSx3("ABH_PROJET")[1])
+Local oConfirmar    := NIL
+Local oFechar       := NIL
+Local oCodigo       := NIL
+Local oDescricao    := NIL
+Local oGroup1       := NIL
+Local oDlg          := NIL
+
+
+  DEFINE MSDIALOG oDlg TITLE "Projeto" FROM 000, 000  TO 110, 500 COLORS 0, 16777215 PIXEL Style DS_MODALFRAME
+
+    oDlg:lEscClose     := .F.  //Nao permite sair ao se pressionar a tecla ESC.
+
+    @ 004, 004 GROUP oGroup1 TO 040, 246 PROMPT "Selecione Projeto" OF oDlg COLOR 0, 16777215 PIXEL
+    
+    @ 018, 011 MSGET oCodigo VAR cCodigo SIZE 060, 008 F3 "ABH" Valid(ValidaProjeto(cCodigo,@cDescricao,oDescricao,oDlg)) OF oDlg COLORS 0, 16777215 PIXEL
+    @ 018, 088 MSGET oDescricao VAR cDescricao SIZE 149, 008 When .F. OF oDlg COLORS 0, 16777215 PIXEL
+    
+    @ 042, 163 BUTTON oConfirmar PROMPT "Confirmar" SIZE 037, 012 Action(oDlg:End()) OF oDlg PIXEL
+    @ 042, 209 BUTTON oFechar PROMPT "Fechar" SIZE 037, 012 Action(cCodigo := "",oDlg:End()) OF oDlg PIXEL
+
+  ACTIVATE MSDIALOG oDlg CENTERED
+
+Return(cCodigo)
+
+/*/{Protheus.doc} ValidaProjeto
+Funcao para validar o projeto digitado na tela de selecao de projeto
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 8/23/2023
+@param cCodigo, character, Codigo do Projeto Digitado
+@param cDescricao, character, Get de Descricao do Projeto
+@param oDescricao, object, Objeto de Descricao do Projeto
+@param oDlg, object, Dialog 
+@return logical, Projeto valido
+/*/
+Static Function ValidaProjeto(cCodigo,cDescricao,oDescricao,oDlg)
+
+Local aArea := GetArea()
+Local lRet  := .T.
+
+ABH->(DbSetOrder(1)) //ABH_FILIAL+ABH_PROJET 
+
+if ABH->(MsSeek(xFilial("ABH")+cCodigo))
+
+    cDescricao := ABH->ABH_DESCRI
+    oDescricao:Refresh()
+    
+elseif !Empty(cCodigo)
+    lRet := .F.
+    MsgAlert("Projeto não encontrado, selecione um projeto válido!")
+endif
+
+
+RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} DesvinculaProjetoOS
+Funcao para desvincular os apontamento ao projeto que esta
+sendo excluido
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 8/23/2023
+@param cCodProjeto, character, Codigo do Projeto
+/*/
+Static Function DesvinculaProjetoOS(cCodProjeto)
+
+Local aArea     := GetArea()
+Local cQuery    := ""
+
+
+cQuery := " SELECT R_E_C_N_O_ REG_APTO "
+cQuery += " FROM " + RetSQLName("UJV") + " "
+cQuery += " WHERE D_E_L_E_T_ = ' ' "
+cQuery += " AND UJV_FILIAL = '" + xFilial("ABI") + "' "
+cQuery += " AND UJV_PROJET = '" + cCodProjeto + "' "
+
+if Select("QRYUJV") > 0 
+    
+    QRYUJV->(DbCloseArea())
+
+endif
+
+MPSysOpenQuery( cQuery, "QRYUJV" )
+
+While QRYUJV->(!Eof())
+
+    UJV->(DbGoto(QRYUJV->REG_APTO))
+
+    RecLock("UJV",.F.)
+    UJV->UJV_PROJET := ""
+    UJV->(MsUnLock())
+
+    QRYUJV->(DbSkip())
+
+EndDo
+
+
+RestArea(aArea)
+
+Return()
+

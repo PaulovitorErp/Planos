@@ -1,0 +1,251 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} VirtusPlano
+Classe VirtusPlano
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/07/2020
+/*/
+User Function RUTILE44()
+Return(Nil)
+
+	Class ModAptServCemiterio
+
+		Public Data filial                  As Character
+		Public Data codigo                  As Character
+		Public Data contrato                As Character
+		Public Data cliente                 As Character
+		Public Data loja_cliente            As Character
+		Public Data servico                 As Character
+		Public Data autorizado              As Character
+		Public Data grau_parentesco         As Character
+		Public Data atendente               As Character
+		Public Data data_apt                As Date
+		Public Data hora_apt                As Character
+		Public Data data_obito              As Date
+		Public Data causa_morte             As Character
+		Public Data tabela_preco            As Character
+		Public Data observacao              As Character
+		Public Data data_certidao           As Date
+		Public Data local_falecimento       As Character
+		Public Data falecido                As Character
+		Public Data data_nascimento         As Date
+		Public Data sexo                    As Character
+		Public Data estado_civil            As Character
+		Public Data nacionalidade           As Character
+		Public Data desc_nacionalidade      As Character
+		Public Data estado                  As Character
+		Public Data codigo_municipio        As Character
+		Public Data municipio               As Character
+		Public Data nome_mae                As Character
+		Public Data cliente_pv              As Character
+		Public Data loja_pv                 As Character
+		Public Data funeraria               As Character
+		Public Data cond_pagamento          As Character
+		Public Data mensagem_nf             As Character
+		Public Data pedido_vendas           As Character
+		Public Data quadra                  As Character
+		Public Data modulo                  As Character
+		Public Data jazigo                  As Character
+		Public Data gaveta                  As Character
+		Public Data crematorio              As Character
+		Public Data nicho_crematorio        As Character
+		Public Data ossario                 As Character
+		Public Data nicho_ossario           As Character
+		Public Data lacre_ossario           As Character
+		Public Data realiza_cremacao        As Character
+		Public Data tipo_cremacao           As Character
+		Public Data data_sepultamento       As Date
+		Public Data hora_sepultamento       As Character
+		Public Data origem                  As Character
+		Public Data endereco_falecido       As Character
+		Public Data complemento_falecido    As Character
+		Public Data bairro_falecido         As Character
+		Public Data cep_falecido            As Character
+		Public Data tipo_pet                As Character
+		Public Data raca_pet                As Character
+		Public Data corpelagem_pet          As Character
+		Public Data porte_pet               As Character
+		Public Data cpf_falecido            As Character
+		Public Data rg_falecido             As Character
+		Public Data religiao_falecido       As Character
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModAptServCemiterio
+
+	Self:filial                  := U_InitCmpDados("UJV","UJV_FILIAL")
+	Self:codigo                  := U_InitCmpDados("UJV","UJV_CODIGO")
+	Self:contrato                := U_InitCmpDados("UJV","UJV_CONTRA")
+	Self:cliente                 := U_InitCmpDados("UJV","UJV_CODCLI")
+	Self:loja_cliente            := U_InitCmpDados("UJV","UJV_LOJCLI")
+	Self:servico                 := U_InitCmpDados("UJV","UJV_SERVIC")
+	Self:autorizado              := U_InitCmpDados("UJV","UJV_AUTORI")
+	Self:grau_parentesco         := U_InitCmpDados("UJV","UJV_XGRAUF")
+	Self:atendente               := U_InitCmpDados("UJV","UJV_USRATE")
+	Self:data_apt                := U_InitCmpDados("UJV","UJV_DATA")
+	Self:hora_apt                := U_InitCmpDados("UJV","UJV_HORA")
+	Self:data_obito              := U_InitCmpDados("UJV","UJV_DTOBT")
+	Self:causa_morte             := U_InitCmpDados("UJV","UJV_CAUSA")
+	Self:tabela_preco            := U_InitCmpDados("UJV","UJV_TABPRC")
+	Self:observacao              := U_InitCmpDados("UJV","UJV_OBS")
+	Self:data_certidao           := U_InitCmpDados("UJV","UJV_DTCERT")
+	Self:local_falecimento       := U_InitCmpDados("UJV","UJV_LOCFAL")
+	Self:falecido                := U_InitCmpDados("UJV","UJV_NOME")
+	Self:data_nascimento         := U_InitCmpDados("UJV","UJV_DTNASC")
+	Self:sexo                    := U_InitCmpDados("UJV","UJV_SEXO")
+	Self:estado_civil            := U_InitCmpDados("UJV","UJV_ESTCIV")
+	Self:nacionalidade           := U_InitCmpDados("UJV","UJV_NACION")
+	Self:desc_nacionalidade      := U_InitCmpDados("UJV","UJV_DESNAT")
+	Self:estado                  := U_InitCmpDados("UJV","UJV_UF")
+	Self:codigo_municipio        := U_InitCmpDados("UJV","UJV_CODMUN")
+	Self:municipio               := U_InitCmpDados("UJV","UJV_MUN")
+	Self:nome_mae                := U_InitCmpDados("UJV","UJV_NOMAE")
+	Self:cliente_pv              := U_InitCmpDados("UJV","UJV_CLIENT")
+	Self:loja_pv                 := U_InitCmpDados("UJV","UJV_LOJA")
+	Self:funeraria               := U_InitCmpDados("UJV","UJV_FUNERA")
+	Self:cond_pagamento          := U_InitCmpDados("UJV","UJV_CODPG")
+	Self:mensagem_nf             := U_InitCmpDados("UJV","UJV_OBS")
+	Self:pedido_vendas           := U_InitCmpDados("UJV","UJV_PEDIDO")
+	Self:quadra                  := U_InitCmpDados("UJV","UJV_QUADRA")
+	Self:modulo                  := U_InitCmpDados("UJV","UJV_MODULO")
+	Self:jazigo                  := U_InitCmpDados("UJV","UJV_JAZIGO")
+	Self:gaveta                  := U_InitCmpDados("UJV","UJV_GAVETA")
+	Self:crematorio              := U_InitCmpDados("UJV","UJV_CREMAT")
+	Self:nicho_crematorio        := U_InitCmpDados("UJV","UJV_NICHOC")
+	Self:ossario                 := U_InitCmpDados("UJV","UJV_OSSARI")
+	Self:nicho_ossario           := U_InitCmpDados("UJV","UJV_NICHOO")
+	Self:lacre_ossario           := U_InitCmpDados("UJV","UJV_LACOSS")
+	Self:realiza_cremacao        := U_InitCmpDados("UJV","UJV_REALIZ")
+	Self:tipo_cremacao           := U_InitCmpDados("UJV","UJV_TPCREM")
+	Self:data_sepultamento       := U_InitCmpDados("UJV","UJV_DTSEPU")
+	Self:hora_sepultamento       := U_InitCmpDados("UJV","UJV_HORASE")
+	Self:origem                  := U_InitCmpDados("UJV","UJV_ORIGEM")
+	Self:endereco_falecido       := U_InitCmpDados("UJV","UJV_ENDFAL")
+	Self:complemento_falecido    := U_InitCmpDados("UJV","UJV_CMPFAL")
+	Self:bairro_falecido         := U_InitCmpDados("UJV","UJV_BAIFAL")
+	Self:cep_falecido            := U_InitCmpDados("UJV","UJV_CEPFAÇ")
+	Self:tipo_pet                := U_InitCmpDados("UJV","UJV_TIPPET")
+	Self:raca_pet                := U_InitCmpDados("UJV","UJV_RACA")
+	Self:corpelagem_pet          := U_InitCmpDados("UJV","UJV_CORPEL")
+	Self:porte_pet               := U_InitCmpDados("UJV","UJV_PORTE")
+	Self:cpf_falecido            := U_InitCmpDados("UJV","UJV_CPFFAL")
+	Self:rg_falecido             := U_InitCmpDados("UJV","UJV_RGFAL")
+	Self:religiao_falecido       := U_InitCmpDados("UJV","UJV_RELIGI")
+	
+Return(Self)
+
+Method toJsonObject() Class ModAptServCemiterio
+
+	Local oJson := JsonObject():New()
+
+	oJson["filial"]                 := Self:filial
+	oJson["codigo"]                 := Self:codigo
+	oJson["contrato"]               := Self:contrato
+	oJson["cliente"]                := Self:cliente
+	oJson["loja_cliente"]           := Self:loja_cliente
+	oJson["servico"]                := Self:servico
+	oJson["autorizado"]             := Self:autorizado
+	oJson["grau_parentesco"]        := Self:grau_parentesco
+	oJson["atendente"]              := Self:atendente
+	oJson["data_apt"]               := Self:data_apt
+	oJson["hora_apt"]               := Self:hora_apt
+	oJson["data_obito"]             := Self:data_obito
+	oJson["causa_morte"]            := Self:causa_morte
+	oJson["tabela_preco"]           := Self:tabela_preco
+	oJson["observacao"]             := Self:observacao
+	oJson["data_certidao"]          := Self:data_certidao
+	oJson["local_falecimento"]      := Self:local_falecimento
+	oJson["falecido"]               := Self:falecido
+	oJson["data_nascimento"]        := Self:data_nascimento
+	oJson["sexo"]                   := Self:sexo
+	oJson["estado_civil"]           := Self:estado_civil
+	oJson["nacionalidade"]          := Self:nacionalidade
+	oJson["desc_nacionalidade"]     := Self:desc_nacionalidade
+	oJson["estado"]                 := Self:estado
+	oJson["codigo_municipio"]       := Self:codigo_municipio
+	oJson["municipio"]              := Self:municipio
+	oJson["nome_mae"]               := Self:nome_mae
+	oJson["cliente_pv"]             := Self:cliente_pv
+	oJson["loja_pv"]                := Self:loja_pv
+	oJson["funeraria"]              := Self:funeraria
+	oJson["cond_pagamento"]         := Self:cond_pagamento
+	oJson["mensagem_nf"]            := Self:mensagem_nf
+	oJson["pedido_vendas"]          := Self:pedido_vendas
+	oJson["quadra"]                 := Self:quadra
+	oJson["modulo"]                 := Self:modulo
+	oJson["jazigo"]                 := Self:jazigo
+	oJson["gaveta"]                 := Self:gaveta
+	oJson["crematorio"]             := Self:crematorio
+	oJson["nicho_crematorio"]       := Self:nicho_crematorio
+	oJson["ossario"]                := Self:ossario
+	oJson["nicho_ossario"]          := Self:nicho_ossario
+	oJson["lacre_ossario"]          := Self:lacre_ossario
+	oJson["realiza_cremacao"]       := Self:realiza_cremacao
+	oJson["tipo_cremacao"]          := Self:tipo_cremacao
+	oJson["data_sepultamento"]      := Self:data_sepultamento
+	oJson["hora_sepultamento"]      := Self:hora_sepultamento
+	oJson["origem"]                 := Self:origem
+	oJson["endereco_falecido"]      := Self:endereco_falecido
+	oJson["complemento_falecido"]   := Self:complemento_falecido
+	oJson["bairro_falecido"]        := Self:bairro_falecido
+	oJson["cep_falecido"]           := Self:cep_falecido
+	oJson["tipo_pet"]               := Self:tipo_pet
+	oJson["raca_pet"]               := Self:raca_pet
+	oJson["corpelagem_pet"]         := Self:corpelagem_pet
+	oJson["porte_pet"]              := Self:porte_pet
+	oJson["cpf_falecido"]           := Self:cpf_falecido
+	oJson["rg_falecido"]            := Self:rg_falecido
+	oJson["religiao_falecido"]      := Self:religiao_falecido
+
+Return(oJson)
+
+User Function InitCmpDados(cTabDados, cCmpDados, xDados)
+
+	Local cRetorno  As Character
+
+	Default cTabDados   := ""
+	Default cCmpDados   := ""
+	Default xDados      := Nil
+
+    // atribui valor as variaveis
+	cRetorno    := ""
+
+    // faco um tratamento com os dados
+    if ValType( xDados ) == "D"
+        xDados  := Dtos(xDados)
+    elseif ValType( xDados ) == "N"
+        xDados  := cValToChar(xDados)
+    elseif ValType( xDados ) == "L"
+        xDados  := cValToChar(xDados)
+    elseif xDados == Nil
+        xDados := ""
+    else
+        xDados  := xDados
+    endIf
+
+    // verifico se alias existe
+	if Select(cTabDados) > 0
+
+        // verifico se campo existe
+		if (cTabDados)->(FieldPos(cCmpDados)) > 0
+
+            if GetSx3Cache( cCmpDados, "X3_TIPO") == "D"
+                cRetorno := SToD(xDados)
+            elseIf GetSx3Cache( cCmpDados, "X3_TIPO") == "N"
+                cRetorno := Val(xDados)
+            else
+                cRetorno := PADR(xDados, TamSX3(cCmpDados)[1] )
+            endIf
+
+		else
+			cRetorno := ""
+		endIf
+
+	endIf
+
+Return(cRetorno)

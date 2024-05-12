@@ -1,0 +1,261 @@
+#include 'totvs.ch'
+
+/*/{Protheus.doc} CSSButtonVirtus
+Classe de css para botoes da Plataforma Virtus
+@type class
+@version 
+@author g.sampaio
+@since 24/11/2020
+/*/
+Class CSSButtonVirtus
+
+	Public Method New() Constructor
+    Public Method CSSButtonGray()
+    Public Method CSSButtonBlue()
+    Public Method CSSButtonGreen()
+	Public Method CSSButtonRed()
+	Public Method CSSButtonOrange()
+	Public Method CSSGroup()
+
+EndClass
+/*/{Protheus.doc} CSSBotao::New
+metodo construtor da classe CSSButtonVirtus
+@type method
+@version 
+@author g.sampaio
+@since 24/11/2020
+@return return_type, return_description
+/*/
+Method New() Class CSSButtonVirtus
+Return(Nil)
+
+/*/{Protheus.doc} CSSButtonVirtus::CSSButtonGray
+metodo para o botao com CSS Cinza
+@type method
+@version 
+@author g.sampaio
+@since 24/11/2020
+@param nTamanhoTela, numeric, param_description
+@return return_type, return_description
+/*/
+Method CSSButtonGray( nTamanhoTela ) Class CSSButtonVirtus
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #d2d2d2; "
+	cRetorno    += " border: 1px solid #696969;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cRetorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #000000;}"
+	cRetorno    += " QPushButton:hover { background-color: #696969;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #d2d2d2;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSButtonVirtus::CSSButtonBlue
+metodo para o botao com CSS Azul
+@type method
+@version 
+@author g.sampaio
+@since 24/11/2020
+@param nTamanhoTela, numeric, param_description
+@return return_type, return_description
+/*/
+Method CSSButtonBlue( nTamanhoTela ) Class CSSButtonVirtus
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #35ACCA; "
+	cRetorno    += " border: 1px solid #1f6779;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 10px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #35ACCA;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CSSButtonVirtus::CSSButtonGreen
+metodo para o botao com CSS Verde
+@type method
+@version 
+@author g.sampaio
+@since 24/11/2020
+@param nTamanhoTela, numeric, param_description
+@return return_type, return_description
+/*/
+Method CSSButtonGreen( nTamanhoTela ) Class CSSButtonVirtus
+
+	Local cRetorno          as Character
+
+	Default nTamanhoTela    := 0
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #1FD203; "
+	cRetorno    += " border: 1px solid #107800;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #107800;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " font-family: Arial;"
+
+	if nTamanhoTela < 1900
+		cRetorno    += " font-size: 8px;"
+	else
+		cRetorno    += " font-size: 14px;"
+	endIf
+
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " border-color: #1FD203;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+Method CSSButtonRed( nTamanhoTela ) Class CSSButtonVirtus
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+    // implementacao do CSS
+    cRetorno    := " QPushButton { background: #e38d8d; "
+    cRetorno    += " border: 1px solid #b52121;"
+    cRetorno    += " outline:0;"
+    cRetorno    += " border-radius: 5px;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cRetorno    += " font-weight: bold;"
+    cRetorno    += " padding: 6px;"
+    cRetorno    += " color: #000000;}"
+    cRetorno    += " QPushButton:hover { background-color: #b52121;"
+    cRetorno    += " border-style: inset;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cREtorno    += " font-weight: bold;"
+    cRetorno    += " border-color: #e38d8d;"
+    cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+Method CSSButtonOrange( nTamanhoTela ) Class CSSButtonVirtus
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+    // implementacao do CSS
+    cRetorno    := " QPushButton { background: #FFA500; "
+    cRetorno    += " border: 1px solid #FF8C00;"
+    cRetorno    += " outline:0;"
+    cRetorno    += " border-radius: 5px;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cRetorno    += " font-weight: bold;"
+    cRetorno    += " padding: 6px;"
+    cRetorno    += " color: #000000;}"
+    cRetorno    += " QPushButton:hover { background-color: #FF8C00;"
+    cRetorno    += " border-style: inset;"
+    cRetorno    += " font-family: Arial;"
+
+    if nTamanhoTela < 1900
+        cRetorno    += " font-size: 10px;"
+    else
+        cRetorno    += " font-size: 14px;"
+    endIf
+
+    cREtorno    += " font-weight: bold;"
+    cRetorno    += " border-color: #FFA500;"
+    cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+Method CSSGroup( nTamanhoTela ) Class CSSButtonVirtus
+
+    Local cRetorno          as Character
+
+    Default nTamanhoTela    := 0
+
+	cRetorno := " QGroupBox { "
+	cRetorno += " border: 1px solid #0076CE; "
+	cRetorno += " padding-top: 0px; "
+	cRetorno += " color: #000000;"
+	cRetorno += " }
+
+Return(cRetorno)

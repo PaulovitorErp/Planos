@@ -1,0 +1,966 @@
+#include "totvs.ch"
+#include "topconn.ch"
+#include "FWBrowse.ch"
+
+#DEFINE P_DESCRICAO		1
+#DEFINE P_ARQUIVO		2
+#DEFINE P_DIRETO		3
+#DEFINE P_COMPLET		4
+#DEFINE P_RECNO 		5
+
+User Function RUTILE79()
+Return(Nil)
+
+	Class AnexaDocumentos
+
+		Public Data aDocumentos 	As Array
+		Public Data cObservacoes	As Character
+		Public Data cArquivo		As Character
+		Public Data cModulo			As Character
+		Public Data cRotina			As Character
+		Public Data cCodEntidade	As Character
+		Public Data cContrato 		As Character
+		Public Data cIDDocumento	As Character
+		Public Data cPostParams		As Character
+		Public Data cJsonRetorno	As Character
+		Public Data cCodigoAPI		As Character
+		Public Data cURLDoc			As Character
+		Public Data cArqServidor	As Character
+		Public Data lProcess		As Logical
+		Public Data lErro			As Logical
+		Public Data nArquivo		As Numeric
+
+		Public Method New() Constructor
+		Public Method Wizard()
+		Public Method GravaDocumento()
+		Public Method EnviaArquivo()
+		Public Method EnviaDocumentoServidor()
+		Public Method ProcessaDocumentos()
+		Public Method BuscaDocumentosPendentes()
+
+	EndClass
+
+/*/{Protheus.doc} AnexaDocumentos::New
+Metodo construtor da classe
+@type method
+@version 1.0
+@author g.sampaio
+@since 10/03/2024
+@param cCodEntidade, character, codigo da entidade
+@param cModulo, character, modulo de origem
+@param cRotina, character, rotina de origem
+/*/
+Method New(cCodEntidade As Character, cModulo As Character, cRotina As Character, cContrato As Character) Class AnexaDocumentos
+
+	Default cCodEntidade	:= ""
+	Default cModulo			:= ""
+	Default cRotina			:= ""
+	Default cContrato		:= ""
+
+	// inicia as variaveis
+	Self:aDocumentos 	:= {}
+	Self:cObservacoes	:= ""
+	Self:cArquivo		:= ""
+	Self:cIDDocumento	:= ""
+	Self:cPostParams	:= ""
+	Self:cJsonRetorno	:= ""
+	Self:cCodigoAPI		:= ""
+	Self:cURLDoc		:= ""
+	Self:cArqServidor	:= ""
+	Self:cContrato		:= cContrato
+	Self:cModulo		:= cModulo
+	Self:cRotina		:= cRotina
+	Self:cCodEntidade	:= cCodEntidade
+	Self:lProcess		:= .F.
+	Self:lErro			:= .F.
+	Self:nArquivo		:= 0
+
+Return(Nil)
+
+/*/{Protheus.doc} AnexaDocumentos::Wizard
+Wizard de Documentos
+@type method
+@version 1.0
+@author g.sampaio
+@since 2/18/2024
+@return logical, retorno logico da funcao
+/*/
+Method Wizard() Class AnexaDocumentos
+
+	Local lRetorno 			As Logical
+	Local oPnlInfo			As Object
+	Local oPnlAnexar		As Object
+	Local oPnlDocumentos	As Object
+	Local oBrowseDoc		As Object
+	Local oBrowseObs		As Object
+	Local oBrwJ				As Object
+	Local oNewPag			As Object
+	Local oStepWiz  		As Object
+	Local oDlgWizard     	As Object
+	Local oPanelBkg			As Object
+
+	DEFINE DIALOG oDlgWizard TITLE 'Anexo de Documentos' PIXEL
+
+	oDlgWizard:nWidth := 800
+	oDlgWizard:nHeight:= 600
+
+	//crio panel do wizard
+	oPanelBkg := TPanel():New(0,0,"",oDlgWizard,,,,,,300,300)
+	oPanelBkg:Align := CONTROL_ALIGN_ALLCLIENT
+	oStepWiz  := FWWizardControl():New(oPanelBkg)
+
+	oStepWiz:ActiveUISteps()
+
+	/////////////////////////////////////////////////////////////
+	////////////////       INSTRUCOES INICIAIS       ////////////
+	/////////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("1")
+	oNewPag:SetStepDescription("Instrucoes Iniciais")
+	oNewPag:SetConstruction({|oPnlInfo| Pag1Intrucoes(oPnlInfo) })
+	oNewPag:SetNextAction({||.T.})
+	oNewPag:SetCancelAction({||.T.,oDlgWizard:End()})
+
+	/////////////////////////////////////////////////////////////
+	////////////////        ANEXAR DOCUMENTOS        ////////////
+	/////////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("2")
+	oNewPag:SetConstruction({|oPnlAnexar| ArquivosAnexo(oPnlAnexar, @Self:cArquivo) })
+	oNewPag:SetStepDescription("Anexa Arquivos")
+	oNewPag:SetNextAction({||VldOpenFile(Self:cArquivo, @Self:aDocumentos)})
+	oNewPag:SetCancelAction({||lRetorno := .F.,oDlgWizard:End()})
+
+	/////////////////////////////////////////////////////////////
+	////////////////            DOCUMENTOS          /////////////
+	/////////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("3")
+	oNewPag:SetStepDescription("Documentos")
+	oNewPag:SetConstruction({|oPnlDocumentos| FwDocumentos(oPnlDocumentos, @oBrowseDoc, "QU95", @Self:aDocumentos, Self:cCodEntidade)})
+	oNewPag:SetNextAction({|| lRetorno := .T. })
+	oNewPag:SetCancelAction({|| lRetorno := .F., oDlgWizard:End() })
+
+	/////////////////////////////////////////////////////////////
+	////////////////            OBSRVACOES           ////////////
+	/////////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("4")
+	oNewPag:SetConstruction({|oPnlObservacoes| FwObservacoes(oPnlObservacoes, @Self:cObservacoes) })
+	oNewPag:SetStepDescription("Observacoes")
+	oNewPag:SetNextAction({|| lRetorno := .T.})
+	oNewPag:SetCancelAction({|| lRetorno := .F., oDlgWizard:End() })
+
+	/////////////////////////////////////////////////////////////
+	////////////////            FINAL           	/////////////
+	/////////////////////////////////////////////////////////////
+
+	oNewPag := oStepWiz:AddStep("5")
+	oNewPag:SetConstruction({|oPnlFinal| FwFinal(oPnlFinal, Self) })
+	oNewPag:SetStepDescription("Final")
+	oNewPag:SetNextAction({|| lRetorno := .T., oDlgWizard:End()})
+	oNewPag:SetCancelWhen({||.F.})
+	oNewPag:SetCancelAction({||lRetorno := .F.,oDlgWizard:End()})
+
+	oStepWiz:Activate()
+
+	ACTIVATE DIALOG oDlgWizard CENTER
+
+	oStepWiz:Destroy()
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AnexaDocumentos::GravaDocumento
+Metodo para gravar o historico de documentos
+@type method
+@version 1.0
+@author g.sampaio
+@since 2/18/2024
+@param oSay, object, objeto de dialogo
+@param nRowsProces, numeric, linhas de processamento
+@param nSucess, numeric, linha de processamento em sucesso
+/*/
+Method GravaDocumento(oSay, nRowsProces, nSucess) Class AnexaDocumentos
+
+	Local aArea 		As Array
+	Local aAreaU95		As Array
+	Local nArquivo		As Numeric
+	Local lEnvServidor	As Logical
+
+	Default nRowsProces	:= 0
+	Default nSucess		:= 0
+
+	aArea 			:= GetArea()
+	aAreaU95		:= U95->(GetArea())
+	lEnvServidor	:= SuperGetMV("MV_XDOCSER", .F., .F.)
+
+	For nArquivo := 1 To Len(Self:aDocumentos)
+
+		// atualizo a linha de processamento
+		Self:nArquivo 	:= nArquivo
+		Self:lErro		:= .F.
+		Self:lProcess 	:= .F.
+
+		// envia o arquivo para o destino
+		If lEnvServidor
+			If !Self:EnviaDocumentoServidor()
+				Self:lErro := .T.
+			EndIf
+		Else
+			Self:lProcess := Self:EnviaArquivo()
+		EndIf
+
+		BEGIN TRANSACTION
+
+			If U95->(Reclock("U95", .T.))
+				U95->U95_FILIAL	:= xFilial("U95")
+				U95->U95_CODIGO := U_NextCodigoU95()
+				U95->U95_MODULO	:= Self:cModulo
+				U95->U95_ROTINA	:= Self:cRotina
+				U95->U95_CONTRA	:= Self:cContrato
+				U95->U95_DATA 	:= dDatabase
+				U95->U95_HORA	:= Time()
+
+				If Self:lProcess
+					U95->U95_DTPRO	:= dDatabase
+					U95->U95_HRPRO	:= Time()
+				EndIf
+
+				U95->U95_OBSERV	:= Self:cObservacoes
+				U95->U95_CODUSR	:= RetCodUsr()
+				U95->U95_DESCRI	:= Self:aDocumentos[Self:nArquivo, P_DESCRICAO]
+				U95->U95_ARQUIV	:= Self:aDocumentos[Self:nArquivo, P_ARQUIVO]
+				U95->U95_DIRETO	:= Self:aDocumentos[Self:nArquivo, P_DIRETO]
+				U95->U95_ARQCOM	:= Self:aDocumentos[Self:nArquivo, P_COMPLET]
+				U95->U95_DIRSRV := Self:cArqServidor
+				U95->U95_IDAPI	:= Self:cIDDocumento
+				U95->U95_STSSIN	:= If(Self:lProcess, "C", If(Self:lErro, "E", "P")) // pendennte
+				U95->U95_CODENT	:= Self:cCodEntidade
+				U95->U95_PARENV	:= Self:cPostParams
+				U95->U95_JSORET	:= Self:cJsonRetorno
+				U95->U95_CODAPI	:= Self:cCodigoAPI
+				U95->U95_URLDOC := Self:cURLDoc
+				U95->(MsUnLock())
+			Else
+				U95->(DisarmTransaction())
+			EndIf
+
+		END TRANSACTION
+
+		nRowsProces++
+		If !Self:lErro
+			nSucess++
+		EndIf
+
+	Next nArquivo
+
+	RestArea(aAreaU95)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AnexaDocumentos::EnviaArquivo
+Metodo para enviar o arquivo para o digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@return logical, retorno logico da funcao
+/*/
+Method EnviaArquivo() Class AnexaDocumentos
+
+	Local lRetorno				As Logical
+	Local oVirtusAPIDigidoc		As Object
+
+	lRetorno 			:= .F.
+	oVirtusAPIDigidoc	:= VirtusAPIDigidoc():New()
+
+	// limpo as variaveis do objeto
+	Self:cIDDocumento	:= ""
+	Self:cPostParams	:= ""
+	Self:cJsonRetorno	:= ""
+	Self:cCodigoAPI		:= ""
+	Self:cURLDoc		:= ""
+	Self:lErro			:= .F.
+
+	If Self:cModulo == "C"
+		oVirtusAPIDigidoc:cCategoria := SuperGetMV("MV_XDGDCTC", .F., "")
+	Else
+		oVirtusAPIDigidoc:cCategoria := SuperGetMV("MV_XDGDCTF", .F., "")
+	EndIf
+
+	// envia o arquivo para o digidoc
+	lRetorno := oVirtusAPIDigidoc:EnviarDocumento(Self:cContrato, Self:cObservacoes, Self:aDocumentos[Self:nArquivo])
+
+	If lRetorno
+		Self:cIDDocumento	:= oVirtusAPIDigidoc:cIDDocumento
+		Self:cPostParams	:= oVirtusAPIDigidoc:cPostParams
+		Self:cJsonRetorno	:= oVirtusAPIDigidoc:cResult
+		Self:cCodigoAPI		:= oVirtusAPIDigidoc:cCodigoAPI
+		Self:cURLDoc		:= oVirtusAPIDigidoc:cURLDoc
+		Self:lErro			:= .F.
+	Else
+		Self:cPostParams	:= oVirtusAPIDigidoc:cPostParams
+		Self:cJsonRetorno	:= oVirtusAPIDigidoc:cResult
+		Self:lErro			:= .T.
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AnexaDocumentos::EnviaDocumentoServidor
+Metodo para enviar o documento para o servidor
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@return logical, retorno logico da funcao
+/*/
+Method EnviaDocumentoServidor() Class AnexaDocumentos
+
+	Local lRetorno		As Logical
+	Local cDirDocServer	As Character
+
+	cDirDocServer 		:= SuperGetMV("MV_XDIRDOC", .F., "\digidoc\")
+	lRetorno 			:= .F.
+
+	//Copiando o arquivo via CpyT2S
+	If CpyT2S(Self:aDocumentos[Self:nArquivo, P_COMPLET], cDirDocServer, .T.)
+		Self:cArqServidor := cDirDocServer + Self:aDocumentos[Self:nArquivo, P_ARQUIVO]
+		lRetorno := .T.
+	Else
+		Self:cArqServidor := ""
+		lRetorno := .F.
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AnexaDocumentos::ProcessaDocumentos
+Rotina para processar os documentos
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+/*/
+Method ProcessaDocumentos() Class AnexaDocumentos
+
+	Local aArea			As Array
+	Local aAreaU95		As Array
+	Local lContinua 	As Logical
+	Local nArquivo 		As Numeric
+
+	// atribui valor as variaveis
+	aArea		:= GetArea()
+	aAreaU95	:= U95->(GetArea())
+	lContinua 	:= .F.
+
+	// limpo as variaveis
+	Self:aDocumentos 	:= {}
+	Self:nArquivo 		:= 0
+
+	//--------------------------------//
+	//-- Busca documentos pendentes --//
+	//--------------------------------//
+	lContinua := Self:BuscaDocumentosPendentes()
+
+	If lContinua
+
+		//------------------------------------------//
+		//----- Inicia processamento documentos ----//
+		//------------------------------------------//
+		For nArquivo := 1 To Len( Self:aDocumentos )
+
+			// reinicia os valores das variaveis
+			Self:lProcess 	:= .F.
+			Self:lErro		:= .F.
+			Self:nArquivo 	:= nArquivo
+
+			U95->(DbGoTo(Self:aDocumentos[nArquivo, P_RECNO]))
+
+			// pego os dados do documento
+			Self:cModulo		:= U95->U95_MODULO
+			Self:cRotina		:= U95->U95_ROTINA
+			Self:cContrato		:= U95->U95_CONTRA
+			Self:cCodEntidade	:= U95->U95_CODENT
+			Self:cObservacoes	:= U95->U95_OBSERV
+
+			//-- Inicia transação de gravação da venda --//
+			BEGIN TRANSACTION
+
+				//-- Atualiza o status do documento --//
+				Self:lProcess := Self:EnviaArquivo()
+
+				If U95->(Reclock("U95", .F.))
+					U95->U95_DTPRO	:= dDatabase
+					U95->U95_HRPRO	:= Time()
+					U95->U95_IDAPI	:= Self:cIDDocumento
+					U95->U95_STSSIN	:= If(Self:lProcess, "C", If(Self:lErro, "E", "P")) // pendente
+					U95->U95_CODENT	:= Self:cCodEntidade
+					U95->U95_PARENV	:= Self:cPostParams
+					U95->U95_JSORET	:= Self:cJsonRetorno
+					U95->U95_CODAPI	:= Self:cCodigoAPI
+					U95->U95_URLDOC := Self:cURLDoc
+					U95->(MsUnLock())
+				Else
+					lContinua := .F.
+					U95->(DisarmTransaction())
+				EndIf
+
+				// verifico se o arquivo foi enviado
+				If Self:lProcess .And. !Empty(U95->U95_DIRSRV)
+					FErase(AllTrim(U95->U95_DIRSRV)) // apaga o arquivo
+				EndIf
+
+				If !lContinua
+					DisarmTransaction()
+					BREAK
+				EndIf
+
+			END TRANSACTION
+
+		Next nArquivo
+
+	EndIf
+
+	RestArea(aAreaU95)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} AnexaDocumentos::BuscaDocumentosPendentes
+Metodo para buscar os documentos pendentes
+@type method
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@return logical, retorno logico da funcao
+/*/
+Method BuscaDocumentosPendentes() Class AnexaDocumentos
+
+	Local cQuery	As Character
+	Local lRetorno	As Logical
+
+	// atribui valor as variaveis
+	lRetorno := .F.
+
+	cQuery := " SELECT TOP 50 "
+	cQuery += " 	U95.U95_DESCRI, "
+	cQuery += " 	U95.U95_ARQUIV, "
+	cQuery += " 	U95.U95_DIRETO, "
+	cQuery += " 	U95.U95_ARQCOM, "
+	cQuery += " 	U95.R_E_C_N_O_ RECU95 "
+	cQuery += " FROM " + RetSQLName("U95") + " U95 "
+	cQuery += " WHERE U95.D_E_L_E_T_ = ' '  "
+	cQuery += " AND U95.U95_FILIAL = '" + xFilial("U95") + "' "
+	cQuery += " AND U95.U95_STSSIN = 'P' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, 'TRBU95' )
+
+	If TRBU95->(!Eof())
+
+		// alimento o retorno da variavel de acordo com os dados encontrados
+		lRetorno := .T.
+
+		While TRBU95->(!Eof())
+
+			// adiciono os documentos no array
+			Aadd(Self:aDocumentos, { TRBU95->U95_DESCRI, TRBU95->U95_ARQUIV, TRBU95->U95_DIRETO, TRBU95->U95_ARQCOM, TRBU95->RECU95 })
+
+			TRBU95->(DBSkip())
+		EndDo
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} NextCodigoU95
+Funcao para gerar o codigo da U95
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/18/2024
+@return character, proximo codigo
+/*/
+User Function NextCodigoU95()
+
+	Local aArea		As Array
+	Local aAreaU95	As Array
+	Local cRetorno	As Character
+	Local cQuery 	As Character
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU95	:= U95->(GetArea())
+
+	cQuery := " SELECT MAX(U95.U95_CODIGO) AS MAX_CODIGO FROM " + RetSQLName("U95") + " U95 "
+	cQuery += " WHERE U95.U95_FILIAL = '" + xFilial("U95") + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, 'TRBU95' )
+
+	If TRBU95->(!Eof())
+		If !Empty(TRBU95->MAX_CODIGO)
+			cRetorno := Soma1(Alltrim(TRBU95->MAX_CODIGO))
+		Else
+			cRetorno := StrZero(1, TamSx3("U95_CODIGO")[1])
+		EndIf
+	Else
+		cRetorno := StrZero(1, TamSx3("U95_CODIGO")[1])
+	EndIf
+
+	// verifico se o codigo esta em uso
+	FreeUsedCode()
+	While !MayIUseCode( "U95"+xFilial("U95")+cRetorno )
+		cRetorno := Soma1( Alltrim(cRetorno) ) // gero o proximo codigo
+	EndDo
+
+	// verifico se o codigo esta em uso
+	U95->(DbSetOrder(1))
+	While U95->(MsSeek(xFilial("U95") + Alltrim(cRetorno)))
+		cRetorno := Soma1( Alltrim(cRetorno) ) // gero o proximo codigo
+	EndDo
+
+	RestArea(aAreaU95)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} Pag1Intrucoes
+Funcao montar a pagina de instrucoes
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+/*/
+Static Function Pag1Intrucoes(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local cPulaLinha	:= Chr(13) + Chr(10)
+	Local cTexto1		:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Bem Vindo..." SIZE 200, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 += "Esta rotina tem como objetivo ajuda-lo realizar o anexo de documentos." + cPulaLinha
+
+	@ 065 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaPartSup
+Funcao montar a parte superior do wizard
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+/*/
+Static Function CriaPartSup(oPanel)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oSay3 		:= NIL
+	Local oLgTotvs		:= NIL
+	Local oGroup1		:= NIL
+	Local oFnt18		:= TFont():New("Arial",,18,,.T.,,,,,.F.,.F.)
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+
+	//carrego a imagem do repositorio
+	@ 003, 003 REPOSITORY oLgTotvs SIZE 90, 90 OF oPanel PIXEL NOBORDER
+	oLgTotvs:LoadBmp("APLOGO.JPG")
+
+	@ 005 , 055 SAY oSay1 PROMPT "Atenção!" SIZE 060, 010 Font oFnt18 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 020 , 055 SAY oSay2 PROMPT "Siga atentamente os passos para realizar:" SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 030 , 055 SAY oSay3 PROMPT "o anexo de documentos." SIZE 200, 010 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 040 , 020 GROUP oGroup1 TO 042 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} FwDocumentos
+Funcao montar a tela de documentos
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+@param oBrowse, object, ojeto do browse de documentos
+@param cAlias, character, alias temporario
+@param aDocumentos, array, array de documentos
+@param cCodEntidade, character, codigo da entidade
+/*/
+Static Function FwDocumentos(oPanel, oBrowse, cAlias, aDocumentos, cCodEntidade)
+
+	Local oBtnPanel 	As Object
+	Local oColumn		As Object
+
+	Default oBrowse	:= Nil
+
+	oBtnPanel 		:= TPanel():New(0,0,"",oPanel,,,,,,40,40)
+	oBtnPanel:Align := CONTROL_ALIGN_ALLCLIENT
+
+	// Cria tabela temporaria que vai conter os dADOS
+	CriaTabTemp(cAlias, aDocumentos, cCodEntidade)
+
+	// Define o Browse
+	oBrowse := FWBrowse():New(oBtnPanel)
+	oBrowse:SetDataTable(.T.)
+	oBrowse:SetAlias(cAlias)
+	oBrowse:DisableReport()
+
+	// Cria uma coluna de marca/desmarca
+	ADD COLUMN oColumn DATA { || U95_ITEM } 	TITLE "Item" 		SIZE 2 OF oBrowse
+	ADD COLUMN oColumn DATA { || U95_DESCRI } 	TITLE "Descrição" 	SIZE TamSx3("U95_DESCRI")[1] OF oBrowse
+	ADD COLUMN oColumn DATA { || U95_ARQUIV } 	TITLE "Arquivo" 	SIZE TamSx3("U95_ARQUIV")[1] OF oBrowse
+	ADD COLUMN oColumn DATA { || U95_DIRETO } 	TITLE "Diretório" 	SIZE TamSx3("U95_DIRETO")[1] OF oBrowse
+
+	oBrowse:SetSeek()
+	oBrowse:Activate()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriaTabTemp
+Funcao para criar a tabela temporario
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param cAlias, character, alias temporario
+@param aDocumentos, array, array de documentos
+@param cCodEntidade, character, codigo da entidade
+/*/
+Static Function CriaTabTemp(cAlias, aDocumentos, cCodEntidade)
+
+	Local oTable 			:= Nil
+	Local aCampos			:= {}
+	Local cIndice1			:= ""
+	Local cIndice2			:= ""
+
+	Default cAlias			:= ""
+	Default aDocumentos		:= {}
+	Default cCodEntidade	:= ""
+
+	aCampos:= {	{"U95_ITEM"		, "C", 002, 0},;
+		{"U95_DESCRI" 	, "C", 040, 0},;
+		{"U95_ARQUIV" 	, "C", 040, 0},;
+		{"U95_DIRETO" 	, "C", 040, 0}}
+
+	cIndice1 := "U95_ITEM"
+	cIndice2 := "U95_ARQUIV"
+
+	//Valida se ja existe a tabela criada
+	if Select(cAlias) > 0
+		(cAlias)->(DbCloseArea())
+	endif
+
+	oTable:= FWTemporaryTable():New(cAlias)
+
+	//Inserindo campos no alias temporario
+	oTable:SetFields(aCampos)
+
+	//---------------------
+	//Criação dos índices
+	//---------------------
+	oTable:AddIndex("01", { cIndice1	} )
+	oTable:AddIndex("02", { cIndice2	} )
+
+	//---------------------------------------------------------------
+	//tabela criado no espaço temporário do DB
+	//---------------------------------------------------------------
+	oTable:Create()
+	//------------------------------------
+
+	//Carrega dados na tebela temporaria
+	GetTabTemp(cAlias, aDocumentos, cCodEntidade)
+
+Return(Nil)
+
+/*/{Protheus.doc} GetTabTemp
+Gravo os dados na tabela temporaria
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param cAlias, character, alias temporario
+@param aDocumentos, array, array de documentos
+@param cCodEntidade, character, codigo da entidade
+/*/
+Static Function GetTabTemp(cAlias, aDocumentos, cCodEntidade)
+
+	Local nDoc 	As Numeric
+
+	Default cAlias			:= ""
+	Default aDocumentos		:= {}
+	Default cCodEntidade	:= ""
+
+	For nDoc := 1 To Len(aDocumentos)
+
+		Reclock( cAlias, .T.)
+
+		(cAlias)->U95_ITEM 		:= StrZero(nDoc, 2)
+		(cAlias)->U95_DESCRI	:= aDocumentos[nDoc, P_DESCRICAO]
+		(cAlias)->U95_ARQUIV	:= aDocumentos[nDoc, P_ARQUIVO]
+		(cAlias)->U95_DIRETO	:= aDocumentos[nDoc, P_DIRETO]
+
+		(cAlias)->(MsUnLock())
+
+	Next nDoc
+
+Return(Nil)
+
+/*/{Protheus.doc} ArquivosAnexo
+Tela para anexo de arquivos
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+@param cArquivo, character, arquivo
+/*/
+Static Function ArquivosAnexo(oPanel, cArquivo)
+
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oArquivo		:= NIL
+	Local oBtnRel		:= NIL
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cPulaLinhaArq	:= Chr(13) + Chr(10)
+	Local cTexto1		:= ""
+	Local cImgArq		:= "icone_file.png"
+	Local cImgFileHover	:= "icone_file_foco.png"
+	Local cCSSBtnFile	:= ""
+	Local cDirIni 		:= GetTempPath()
+	Local cTipArq 		:= "Arquivos em PDF (*.PDF)"
+	Local cTitulo 		:= "Seleção de Arquivos para Anexo"
+	Local lSalvar 		:= .F.
+
+	Default cArquivo	:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe os arquivos a serm anexados" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 += " Anexe os arquivos que voce deseja a esta entidade selecionada ...	" + cPulaLinhaArq
+	cTexto1 += " Estes arquivos serão armazenados no sistema para posterior sincronização com uma ferramenta externa" + cPulaLinhaArq
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Documentos Anexados:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 020 GROUP oGroup1 TO 109 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 115 , 020 SAY oSay3 PROMPT "Documentos:" SIZE 050, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 115 , 070 MSGET oArquivo VAR cArquivo  SIZE 200,010 PIXEL Font oFnt16 OF oPanel PICTURE "@!" ReadOnly
+
+	oBtnRel	:= TButton():New(114,275,"" ,oPanel,{|| cArquivo := tFileDialog(;
+		cTipArq,;                  // Filtragem de tipos de arquivos que serão selecionados
+	cTitulo,;                  // Título da Janela para seleção dos arquivos
+	,;                         // Compatibilidade
+	cDirIni,;                  // Diretório inicial da busca de arquivos
+	lSalvar,;                  // Se for .T., será uma Save Dialog, senão será Open Dialog
+	GETF_MULTISELECT)};          // Se não passar parâmetro, irá pegar apenas 1 arquivo; Se for informado GETF_MULTISELECT será possível pegar mais de 1 arquivo; Se for informado GETF_RETDIRECTORY será possível selecionar o diretório
+	,22,22,,,.F.,.T.,.F.,,.F.,,,.F. )
+
+	cCSSBtnFile := "QPushButton {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgArq + ");background-repeat: none; margin: 2px;"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += " }"
+	cCSSBtnFile += "QPushButton:hover {"
+	cCSSBtnFile += " background-image: url(rpo:" + cImgFileHover + ");background-repeat: none; margin: 2px; cover"
+	cCSSBtnFile += " border-width: 1px;"
+	cCSSBtnFile += " border-radius: 0px;"
+	cCSSBtnFile += "}"
+
+	oBtnRel:SetCss(cCSSBtnFile)
+
+Return(Nil)
+
+/*/{Protheus.doc} VldOpenFile
+Validacao dos arquivos selecionados
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param cArquivo, character, arquivos
+@param aArquivos, array, array de arquivos
+@return logical, retorno logico da funcao
+/*/
+Static Function VldOpenFile(cArquivo As Character, aArquivos As Array)
+
+	Local aAux		As Array
+	Local aAuxArq	As Array
+	Local cBarra 	As Character
+	Local lRetorno 	As Logical
+	Local nPosAux	As Numeric
+	Local nPosBarra	As Numeric
+	Local nAux		As Numeric
+
+	Default aArquivos	:= {}
+	Default cArquivo	:= ""
+
+	// atribui valor as variaveis
+	cBarra 		:= iif(IsSrvUnix(),"/","\")
+	lRetorno 	:= .T.
+
+	if Empty(cArquivo)
+
+		lRetorno := .F.
+		Help(,,'Help',,"Selecione algum arquivo antes de prosseguir!",1,0)
+
+	endif
+
+	If lRetorno
+
+		// quebro os arquivos no array
+		aAux := StrTokArr(cArquivo, ";")
+
+		For nAux := 1 To Len(aAux)
+
+			nPosBarra 	:= 0
+			nPosAux 	:= 1
+
+			If lRetorno .And. !File(aAux[nAux])
+
+				lRetorno := .F.
+				Help(,,'Help',,"Não foi possivel encontrar o arquivo selecionado (" + AllTrim(aAux[nAux]) + "), favor verifique-o!",1,0)
+
+			ElseIf lRetorno
+
+				while nPosBarra < nPosAux
+
+					// pego a posicao da barra
+					nPosBarra := AT(cBarra, aAux[nAux], nPosAux)
+
+					// verifico se existe outra barra
+					nPosAux	:= AT(cBarra, aAux[nAux], nPosBarra+1)
+
+				EndDo
+
+				// verifico se existe barra
+				if nPosBarra > 0
+
+					aAuxArq := {}
+
+					// pego a posicao do ponto
+					nPosPonto := AT(".", SubStr(aAux[nAux], nPosBarra+1))
+
+					// monto o array auxiliar de arquivos
+					aAdd( aAuxArq, UPPER(SubStr(aAux[nAux], nPosBarra+1, nPosPonto-1)) ) // P_DESCRICAO
+					aAdd( aAuxArq, SubStr(aAux[nAux], nPosBarra+1)) // P_ARQUIVO
+					aAdd( aAuxArq, SubStr(aAux[nAux], 1, nPosBarra)) // P_DIRETO
+					aAdd( aAuxArq, aAux[nAux]) // P_COMPLET
+
+					Aadd( aArquivos, aAuxArq)
+
+				endIf
+
+			EndIf
+
+			nPosPonto := 0
+			nPosBarra := 0
+
+		Next nAux
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} FwObservacoes
+Funcao da tela de observacoes
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+@param cObservacoes, character, observacoes
+/*/
+Static Function FwObservacoes(oPanel, cObservacoes)
+
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local oMemo			:= Nil
+
+	Default cObservacoes	:= ""
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	@ 045 , 020 SAY oSay4 PROMPT "Informe um resumo do documento" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 060 , 020 SAY oSay2 PROMPT "Observações (OCR):" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 075, 020 Get oMemo Var cObservacoes Memo Size 300, 080 Of oPanel Pixel
+	oMemo:bRClicked := { || AllwaysTrue() }
+	oMemo:oFont     := oFont
+
+Return(Nil)
+
+/*/{Protheus.doc} FwFinal
+Funcao da tela final
+Metodo Wizard
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/03/2024
+@param oPanel, object, objeto de painel
+@param oAnexaArquivo, object, objeto de anexo da classe de arquivos
+/*/
+Static Function FwFinal(oPanel, oAnexaArquivo)
+
+	Local oSay1 		:= NIL
+	Local oSay2 		:= NIL
+	Local oGroup1		:= NIL
+	Local oProcessados	:= NIL
+	Local oSucesso		:= NIL
+	Local oFnt16		:= TFont():New("Arial",,16,,.F.,,,,,.F.,.F.)
+	Local oFnt16N		:= TFont():New("Arial",,16,,.T.,,,,,.F.,.F.)
+	Local nLarguraPnl	:= oPanel:nClientWidth / 2
+	Local cPulaLinhaArq	:= Chr(13) + Chr(10)
+	Local cTexto1		:= ""
+	Local nRowsProces	:= 0
+	Local nSucess		:= 0
+
+	//crio a parte superior da tela do wizard
+	CriaPartSup(oPanel)
+
+	FWMsgRun(,{|oSay| oAnexaArquivo:GravaDocumento(oSay,@nRowsProces,@nSucess)},'Aguarde...','Sincronizando os documentos para o Digidoc...')
+
+	@ 045 , 020 SAY oSay4 PROMPT "Processo de Sincronização finalizado" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	cTexto1 := "Processo de Sincronização finalizado, abaixo segue os dados processos e os dados sincronizadso com sucesso!	" + cPulaLinhaArq
+
+	@ 060 , 020 SAY oSay1 PROMPT cTexto1 SIZE 300, 300 Font oFnt16 OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 090 , 020 SAY oSay2 PROMPT "Resultado da Sincronização:" SIZE 200, 010 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 100 , 020 GROUP oGroup1 TO 102 , nLarguraPnl - 2 PROMPT "" OF oPanel COLOR 0, 16777215 PIXEL
+
+	@ 107 , 020 SAY oSay3 PROMPT "Arquivos Processados:" SIZE 080, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 107 , 100 MSGET oProcessados VAR nRowsProces  SIZE 080,010 READONLY PIXEL  Font oFnt16 OF oPanel PICTURE "@E 9999999"
+
+	@ 120 , 020 SAY oSay4 PROMPT "Arquivos Sincronizados:" SIZE 080, 007 Font oFnt16N OF oPanel COLORS 0, 16777215 PIXEL
+
+	@ 120 , 100 MSGET oSucesso VAR nSucess  SIZE 080,010 PIXEL  READONLY Font oFnt16 OF oPanel PICTURE "@E 9999999"
+
+Return(Nil)

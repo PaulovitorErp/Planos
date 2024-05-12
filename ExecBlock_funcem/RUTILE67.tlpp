@@ -1,0 +1,592 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TOPCONN.CH"
+
+//Posicoes do Array de Parametros de Faturamento
+#DEFINE CODIGO         1
+#DEFINE TIPO           2
+#DEFINE TIPO_TITULO    3
+#DEFINE PREFIXO        4
+#DEFINE PRODUTO        5
+#DEFINE SERIE          6
+#DEFINE MENSAGEM       7
+#DEFINE NATUREZA       8
+#DEFINE TABELA         9
+#DEFINE CONDICAO       10
+#DEFINE OPERACAO       11
+
+/*/{Protheus.doc} RUTILE67
+Classe Faturamento em Lote
+@type function
+@version 1.0
+@author nata.queiroz
+@since 08/09/2021
+/*/
+User Function RUTILE67
+Return Nil
+
+/*/{Protheus.doc} PainelFinTabela
+Classe Tabela Painel Financeiro
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+/*/
+	Class FaturamentoEmLote
+
+		Public Data modulo as character
+		Public Data parametros as array
+
+		Public Method New() Constructor
+		Public Method ProcessaFaturamento()
+		Public Method BuscaRegrasFaturamento()
+		Public Method FaturamentoPorVenda()
+		Public Method FaturamentoPorParcelas()
+		Public Method GeraPedidoDeVenda()
+		Public Method GeraDocumentoSaida()
+		Public Method GeraHistoricoFaturamento()
+
+	EndClass
+
+/*/{Protheus.doc} PainelRecorrTabela::New
+PainelRecorrTabela Constructor
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 15/11/2021
+@return object, self
+/*/
+Method New() Class FaturamentoEmLote
+
+	Local lCemiterio := SuperGetMV("MV_XCEMI",,.F.)
+	Local lFuneraria := SuperGetMV("MV_XFUNE",,.F.)
+
+	if lCemiterio
+		::modulo := "C"
+	elseif lFuneraria
+		::modulo := "F"
+	endif
+
+	::parametros := {}
+
+Return(Self)
+
+/*/{Protheus.doc} ProcessaFaturamento
+Method para processar o faturamento em Lote 
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param oSay, object, objeto de regua de avanco
+/*/
+Method ProcessaFaturamento(oSay) class FaturamentoEmLote
+
+	Local nX := 1
+
+//busca regras aptas para serem faturadas na data atual
+	::BuscaRegrasFaturamento(oSay)
+
+//se encontrou regras para faturar
+	if Len(::parametros) > 0
+
+		For nX := 1 To Len(::parametros)
+
+			if ::parametros[nX,TIPO] == "V"
+
+				::FaturamentoPorVenda(oSay,::parametros[nX])
+
+			else
+
+				::FaturamentoPorParcelas(oSay,::parametros[nX])
+
+			endif
+
+
+		Next nX
+
+
+	endif
+
+
+Return()
+/*/{Protheus.doc} BuscaContratoseParcelasPFaturamento
+Method para preparar os dados para proccessamento do faturamento 
+em lote
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+/*/
+Method BuscaRegrasFaturamento() class FaturamentoEmLote
+
+	Local cQuery    := ""
+
+	Default oSay := NIL
+
+	cQuery := " SELECT "
+	cQuery += " UZO_CODIGO, "
+	cQuery += " UZO_DESCRI, "
+	cQuery += " UZO_TIPO, "
+	cQuery += " UZO_TIPOTI, "
+	cQuery += " UZO_PREFIX, "
+	cQuery += " UZO_PRODUT, "
+	cQuery += " UZO_SERIE, "
+	cQuery += " ISNULL(CONVERT(VARCHAR(1024),CONVERT(VARBINARY(1024),UZO_MSGNFS)),'') AS UZO_MSGNFS, "
+	cQuery += " UZO_NATURE, "
+	cQuery += " UZO_TABELA, "
+	cQuery += " UZO_CONDPG, "
+	cQuery += " UZO_OPERA "
+	cQuery += " FROM "
+	cQuery += RetSQLName("UZO") + " UZO "
+	cQuery += " WHERE "
+	cQuery += " UZO.D_E_L_E_T_ = '' "
+	cQuery += " AND UZO_FILIAL = '" + xFilial("UZO")+ "' "
+	cQuery += " AND UZO.UZO_STATUS = 'A' "
+	cQuery += " AND "
+	cQuery += " (( "
+	cQuery += " UZO.UZO_DIAFAT = '" + cValToChar(Day(dDatabase)) + "' "
+
+	if Day(LastDay(dDatabase)) == Day(dDatabase)
+
+		cQuery += " OR UZO.UZO_DIAFAT > '" + cValToChar(Day(dDatabase)) + "' "
+
+	endif
+
+	cQuery += " ) OR UZO.UZO_TIPREC = '1')"
+
+	If Select("QUZO") > 1
+		QUZO->(DbCloseArea())
+	endif
+
+	TcQuery cQuery New Alias "QUZO"
+
+	While QUZO->(!Eof())
+
+		Aadd(::parametros, {QUZO->UZO_CODIGO,;
+			QUZO->UZO_TIPO,;
+			QUZO->UZO_TIPOTI,;
+			QUZO->UZO_PREFIX,;
+			QUZO->UZO_PRODUT,;
+			QUZO->UZO_SERIE,;
+			QUZO->UZO_MSGNFS,;
+			QUZO->UZO_NATURE,;
+			QUZO->UZO_TABELA,;
+			QUZO->UZO_CONDPG,;
+			QUZO->UZO_OPERA})
+
+		QUZO->(DbSkip())
+
+	EndDo
+
+	If Select("QUZO") > 1
+		QUZO->(DbCloseArea())
+	endif
+
+Return(Nil)
+
+/*/{Protheus.doc} FaturamentoPorVenda
+Metodo para Consultar Contratos para serem faturados
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param oSay, object, objeto de regua de avanco
+@param aDadosFaturamento, array, Dados do Cadastro de Parametros Faturamento
+/*/
+Method FaturamentoPorVenda(oSay,aDadosFaturamento) class FaturamentoEmLote
+
+	Local aPvlNfs   	:= {}
+	Local cQuery    	:= ""
+	Local cChave    	:= ""
+	Local cMensagem 	:= ""
+	Local cDocumento	:= ""
+	Local dDataCorte 	:= SToD(SuperGetMV("MV_XDTCFAT", .F., "20221220"))
+
+	cQuery := " SELECT "
+	cQuery += " U00.R_E_C_N_O_ RECNO "
+	cQuery += " FROM "
+	cQuery += RetSQLName("U00") + " U00 "
+	cQuery += " WHERE "
+	cQuery += " D_E_L_E_T_ = '' "
+	cQuery += " AND U00.U00_STATUS = 'A' "
+	cQuery += " AND U00.U00_SERIE = ' ' "
+	cQuery += " AND U00.U00_NFS = ' ' "
+
+	If !Empty(dDataCorte)
+		cQuery += " AND U00.U00_DTATIV >= '" + DtoS(dDataCorte) + "' "
+	EndIf
+
+	cQuery += " ORDER BY RECNO "
+
+	If Select("QU00") > 1
+		QU00->(DbCloseArea())
+	endif
+
+	TcQuery cQuery New Alias "QU00"
+
+	While QU00->(!Eof())
+
+		U00->(DBGoto(QU00->RECNO))
+
+		cChave := xFilial("U00") + U00->U00_CODIGO
+
+		::GeraHistoricoFaturamento(cChave,U00->U00_CLIENT,U00->U00_LOJA,"V","","I")
+
+		BEGIN TRANSACTION
+
+			if ::GeraPedidoDeVenda(U00->U00_CLIENT,U00->U00_LOJA,U00->U00_CODIGO,U00->U00_VALOR,aDadosFaturamento,@aPvlNfs,@cMensagem)
+
+				cDocumento := ::GeraDocumentoSaida(aPvlNfs,aDadosFaturamento)
+
+				if !Empty(cDocumento)
+
+					RecLock("U00",.F.)
+
+					U00->U00_SERIE  := aDadosFaturamento[SERIE]
+					U00->U00_NFS    := cDocumento
+
+					U00->(MsUnlock())
+
+					cMensagem := "Documento de Saida Gerado com sucesso!"
+
+					::GeraHistoricoFaturamento(cChave,U00->U00_CLIENT,U00->U00_LOJA,"V",@cMensagem,"F",aDadosFaturamento[SERIE],cDocumento)
+
+				else
+
+					DisarmTransaction()
+
+					cMensagem := "Nao foi possivel gerar o documento de saida, realize inclusao manual para o cliente" + Chr(13) + Chr(10)
+					cMensagem += ""
+
+					::GeraHistoricoFaturamento(cChave,U00->U00_CLIENT,U00->U00_LOJA,"V",@cMensagem,"E")
+
+				endif
+
+			else
+
+				DisarmTransaction()
+
+				::GeraHistoricoFaturamento(cChave,U00->U00_CLIENT,U00->U00_LOJA,"V",@cMensagem,"E")
+
+			endif
+
+		END TRANSACTION
+
+		QU00->(DBSkip())
+
+	EndDo
+
+Return(cDocumento)
+
+/*/{Protheus.doc} FaturamentoPorVenda
+Metodo para Consultar Contratos para serem faturados
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param oSay, object, objeto de regua de avanco
+@param aDadosFaturamento, array, Dados do Cadastro de Parametros Faturamento
+/*/
+Method FaturamentoPorParcelas(oSay,aDadosFaturamento) class FaturamentoEmLote
+
+	Local aPvlNfs       := {}
+	Local cQuery        := ""
+	Local cContrato     := ""
+	Local dPrimDiaMes   := FirstDate(dDataBase)
+	Local dDataCorte 	:= SToD(SuperGetMV("MV_XDTCFAT", .F., "20221220"))
+	Local cMensagem     := ""
+	Local cChave        := ""
+	Local cDocumento    := ""
+
+	// valido se a data de corte e diferente
+	If !Empty(dDataCorte) 
+		dPrimDiaMes := dDataCorte
+	endif
+
+	cQuery := " SELECT "
+	cQuery += " SE1.E1_PREFIXO PREFIXO, "
+	cQuery += " SE1.E1_NUM TITULO, "
+	cQuery += " SE1.E1_PARCELA PARCELA, "
+	cQuery += " SE1.E1_TIPO TIPO, "
+	cQuery += " SE5.E5_DATA DATA,  "
+	cQuery += " SUM(SE5.E5_VALOR) VALOR, "
+	cQuery += " SE1.R_E_C_N_O_ RECNO "
+	cQuery += " FROM  "
+	cQuery += RetSQLName("SE1") + " SE1 "
+	cQuery += " INNER JOIN "
+	cQuery += RetSQLName("SE5") + " SE5 "
+	cQuery += " ON SE1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE5.D_E_L_E_T_ = ' ' "
+	cQuery += " AND SE1.E1_FILIAL = SE5.E5_FILIAL "
+	cQuery += " AND SE1.E1_PREFIXO = SE5.E5_PREFIXO "
+	cQuery += " AND SE1.E1_NUM = SE5.E5_NUMERO "
+	cQuery += " AND SE1.E1_PARCELA = SE5.E5_PARCELA "
+	cQuery += " AND SE1.E1_TIPO = SE5.E5_TIPO "
+	cQuery += " WHERE  "
+	cQuery += " SE1.E1_FILIAL = '" + xFilial("SE1") + "'  "
+	cQuery += " AND SE1.E1_TIPO IN " + FormatIn( AllTrim(aDadosFaturamento[TIPO_TITULO]),";") "
+	cQuery += " AND ( SE1.E1_XCONTRA <> '' OR SE1.E1_XCTRFUN <> '') "
+	cQuery += " AND SE5.E5_RECPAG = 'R'  "
+	cQuery += " AND SE5.E5_SITUACA <> 'C' "
+	cQuery += " AND SE1.E1_NUMNOTA = '' "
+	cQuery += " AND SE5.E5_VALOR > 0 "
+	cQuery += " AND SE5.E5_DATA BETWEEN '" + DTOS(dPrimDiaMes) + "' AND '" + DTOS(dDatabase) + "'  "
+	cQuery += " AND ( (SE5.E5_TIPODOC = 'VL' AND SE5.E5_MOTBX = 'NOR' AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQuery += " AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC')  "
+	cQuery += " GROUP BY SE1.E1_PREFIXO,SE1.E1_NUM,SE1.E1_PARCELA,SE1.E1_TIPO,SE5.E5_DATA,SE1.R_E_C_N_O_ "
+	cQuery += " ORDER BY SE5.E5_DATA "
+
+	If Select("QSE15") > 1
+		QSE15->(DbCloseArea())
+	endif
+
+	TcQuery cQuery New Alias "QSE15"
+
+	While QSE15->(!Eof())
+
+		SE1->(DBGoto(QSE15->RECNO))
+
+		cChave := SE1->E1_FILIAL + SE1->E1_PREFIXO + SE1->E1_NUM + SE1->E1_PARCELA + SE1->E1_TIPO
+
+		::GeraHistoricoFaturamento(cChave,SE1->E1_CLIENTE,SE1->E1_LOJA,"P","","I")
+
+		BEGIN TRANSACTION
+
+			if ::modulo == "C"
+				cContrato := SE1->E1_XCONTRA
+			else
+				cContrato := SE1->E1_XCTRFUN
+			endif
+
+			if ::GeraPedidoDeVenda(SE1->E1_CLIENTE,SE1->E1_LOJA,cContrato,QSE15->VALOR,aDadosFaturamento,@aPvlNfs,@cMensagem)
+
+				cDocumento := ::GeraDocumentoSaida(aPvlNfs,aDadosFaturamento)
+
+				if !Empty(cDocumento)
+
+					RecLock("SE1",.F.)
+
+					SE1->E1_SERIE   := aDadosFaturamento[SERIE]
+					SE1->E1_NUMNOTA := cDocumento
+
+					SE1->(MsUnlock())
+
+					cMensagem := "Documento de Saida Gerado com sucesso!"
+
+					::GeraHistoricoFaturamento(cChave,SE1->E1_CLIENTE,SE1->E1_LOJA,"P",@cMensagem,"F",aDadosFaturamento[SERIE],cDocumento)
+
+				else
+
+					DisarmTransaction()
+
+					::GeraHistoricoFaturamento(cChave,SE1->E1_CLIENTE,SE1->E1_LOJA,"P",@cMensagem,"E")
+
+				endif
+
+			else
+
+				DisarmTransaction()
+
+				::GeraHistoricoFaturamento(cChave,SE1->E1_CLIENTE,SE1->E1_LOJA,"P",@cMensagem,"E")
+
+			endif
+
+
+		END TRANSACTION
+
+		QSE15->(DBSkip())
+
+	EndDo
+
+Return(cDocumento)
+
+/*/{Protheus.doc} GeraPedidoDeVenda
+Metodo para gerar pedido dde venda
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param cCliente, Character, Codigo do Cliente que sera gerado o Faturamento
+@param cLoja, Character, Loja do Cliente que sera gerado o faturamento
+@param cContrato, Character, Codigo do Contrato que sera gerado o faturamento 
+@param nValorNF, numeric, Valor a ser gerado do pedido de venda
+@param aDadosFaturamento, array, Dados do Cadastro de Parametros Faturamento
+@param oSay, object, objeto de regua de avanco
+@return logical, retorna se pedido foi gerado ou nao
+
+/*/
+Method GeraPedidoDeVenda(cCliente,cLoja,cContrato,nValor,aDadosFaturamento,aPvlNfs,cMensagem) class FaturamentoEmLote
+
+	Local aCab      := {}
+	Local aItem     := {}
+	Local aItens    := {}
+	Local aPvlNfs   := {}
+	Local aBloqueio := {}
+	Local lRet      := .T.
+	Local aArea     := GetArea()
+	Local aAreaSE1  := SE1->(GetArea())
+
+	Private lMsErroAuto := .F.
+
+
+	AAdd(aCab, {"C5_TIPO" 		, "N" 				            ,Nil})
+	AAdd(aCab, {"C5_CLIENTE" 	, cCliente 	                    ,Nil})
+	AAdd(aCab, {"C5_LOJACLI" 	, cLoja                         ,Nil})
+	AAdd(aCab, {"C5_CONDPAG" 	, aDadosFaturamento[CONDICAO]   ,Nil})
+	AAdd(aCab, {"C5_XMENNFS"	, aDadosFaturamento[MENSAGEM]   ,Nil})
+	AAdd(aCab, {"C5_TABELA" 	, aDadosFaturamento[TABELA]     ,Nil})
+	AAdd(aCab, {"C5_EMISSAO" 	, dDataBase 		            ,Nil})
+	AAdd(aCab, {"C5_MOEDA" 		, 1 				            ,Nil})
+	AAdd(aCab, {"C5_NATUREZ" 	, aDadosFaturamento[NATUREZA]   ,Nil})
+	AAdd(aCab, {"C5_XCONTRA"	, cContrato     	            ,Nil})
+
+	aItem := {}
+
+	AAdd(aItem,{"C6_ITEM" 		, "001"			                ,Nil})
+	AAdd(aItem,{"C6_PRODUTO" 	, aDadosFaturamento[PRODUTO] 	,Nil})
+	AAdd(aItem,{"C6_QTDVEN" 	, 1					            ,Nil})
+	AAdd(aItem,{"C6_PRCVEN" 	, nValor		                ,Nil})
+	AAdd(aItem,{"C6_PRUNIT" 	, nValor		                ,Nil})
+	AAdd(aItem,{"C6_OPER" 		, aDadosFaturamento[OPERACAO]   ,Nil})
+
+	AAdd(aItens,aItem)
+
+	MSExecAuto({|X,Y,Z|Mata410(X,Y,Z)},aCab,aItens,3)
+
+	If lMsErroAuto
+
+		lRet        := .F.
+		cMensagem   := MostraErro("\temp")
+
+		DisarmTransaction()
+
+	else
+
+		//Realiza liberacao do pedido
+		Ma410LbNfs( 2, @aPvlNfs, @aBloqueio )
+
+		//Retorna Itens Liberados
+		Ma410LbNfs( 1, @aPvlNfs, @aBloqueio )
+
+		if !Empty(aBloqueio)
+
+			lRet := .F.
+			DisarmTransaction()
+
+			cMensagem := "Nao foi possivel realizar a liberacao do pedido " + Chr(13) + Chr(10)
+			cMensagem += " Verifique as liberacoes de Estoque e Credito - Modulo Faturamento "
+
+		endif
+
+	endif
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return(lRet)
+
+
+/*/{Protheus.doc} GeraDocumentoSaida
+Metodo para gerar o documento de saida do pedido gerado
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param cCliente, Character, Codigo do Cliente que sera gerado o Faturamento
+@param cLoja, Character, Loja do Cliente que sera gerado o faturamento
+@param cContrato, Character, Codigo do Contrato que sera gerado o faturamento 
+@param nValorNF, numeric, Valor a ser gerado do pedido de venda
+@param aDadosFaturamento, array, Dados do Cadastro de Parametros Faturamento
+@param oSay, object, objeto de regua de avanco
+@return logical, retorna se pedido foi gerado ou nao
+
+/*/
+Method GeraDocumentoSaida(aPvlNfs,aDadosFaturamento) class FaturamentoEmLote
+
+	Local cRetorno  := ""
+	Local aArea     := GetArea()
+	Local aAreaSE1  := SE1->(GetArea())
+
+
+	cRetorno := MaPvlNfs(aPvlNfs,aDadosFaturamento[SERIE],.F./*lMostraCtb*/,.F./*lAglutCtb*/,.F./*lCtbOnLine*/,;
+		.F./*lCtbCusto*/,.F./*lReajuste*/,0/*nCalAcrs*/,0/*nArredPrcLis*/,.F./*lAtuSA7*/,;
+		.F./*lECF*/)
+
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return(cRetorno)
+
+/*/{Protheus.doc} GeraHistoricoFaturamento
+Grava o Historico do faturamento em lote
+@type Method
+@version 1.0 
+@author raphaelgarcia
+@since 9/21/2022
+@param cChave, Character, Chave do registro que esta sendo iniciado a gravacao
+@param cCliente, Character, Codigo do Cliente 
+@param cLoja, Character, Loja 
+@param cTipoFaturamento, Character, Tipoo de Faturamento (V=Venda;P=Parcelas)
+@param cMensagem, Character, Mensagem que sera gravada no processamento, sendo sucesso ou erro
+@param cStatus, Character, Status do Faturamento (Iniciado,Finalizado,Erro)
+@param cSerie, Character, Serie da Nota Fiscal Gerada
+@param cNota, Character, Numero da Nota Fiscal
+@return logical, retorna se pedido foi gerado ou nao
+
+/*/
+Method GeraHistoricoFaturamento(cChave,cCliente,cLoja,cTipoFaturamento,cMensagem,cStatus,cSerie,cNota) class FaturamentoEmLote
+
+	Local aArea     := GetArea()
+	Local lOperacao := .T.
+
+	Default cChave             := ""
+	Default cCliente           := ""
+	Default cLoja              := ""
+	Default cTipoFaturamento   := ""
+	Default cMensagem          := ""
+	Default cStatus            := ""
+	Default cSerie             := ""
+	Default cSerie             := ""
+	Default cNota              := ""
+
+	UZP->(DbSetOrder(2)) //UZP_FILIAL + UZP_CHAVE
+
+	If UZP->(DbSeek(xFilial("UZP")+Alltrim(cChave)))
+		lOperacao := .F.
+	endif
+
+	RecLock("UZP",lOperacao)
+
+	UZP->UZP_FILIAL := xFilial("UZP")
+	UZP->UZP_CODIGO := GetSX8Num("UZP","UZP_CODIGO")
+	UZP->UZP_CLIENT := cCliente
+	UZP->UZP_LOJA   := cLoja
+	UZP->UZP_STATUS := cStatus
+	UZP->UZP_MSGRET := cMensagem
+	UZP->UZP_SERIE  := cSerie
+	UZP->UZP_NFS    := cNota
+	UZP->UZP_CHAVE  := Alltrim(cChave)
+
+	if lOperacao
+		UZP->UZP_TIPO   := cTipoFaturamento
+	EndIf
+
+	if lOperacao
+
+		UZP->UZP_DATAIN := dDatabase
+		UZP->UZP_HORAIN := Time()
+
+	elseif cStatus == "F"
+
+		UZP->UZP_DATAFI := dDatabase
+		UZP->UZP_HORAFI := Time()
+
+	endif
+
+	UZP->(MsUnlock())
+
+	RestArea(aArea)
+
+Return()
+
+

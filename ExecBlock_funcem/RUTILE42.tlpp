@@ -1,0 +1,90 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} RUTILE42
+programa para realizar a integracao de empresas
+do apontamento de servico do módulo de funeraria
+@type function
+@version 1.0 
+@author g.sampaio
+@since 01/08/2021
+@param lEnd, logical, parametro da classe MsNewProcess
+@param oProcIntEmp, object, objeto da classe MsNewProccess
+@param cFilOri, character, filial de origem
+@param cContraOri, character, contrato de origem
+@param cApontOri, character, apontamento de origem
+/*/
+User Function RUTILE42( lEnd, oProcIntEmp, cFilOri, cContraOri, cApontOri)
+
+	Local cQuery                As Character
+	Local oIntegraEmpresas      As Object
+	Local lIntEmp		        As Logical
+	Local lCliOrigem			As Logical
+
+	Default lEnd        := .F.
+	Default oProcIntEmp := Nil
+	Default cFilOri     := ""
+	Default cContraOri  := ""
+	Default cApontOri   := ""
+
+	// atribuo valor as variaveis
+	cQuery              := ""
+	oIntegraEmpresas    := IntegraEmpresas():New(cFilOri, cContraOri, cApontOri)
+	lIntEmp             := SuperGetMV("MV_XINTEMP", .F., .F.) // habilito o uso da integracao de empresas
+
+	// verifico se a integracao de empresas esta habilitada
+	if lIntEmp .And. oIntegraEmpresas:lIntegracao
+
+		cQuery := " SELECT "
+		cQuery += " 	UJ0.UJ0_FILIAL, "
+		cQuery += " 	UJ0.UJ0_CONTRA, "
+		cQuery += " 	UJ0.UJ0_CODIGO, "
+		cQuery += " 	UJ0.UJ0_PLANOC, "
+		cQuery += " 	UJ2.UJ2_ITEM, "
+		cQuery += " 	UJ2.UJ2_OK, "
+		cQuery += " 	UJ2.UJ2_PRODUT, "
+		cQuery += " 	UJ2.UJ2_QUANT "
+		cQuery += " FROM " + RetSQLName("UJ0") + " UJ0 INNER JOIN " + RetSQLName("UJ2") + " UJ2 ON UJ2.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND UJ2.UJ2_FILIAL = UJ0.UJ0_FILIAL "
+		cQuery += " 	AND UJ2.UJ2_CODIGO = UJ0.UJ0_CODIGO "
+		cQuery += " 	AND UJ2.UJ2_OK 		= 'T' "
+		cQuery += " 	AND UJ2.UJ2_APTINT 	= ' ' "
+		cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+		cQuery += "		AND UJ0.UJ0_FILIAL = '" + xFilial("UJ0") + "' "
+		cQuery += " 	AND UJ0.UJ0_CODIGO = '" + cApontOri + "' "
+
+		if Select("QUJ2J0") > 0
+			QUJ2J0->(DbCloseArea())
+		endif
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, "QUJ2J0")
+
+		while QUJ2J0->(!Eof())
+
+			// vejo se possui algum servico para integracao
+			oIntegraEmpresas:ServicoIntegracao(QUJ2J0->UJ2_PRODUT, QUJ2J0->UJ0_PLANOC)
+
+			QUJ2J0->(dbSkip())
+		endDo
+
+		// verifico se tem servico e executo a integracao
+		if oIntegraEmpresas:lServicoIntegracao
+
+			// executo a integracao
+			if oIntegraEmpresas:ExecutaIntegracao(lEnd, oProcIntEmp)
+				MsgInfo("Foi criado o contrato '"+ oIntegraEmpresas:cContratoDes +"' na filial '" + oIntegraEmpresas:cFilialDes + " - " + FWFilialName(cEmpAnt, oIntegraEmpresas:cFilialDes) + "', ";
+					+ "para a prestação de serviços de cemitério!","Integração de Empresas")
+			endIf
+
+		endIf
+
+		QUJ2J0->(DbCloseArea())
+
+	endIf
+
+	FreeObj(oIntegraEmpresas)
+	oIntegraEmpresas := Nil
+
+Return(Nil)

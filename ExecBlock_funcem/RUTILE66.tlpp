@@ -1,0 +1,60 @@
+#INCLUDE "PROTHEUS.CH"
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "FWMVCDEF.CH"
+#INCLUDE "FWEditPanel.CH"
+#INCLUDE "TBICONN.CH"
+
+/*/{Protheus.doc} RUTILE66
+Funcao para processamento de faturamento em lote
+@type function
+@version 1.0
+@author Raphael Martins
+@since 20/09/2022
+/*/
+User Function RUTILE66(aEmpresas)
+
+Local nStart		:= 0
+Local lRet          := .T.
+Local oFaturaLote   := NIL
+
+Default aEmpresas	:= {"99","01"}
+
+if IsBlind() 
+    //prepara a conexao com empresa
+    RpcSetType(3)
+    RpcClearEnv()  //-- Limpa ambiente
+    RpcSetEnv(aEmpresas[01], aEmpresas[02])
+
+    FwLogMsg("INFO", , "REST", FunName(), "", "01", "INICIO DO JOB FATURAMENTO EM LOTE", 0, (nStart - Seconds()), {})
+
+endif
+
+//-- Bloqueia rotina para apenas uma execução por vez
+//-- Criação de semáforo no servidor de licenças
+//-- LockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> lCreated
+If !LockByName("RUTILE66", .F., .T.)
+    If IsBlind()
+        cMessage := "[RUTILE66]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde..."
+        FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+    Else
+        MsgAlert("[RUTILE66]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde...")
+    EndIf
+    
+    lRet := .F.
+    
+EndIf
+
+//se esta tudo preparado para o rodar o job
+if lRet
+
+    oFaturaLote := FaturamentoEmLote():New()
+
+    if IsBlind() 
+        oFaturaLote:ProcessaFaturamento()
+    else
+        FWMsgRun(,{|oSay| oFaturaLote:ProcessaFaturamento(oSay) },'Aguarde...','Processamento Faturamento em Lote...')
+    endif
+
+endif
+
+Return(lRet)

@@ -1,0 +1,866 @@
+#Include "totvs.ch"
+#Include "topconn.ch"
+
+/*/{Protheus.doc} RUTILE28
+Tela de Geracao de Termo
+
+@type function
+@version 1.0
+@author g.sampaio
+@since 18/11/2020
+@return return_type, return_description
+/*/
+User Function RUTILE28(cCodContrato, cCodigo)
+
+	Local bValid			as CodeBlock
+	Local bValCodigo		as CodeBlock
+	Local bValContrato		as CodeBlock
+	Local cGetCodTermo		as Character
+	Local cGetDescTermo		as Character
+	Local cGetArqModelo		as Character
+	Local cGetRotina		as Character
+	Local cGetCodContrato	as Character
+	Local cGetTitular		as Character
+	Local cGetDados			as Character
+	Local cGetServicoExec	as Character
+	Local cGetCodigo		as Character
+	Local cF3Termo			as Character
+	Local cF3Codigo			as Character
+	Local cBotaoCSSCinza	as Character
+	Local cBotaoCSSAzul		as Character
+	Local cGrupoPerg		as Character
+	Local lWhen				as Logical
+	Local oSayCodTermo		as Object
+	Local oGetCodTermo		as Object
+	Local oSayDescTermo		as Object
+	Local oGetDescTermo		as Object
+	Local oSayArqModelo 	as Object
+	Local oGetArqModelo		as Object
+	Local oSayRotina		as Object
+	Local oGetRotina		as Object
+	Local oSayCodContrato 	as Object
+	Local oGetCodContrato 	as Object
+	Local oSayTitular		as Object
+	Local oGetTitular		as Object
+	Local oSayDados			as Object
+	Local oGetDados			as Object
+	Local oSayServicoExec 	as Object
+	Local oGetServicoExec	as Object
+	Local oSayCodigo		as Object
+	Local oGetCodigo		as Object
+	Local oBotaoCancelar	as Object
+	Local oBotaoGerarTermo	as Object
+	Local oDlgTermo			as Object
+	Local oButtonVirtus		as Object
+
+	Default	cCodContrato	:= ""
+	Default cCodigo			:= ""
+
+	// atribuo valor as variaveis
+	bValid			:= {|| PreencheDados(cCodContrato, @cGetCodTermo, @cF3Termo, @cF3Codigo, @lWhen, @cGetDescTermo, @cGetArqModelo,;
+		@cGetRotina, @cGetCodContrato, @cGetTitular, @cGetCodigo, @cGetDados, @cGetServicoExec, @oGetCodigo, @oDlgTermo) }
+	bValCodigo		:= {|| ValCodigo(cGetCodigo, cGetCodTermo, cCodContrato, @cGetDados, @cGetServicoExec)}
+	bValContrato	:= {|| ValContrato(cGetCodContrato, @cGetTitular) }
+	cGetCodTermo	:= Space(TamSX3("UJJ_CODIGO")[1])
+	cGetDescTermo	:= ""
+	cGetArqModelo	:= ""
+	cGetRotina		:= ""
+	cGetCodContrato	:= Space(6)
+	cGetTitular		:= ""
+	cGetDados		:= ""
+	cGetServicoExec	:= ""
+	cGetCodigo		:= Space(6)
+	cF3Termo		:= ""
+	cF3Codigo		:= ""
+	lWhen			:= .T.
+	oButtonVirtus	:= CSSButtonVirtus():New() // inicio a classe de butoes virtus
+
+	// crio o grupo de perguntask
+	AjustaSX1(cGrupoPerg)
+	Pergunte(cGrupoPerg, .F.)
+
+	// inicio o conteudo do campo codigo do termo com o ultimo termo gerado
+	cGetCodTermo := PADR(InitCodTermo(MV_PAR01),TamSX3("UJJ_CODIGO")[1])
+
+	// css de botoes
+	cBotaoCSSCinza  := oButtonVirtus:CSSButtonGray()// cancelar
+	cBotaoCSSAzul   := oButtonVirtus:CSSButtonBlue()// gerar termo
+
+	if !Empty(cCodigo)
+		cGetCodigo := cCodigo
+	endIf
+
+	// dados da geracao de termos,
+	Eval(bValid) // executo o bloco de codigo
+
+	DEFINE MSDIALOG oDlgTermo TITLE "Geração do Termo" FROM 000, 000  TO 360, 600 COLORS 0, 16777215 PIXEL
+
+	@ 002, 002 GROUP oGroupTermo TO 180, 300 PROMPT "Gerador de Termos" OF oDlgTermo COLOR 0, 16777215 PIXEL
+
+	//====================
+	// linha 1
+	//====================
+	@ 010, 010 SAY oSayCodTermo PROMPT "Termo" SIZE 025, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 020, 009 MSGET oGetCodTermo VAR cGetCodTermo F3 cF3Termo WHEN iif(FWIsInCallStack("U_RUTIL015"),.F.,.T.) VALID (iif(!Empty(cGetCodTermo),Eval(bValid),.T.)) SIZE 060, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 010, 080 SAY oSayDescTermo PROMPT "Descrição" SIZE 025, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 020, 079 MSGET oGetDescTermo VAR cGetDescTermo WHEN .F. SIZE 210, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL
+
+	//====================
+	// linha 2
+	//====================
+	@ 040, 010 SAY oSayArqModelo PROMPT "Arquivo Modelo" SIZE 061, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 050, 009 MSGET oGetArqModelo VAR cGetArqModelo WHEN .F. SIZE 120, 010 OF oGroupTermo COLORS 0, 16777215 PIXEL
+
+	@ 040, 140 SAY oSayRotina PROMPT "Rotina" SIZE 061, 007 OF oGroupTermo COLORS 0, 16777215 PIXEL
+	@ 050, 139 MSGET oGetRotina VAR cGetRotina WHEN .F. SIZE 150, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL
+
+	//====================
+	// linha 3
+	//====================
+	@ 070, 010 SAY oSayCodContrato PROMPT "Contrato" SIZE 025, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 080, 009 MSGET oGetCodContrato VAR cGetCodContrato F3 "U00" WHEN iif(FWIsInCallStack("U_RCPGA001"),.F.,lWhen) VALID (iif(!Empty(cGetCodContrato),Eval(bValContrato),.T.)) SIZE 060, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 070, 080 SAY oSayTitular PROMPT "Titular" SIZE 026, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 080, 079 MSGET oGetTitular VAR cGetTitular WHEN .F. SIZE 210, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL
+
+	//====================
+	// linha 4
+	//====================
+	@ 100, 010 SAY oSayCodigo PROMPT "Codigo" SIZE 025, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 110, 009 MSGET oGetCodigo VAR cGetCodigo F3 cF3Codigo VALID (iif(!Empty(cGetCodigo),Eval(bValCodigo),.T.))  WHEN lWhen SIZE 060, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL HASBUTTON
+
+	@ 100, 080 SAY oSayDados PROMPT "Dados" SIZE 069, 007 OF oDlgTermo COLORS 0, 16777215 PIXEL
+	@ 110, 079 MSGET oGetDados VAR cGetDados WHEN .F. SIZE 210, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL
+
+	//====================
+	// linha 5
+	//====================
+	@ 130, 010 SAY oSayServicoExec PROMPT "Serviço Executado" SIZE 069, 007 OF oGroupTermo COLORS 0, 16777215 PIXEL
+	@ 140, 009 MSGET oGetServicoExec VAR cGetServicoExec WHEN .F. SIZE 280, 010 OF oDlgTermo COLORS 0, 16777215 PIXEL
+
+	//====================
+	// linha botoes
+	//====================
+	@ 160, 200 BUTTON oBotaoCancelar PROMPT "Cancelar" SIZE 037, 012 OF oDlgTermo PIXEL ACTION (oDlgTermo:End())
+	oBotaoCancelar:SetCss(cBotaoCSSCinza)
+
+	@ 160, 245 BUTTON oBotaoGerarTermo PROMPT "Gerar Termo" SIZE 037, 012 OF oDlgTermo PIXEL ACTION (GeraTermo( cGetCodTermo, cGetCodContrato, cGetCodigo ))
+	oBotaoGerarTermo:SetCss(cBotaoCSSAzul)
+
+	ACTIVATE MSDIALOG oDlgTermo CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} PreencheDados
+description
+@type function
+@version 
+@author g.sampaio
+@since 18/11/2020
+@param cCodContrato, Characteracter, param_description
+@param cGetCodTermo, Characteracter, param_description
+@param cGetDescTermo, Characteracter, param_description
+@param cGetArqModelo, Characteracter, param_description
+@param cGetRotina, Characteracter, param_description
+@param cGetCodContrato, Characteracter, param_description
+@param cGetTitular, Characteracter, param_description
+@param cGetCodigo, Characteracter, param_description
+@param cGetDados, Characteracter, param_description
+@param cGetServicoExec, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function PreencheDados( cCodContrato, cGetCodTermo, cF3Termo, cF3Codigo, lWhen, cGetDescTermo, cGetArqModelo,;
+		cGetRotina, cGetCodContrato, cGetTitular, cGetCodigo, cGetDados, cGetServicoExec, oGetCodigo, oDlgTermo )
+
+	Local aArea				:= GetArea()
+	Local aAreaUJJ			:= UJJ->(GetArea())
+	Local aAreaSA1			:= SA1->(GetArea())
+	Local aAreaU00			:= {}
+	Local aAreaUF2			:= {}
+	Local lFuneraria		:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio		:= SuperGetMV("MV_XCEMI",,.F.)
+	Local lContinua			:= .T.
+
+	Default cCodContrato	:= ""
+	Default cGetCodTermo	:= ""
+	Default cGetDescTermo	:= ""
+	Default cGetArqModelo	:= ""
+	Default cGetRotina		:= ""
+	Default cGetCodContrato	:= ""
+	Default cGetTitular		:= ""
+	Default cGetDados		:= ""
+	Default cGetServicoExec	:= ""
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico tem o codigo do termo preenchido
+	if !Empty(cGetCodTermo)
+
+		//Posiciono pra pegar o codigo da rotina
+		UJJ->(DbSetOrder(1))
+		If UJJ->(MsSeek(xFilial("UJJ")+cGetCodTermo))
+
+			cGetDescTermo	:= UJJ->UJJ_DESCRI
+			cGetArqModelo	:= UJJ->UJJ_MODELO
+			cF3Codigo		:= UJN->UJN_F3 // consulta padrao do termo
+
+			UJN->(DbSetOrder(1))
+			If UJN->(MsSeek(xFilial("UJN")+UJJ->UJJ_ROTINA))
+
+				cGetRotina		:= Alltrim(UJN->UJN_ROTINA) + "-" + Alltrim(UJN->UJN_DESCRI)
+
+			Endif
+
+			if cCodModulo == "C" .And. "FUN" $ AllTrim(cGetRotina)
+				lContinua := .F.
+				MsgAlert("Rotina do termo informada não pertence ao módulo Virtus Gestão de Cemitérios, impressão não permitida!")
+
+			elseif cCodModulo == "F" .And. "CFG" $ AllTrim(cGetRotina)
+				lContinua := .F.
+				MsgAlert("Rotina do termo informada não pertence ao módulo Virtus Gestão de Planos e Funerárias, impressão não permitida!")
+
+			elseif Empty(cGetRotina)
+				lContinua := .F.
+				MsgAlert("Rotina do termo não informada, impressão não permitida!")
+
+			endIf
+		Endif
+
+	endIf
+
+	// verifico se esta tudo certo
+	if lContinua
+
+		If FWIsInCallStack("U_RCPGE049")// rotina de impressao de transferencia de cessionario
+			cGetRotina		:= "RCPGE049"
+			cF3Termo		:= "UJJROT"
+			cGetCodContrato	:= U00->U00_CODIGO
+			cGetDados		:= "Transferencia de Cessionario - Contrato: " + U00->U00_CODIGO
+			lWhen			:= .F.
+
+		elseIf FWIsInCallStack("U_RCPGA034")// rotina de transferencia de enderecos
+			cGetRotina		:= "RCPGA034"
+			cGetCodigo		:= U38->U38_CODIGO
+			cF3Termo		:= "UJJROT"
+			cGetCodContrato	:= U38->U38_CTRORI
+			cGetDados		:= "Falecido:" + Alltrim(U38->U38_QUEMUT) + " Data Transferencia: " + Dtoc(U38->U38_DTUTIL)
+			cGetServicoExec	:= AllTrim(U38->U38_SERVDE) + "-" + Posicione("SB1",1,xFilial("SB1")+U38->U38_SERVDE,"B1_DESC")
+			lWhen			:= .F.
+
+		elseIf FWIsInCallStack("U_RCPGA039")// rotina de apontamento de servicos
+			cGetRotina		:= "RCPGA039"
+			cGetCodigo		:= UJV->UJV_CODIGO
+			cF3Termo		:= "UJJROT"
+			cGetCodContrato	:= UJV->UJV_CONTRA
+			cGetDados		:= "Falecido:" + Alltrim(UJV->UJV_NOME) + " Data Servico: " + Dtoc(UJV->UJV_DTSEPU)
+			cGetServicoExec	:= AllTrim(UJV->UJV_SERVIC) + "-" + Posicione("SB1",1,xFilial("SB1")+UJV->UJV_SERVIC,"B1_DESC")
+			lWhen			:= .F.
+
+		elseIf FWIsInCallStack("U_RCPGA001")// rotina de contratos
+			cGetRotina		:= "RCPGA001"
+			cF3Termo		:= "UJJROT"//"UJJ"
+			cGetCodContrato	:= U00->U00_CODIGO
+			cGetCodigo		:= U00->U00_CODIGO
+			cGetDados		:= "Titular:" + AllTrim(U00->U00_CLIENT) + " / " + AllTrim(U00->U00_LOJA) + "-" + AllTrim(U00->U00_NOMCLI) + "| Data Ativacao: " + Dtoc(U00->U00_DTATIV)
+			cGetTitular		:= AllTrim(U00->U00_CLIENT) + "/" + AllTrim(U00->U00_LOJA) + "-" + AllTrim(U00->U00_NOMCLI)
+			lWhen			:= .T.
+
+		elseIf FWIsInCallStack("U_RUTIL015")// rotina de contratos
+			cGetCodTermo	:= UJJ->UJJ_CODIGO
+			cGetDescTermo	:= UJJ->UJJ_DESCRI
+			cGetArqModelo	:= UJJ->UJJ_MODELO
+			cF3Codigo		:= UJN->UJN_F3 // consulta padrao do termo
+
+			UJN->(DbSetOrder(1))
+			If UJN->(MsSeek(xFilial("UJN")+UJJ->UJJ_ROTINA))
+
+				cGetRotina		:= Alltrim(UJN->UJN_ROTINA) + "-" + Alltrim(UJN->UJN_DESCRI)
+
+			Endif
+
+			lWhen			:= .T.
+
+
+		elseIf FWIsInCallStack("U_RFUNA034")// rotina de contratos
+
+			cGetRotina		:= "RFUNA034"
+			cGetCodigo		:= UJ0->UJ0_CODIGO
+			cF3Termo		:= "UJJROT"
+			cGetCodContrato	:= UJ0->UJ0_CONTRA
+			cGetDados		:= "Falecido:" + Alltrim(UJ0->UJ0_NOMEFA) + " Data Servico: " + Dtoc(UJ0->UJ0_DTCADA)
+			cGetServicoExec	:= ""
+			lWhen			:= .F.
+
+		elseIf FWIsInCallStack("U_RFUNA002")// rotina de contratos
+			cGetRotina		:= "RFUNA002"
+			cGetCodigo		:= UF2->UF2_CODIGO
+			cF3Termo		:= "UJJROT"//"UJJ"
+			cGetCodContrato	:= UF2->UF2_CODIGO			
+			lWhen			:= .F.
+
+			SA1->(DbSetOrder(1))
+			if SA1->(MsSeek(xFilial("SA1")+UF2->UF2_CLIENT + UF2->UF2_LOJA))
+				cGetDados		:= "Titular:" + AllTrim(UF2->UF2_CLIENT) + " / " + AllTrim(UF2->UF2_LOJA) + "-" + AllTrim(SA1->A1_NOME) + "| Data Ativacao: " + Dtoc(UF2->UF2_DTATIV)
+				cGetTitular		:= AllTrim(UF2->UF2_CLIENT) + "/" + AllTrim(UF2->UF2_LOJA) + "-" + AllTrim(SA1->A1_NOME)
+
+			else
+				cGetDados		:= "Titular:" + AllTrim(UF2->UF2_CLIENT) + " / " + AllTrim(UF2->UF2_LOJA) + "-" + "| Data Ativacao: " + Dtoc(UF2->UF2_DTATIV)
+				cGetTitular		:= AllTrim(UF2->UF2_CLIENT) + "/" + AllTrim(UF2->UF2_LOJA) + "-"
+
+			endIf
+
+			lWhen			:= .T.
+
+		else
+			cF3Termo		:= "UJJ"
+			lWhen			:= .T.
+
+		endIf
+
+		// valido as informacoes de contrato
+		ValContrato(cCodContrato, @cGetTitular)
+
+		if ValType( oGetCodigo ) == "O"
+			oGetCodigo:cF3 := cF3Codigo
+			oGetCodigo:Refresh()
+		endIf
+
+		if ValType( oDlgTermo ) == "O"
+			oDlgTermo:Refresh()
+		endIf
+
+	else
+		MsgAlert("Não foi possível gerar o termo selecionado!", "Atenção")
+
+	endIf
+
+	RestArea(aAreaSA1)
+	RestArea(aAreaUJJ)
+	RestArea(aArea)
+
+Return(lContinua)
+
+/*/{Protheus.doc} UTILE28A
+description
+@type function
+@version 
+@author g.sampaio
+@since 18/11/2020
+@return return_type, return_description
+/*/
+User Function UTILE28A()
+
+	Local cRetorno 		:= ""
+	Local cFunRotina	:= "'"
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	if cCodModulo == "C"
+
+		If FWIsInCallStack("U_RCPGA034") // transferencia de enderecamento
+			cFunRotina	:= "RCPGA034"
+
+		elseIf FWIsInCallStack("U_RCPGE049") // impressao da transferencia de cessionario
+			cFunRotina	:= "RCPGE049"
+
+		elseIf FWIsInCallStack("U_RCPGA039") // transferencia de apontamento de serviços
+			cFunRotina	:= "RCPGA039"
+
+		elseIf FWIsInCallStack("U_RCPGA001") // contrato de cemiterio
+			cFunRotina	:= "RCPGA001"
+
+		else
+			cFunRotina	:= AllTrim(FunName())
+
+		endIf
+
+	elseIf cCodModulo == "F"
+
+		If FWIsInCallStack("U_RFUNA002") // contrato de cemiterio
+			cFunRotina := "RFUNA002"
+		ElseIf FWIsInCallStack("U_RFUNA034") // contrato de cemiterio
+			cFunRotina := "RFUNA034"
+		Else
+			cFunRotina	:= AllTrim(FunName())
+		EndIf
+
+	endIf
+
+	cRetorno := "@"
+	cRetorno += "EXISTS "
+	cRetorno += " ( "
+	cRetorno += " SELECT UJN.UJN_CODIGO FROM " + RetSqlName("UJN") + " UJN "
+	cRetorno += " WHERE UJN.D_E_L_E_T_ = ' ' "
+	cRetorno += " AND UJN.UJN_FILIAL = '" + xFilial("UJN") + "' "
+	cRetorno += " AND UJN.UJN_CODIGO = UJJ_ROTINA "
+	cRetorno += " AND UJN.UJN_ROTINA = '" + cFunRotina + "'"
+	cRetorno += " ) "
+
+Return(cRetorno)
+
+/*/{Protheus.doc} ValCodigo
+description
+@type function
+@version 
+@author g.sampaio
+@since 18/11/2020
+@param cGetCodigo, Characteracter, param_description
+@param cGetCodTermo, Characteracter, param_description
+@param cCodContrato, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function ValCodigo(cGetCodigo, cGetCodTermo, cCodContrato, cGetDados, cGetServicoExec)
+
+	Local aArea			:= GetArea()
+	Local aAreaUJN		:= UJN->(GetArea())
+	Local cAliasTermo	:= ""
+	Local nIndiceTermo	:= 0
+	Local cChaveTermo	:= ""
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	Local lRetorno		:= .T.
+
+	Default cGetCodigo		:= ""
+	Default cGetCodTermo	:= ""
+	Default cCodContrato	:= ""
+	Default cGetDados		:= ""
+	Default cGetServicoExec	:= ""
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico tem o codigo do termo preenchido
+	if !Empty(cGetCodTermo)
+
+		//Posiciono pra pegar o codigo da rotina
+		UJJ->(DbSetOrder(1))
+		If UJJ->(MsSeek(xFilial("UJJ")+cGetCodTermo))
+
+			UJN->(DbSetOrder(1))
+			If UJN->(MsSeek(xFilial("UJN")+UJJ->UJJ_ROTINA))
+
+				cAliasTermo     := UJN->UJN_TABELA
+				nIndiceTermo    := Val(UJN->UJN_INDICE)
+				cChaveTermo     := Alltrim(UJN->UJN_CHAVE)
+
+				//Ordena pelo indice definido no cadastro
+				(cAliasTermo)->(DbSetOrder(nIndiceTermo))
+
+				//Posiciona no registro para impressao
+				If (cAliasTermo)->(MsSeek(xFilial(cAliasTermo)+cGetCodigo))
+
+					if AllTrim(cAliasTermo) == "U00" .Or. Alltrim(UJN->UJN_ROTINA) == "RCPGA001"// rotina de contratos
+						cGetDados		:= "Titular:" + AllTrim(U00->U00_CLIENT) + " / " + AllTrim(U00->U00_LOJA) + "-" + AllTrim(U00->U00_NOMCLI) + "| Data Ativacao: " + Dtoc(U00->U00_DTATIV)
+
+					elseIf AllTrim(cAliasTermo) == "U38" .Or. Alltrim(UJN->UJN_ROTINA) == "RCPGA034"// rotina de transferencia de enderecos
+						cGetDados		:= "Falecido:" + Alltrim(U38->U38_QUEMUT) + " Data Transferencia: " + Dtoc(U38->U38_DTUTIL)
+						cGetServicoExec	:= AllTrim(U38->U38_SERDES) + "-" + Posicione("SB1",1,xFilial("SB1")+U38->U38_SERDES,"B1_DESC")
+
+					elseIf AllTrim(cAliasTermo) == "UJV" .Or. Alltrim(UJN->UJN_ROTINA) == "RCPGA039"// rotina de apontamento de servicos
+						cGetDados		:= "Falecido:" + Alltrim(UJV->UJV_NOME) + " Data Servico: " + Dtoc(UJV->UJV_DTSEPU)
+						cGetServicoExec	:= AllTrim(UJV->UJV_SERVIC) + "-" + Posicione("SB1",1,xFilial("SB1")+UJV->UJV_SERVIC,"B1_DESC")
+
+					else
+						cGetDados		:= ""
+
+					endIf
+
+				Endif
+
+				cGetRotina		:= Alltrim(UJN->UJN_ROTINA)
+
+			Endif
+
+		Endif
+
+	endIf
+
+	RestArea(aAreaUJN)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} GeraTermo
+description
+@type function
+@version 
+@author g.sampaio
+@since 18/11/2020
+@param cLayout, Characteracter, param_description
+@param cContrato, Characteracter, param_description
+@param cCodigo, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function GeraTermo( cCodTermo, cContrato, cCodigo )
+
+	Local aArea     	:= GetArea()
+	Local aAreaUJJ  	:= UJJ->( GetArea() )
+	Local aAreaUJN		:= UJN->( GetArea() )
+	Local aAreaAux		:= {}
+	Local cAliasTermo	:= ""
+	Local cChaveTermo	:= ""
+	Local cCodModulo	:= ""
+	Local nIndiceTermo	:= 0
+	Local aParSX6		:= {}
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+
+	Default cCodTermo   := ""
+	Default cContrato  	:= ""
+	Default cCodigo     := ""
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico se o CODIGO foi preenchido
+	If !Empty(cContrato)
+
+		// posiciono na tabela de layouts
+		UJJ->(DbSetOrder(1))
+		If UJJ->(MsSeek(xFilial("UJJ")+cCodTermo))
+
+			UJN->(DbSetOrder(1))
+			If UJN->(MsSeek(xFilial("UJN")+UJJ->UJJ_ROTINA))
+
+				cAliasTermo     := UJN->UJN_TABELA
+				nIndiceTermo    := Val(UJN->UJN_INDICE)
+				cChaveTermo     := Alltrim(UJN->UJN_CHAVE)
+
+				// posiciono no no contrato de cemiterio ou funeraria
+				if !(AllTrim(cAliasTermo) $ "U00/UF2")
+
+					if cCodModulo == "C"
+
+						aAreaAux := U00->(GetArea())
+
+						U00->(DbSetOrder(1))
+						U00->(MsSeek(xFilial("U00")+cContrato))
+
+					elseIf cCodModulo == "F"
+
+						aAreaAux := UF2->(GetArea())
+
+						UF2->(DbSetOrder(1))
+						UF2->(MsSeek(xFilial("UF2")+cContrato))
+
+					endIf
+
+				endIf
+
+				//Ordena pelo indice definido no cadastro
+				(cAliasTermo)->(DbSetOrder(nIndiceTermo))
+
+				//Posiciona no registro para impressao
+				If (cAliasTermo)->(MsSeek(xFilial(cAliasTermo)+cCodigo))
+
+					// funcao de impressao de termos com macro
+					FWMsgRun(,{|oCarrega| U_RUTILR02( cCodTermo, cContrato, cAliasTermo, nIndiceTermo ) },'Aguarde...','Realizando a geração de layout de termo selecionado ...')
+
+				else
+					MsgAlert("Não foi possível realizar a impressão do termo!")
+				endIf
+
+				if Len(aAreaAux) > 0
+					RestArea(aAreaAux)
+				endIf
+
+			EndIf
+
+			// atualizo o conteudo do parametro
+			if !Empty(cCodTermo)
+				Pergunte("RUTILE28", .F.)
+				SetMVValue("RUTILE28", "MV_PAR01", cCodTermo)
+
+				If FWIsInCallStack("U_RCPGA034")
+					if !GetMV("MV_XTCPG34",.T.)
+						aAdd(aParSX6, {"MV_XTCPG34", "C", "Ultimo termo impresso RCPGA034",	cCodTermo} )
+						if ExistBlock("CriaSX6")
+							U_CriaSX6(aParSX6)
+						endIf
+					else
+						PutMV("MV_XTCPG34", cCodTermo)
+					endIf
+
+				elseIf FWIsInCallStack("U_RCPGA039")
+					if !GetMV("MV_XTCPG39",.T.)
+						aAdd(aParSX6, {"MV_XTCPG39", "C", "Ultimo termo impresso RCPGA039",	cCodTermo} )
+						if ExistBlock("CriaSX6")
+							U_CriaSX6(aParSX6)
+						endIf
+					else
+						PutMV("MV_XTCPG39", cCodTermo)
+					endIf
+
+				elseIf FWIsInCallStack("U_RCPGA001")
+					if !GetMV("MV_XTCPG01",.T.)
+						aAdd(aParSX6, {"MV_XTCPG01", "C", "Ultimo termo impresso RCPGA001",	cCodTermo} )
+						if ExistBlock("CriaSX6")
+							U_CriaSX6(aParSX6)
+						endIf
+					else
+						PutMV("MV_XTCPG01", cCodTermo)
+					endIf
+				endIf
+			endIf
+
+		else
+			MsgAlert("Não foi encontrado termos para o código de termo informado!", "Atenção!")
+
+		endIf
+
+	Else // mensagem para o usuario quando o contrato estiver vazio
+
+		MsgAlert("Nenhum contrato foi selecionado")
+
+	EndIf
+
+	RestARea( aAreaUJN )
+	RestARea( aAreaUJJ )
+	RestArea( aArea )
+
+Return(Nil)
+
+/*/{Protheus.doc} ValContrato
+Validcao do contrato
+
+@type function
+@version 
+@author g.sampaio
+@since 01/12/2020
+@param cCodContratom cGetTitular, Characteracter, param_description
+@return return_type, return_description
+/*/
+Static Function ValContrato(cCodContrato, cGetTitular)
+
+	Local cCodModulo		:= ""
+	Local lFuneraria		:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio		:= SuperGetMV("MV_XCEMI",,.F.)
+	Local lRetorno			:= .T.
+
+	Default cCodContrato	:= ""
+	Default cGetTitular		:= ""
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico se o codigo do contrato esta informado
+	if !Empty(cCodContrato)
+
+		if cCodModulo == "C" //cemiterio
+
+			U00->(DbSetOrder(1))
+			if U00->( MsSeek( xFilial("U00")+cCodContrato ) )
+				cGetTitular	:= AllTrim(U00->U00_CLIENT) + "/" + AllTrim(U00->U00_LOJA) + "-" + AllTrim(U00->U00_NOMCLI)
+
+			endIf
+
+		elseif cCodModulo == "F" //funeraria
+
+			UF2->(DbSetOrder(1))
+			if UF2->( MsSeek( xFilial("UF2")+cCodContrato ) )
+				cGetTitular	:= AllTrim(UF2->UF2_CLIENT) + "/" + AllTrim(UF2->UF2_LOJA) + "-" + AllTrim(Posicione("SA1",1,xFilial("SA1")+UF2->UF2_CLIENT+UF2->UF2_LOJA,"A1_NOME"))
+
+			endIf
+
+		endIf
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AjustaSX1
+Manutencao do grupoi de perguntas - SX1
+@type function
+@version 1.0  
+@author g.sampaio
+@since 25/07/2021
+@param cGrupoPerg, Characteracter, grupo de perguntas
+/*/
+Static Function AjustaSX1(cGrupoPerg)
+
+	Local aRegs			  := {}
+
+	Default cGrupoPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cGrupoPerg)
+
+		// parametros SX1
+		aAdd(aRegs,{cGrupoPerg,'01','Termo'        	,'','','mv_ch1','C', TamSx3("UJJ_CODIGO")[1]    	, 0, 0,'G','','mv_par01','','','','','',''})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} UTILE28B
+Rotina para preencher o codigo do termo
+@type function
+@version 1.0
+@author g.sampaio
+@since 25/07/2021
+@param cParamTermo, Characteracter, grupo de perguntas do termo - SX1
+@return Characteracter, conteudo inical do codigo do termo
+/*/
+User Function UTILE28B( cCodContrato, cRotina, cCodigo)
+
+	Local cQuery 	:= ""
+	Local lRetorno	:= .F.
+
+	if Select("TRBTERMO") > 0
+		TRBTERMO->(DbCloseArea())
+	endIf
+
+	cQuery := " SELECT UJN.UJN_CODIGO FROM " + RetSqlName("UJN") + " UJN "
+	cQuery += " WHERE UJN.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJN.UJN_ROTINA = '" + cRotina + "'"
+
+	TcQuery cQuery New Alias "TRBTERMO"
+
+	if TRBTERMO->(!Eof())
+		lRetorno := .T.
+		U_RUTILE28(cCodContrato, cCodigo)
+	endIf
+
+	if Select("TRBTERMO") > 0
+		TRBTERMO->(DbCloseArea())
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} InitCodTermo
+Rotina para preencher o codigo do termo
+@type function
+@version 1.0
+@author g.sampaio
+@since 25/07/2021
+@param cParamTermo, Characteracter, grupo de perguntas do termo - SX1
+@return Characteracter, conteudo inical do codigo do termo
+/*/
+Static Function InitCodTermo(cParamTermo)
+
+	Local cCodModulo	:= ""
+	Local cGetDescTermo	:= ""
+	Local cGetArqModelo	:= ""
+	Local cRetorno		:= ""
+	Local cF3Codigo		:= ""
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+
+	// verifico a rotina e o parametro para verificar o modulo
+	if lCemiterio .And. "CPG" $ AllTrim(FunName()) // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lCemiterio .And. "FUN" $ AllTrim(FunName()) // para modulo de funeraria
+		cCodModulo := "F"
+	elseIf lCemiterio // para modulo de cemiterio
+		cCodModulo := "C"
+	elseIf lFuneraria // para modulo de funeraria
+		cCodModulo := "F"
+	endIf
+
+	// verifico tem o codigo do termo preenchido
+	if !Empty(cParamTermo)
+
+		cRetorno	:= cParamTermo
+
+		//Posiciono pra pegar o codigo da rotina
+		UJJ->(DbSetOrder(1))
+		If UJJ->(MsSeek(xFilial("UJJ")+cParamTermo))
+
+			cGetDescTermo	:= UJJ->UJJ_DESCRI
+			cGetArqModelo	:= UJJ->UJJ_MODELO
+			cF3Codigo		:= UJN->UJN_F3 // consulta padrao do termo
+
+			UJN->(DbSetOrder(1))
+			If UJN->(MsSeek(xFilial("UJN")+UJJ->UJJ_ROTINA))
+				cGetRotina		:= Alltrim(UJN->UJN_ROTINA)
+			Endif
+
+			if cCodModulo == "C" .And. "FUN" $ AllTrim(cGetRotina)
+				cRetorno	:= ""
+
+			elseif cCodModulo == "F" .And. "CFG" $ AllTrim(cGetRotina)
+				cRetorno	:= ""
+
+			elseif Empty(cGetRotina)
+				cRetorno	:= ""
+
+			elseif cCodModulo == "C"
+
+				If FWIsInCallStack("U_RCPGA034") .And. AllTrim(cGetRotina) <> AllTrim("RCPGA034")
+					cRetorno	:= ""
+
+				elseIf FWIsInCallStack("U_RCPGA039") .And. AllTrim(cGetRotina) <> AllTrim("RCPGA039")
+					cRetorno	:= ""
+
+				elseIf FWIsInCallStack("U_RCPGA001") .And. AllTrim(cGetRotina) <> AllTrim("RCPGA001")
+					cRetorno	:= ""
+
+				endIf
+
+			endIf
+
+		endIf
+	else
+
+		If FWIsInCallStack("U_RCPGA034")
+			cRetorno	:= SuperGetMV("MV_XTCPG34",.F.,"")
+
+		elseIf FWIsInCallStack("U_RCPGA039")
+			cRetorno	:= SuperGetMV("MV_XTCPG39",.F.,"")
+
+		elseIf FWIsInCallStack("U_RCPGA001")
+			cRetorno	:= SuperGetMV("MV_XTCPG01",.F.,"")
+
+		endIf
+
+	Endif
+
+Return(cRetorno)

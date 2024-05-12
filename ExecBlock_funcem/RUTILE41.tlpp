@@ -1,0 +1,2446 @@
+#include "totvs.ch"
+#include "topconn.ch"
+
+// posicioes do array de dados da integracao
+#define P_CODIGO 	1
+#define P_ITEMDES 	2
+#define P_FILDES 	3
+#define P_SERVORI 	4
+#define P_PRODCEM 	5
+#define P_SERVDES 	6
+#define P_PLANOORI 	7
+
+// posicoes do array de dados do apt de servicos de funeraria
+#define APT_NOMEFA	1
+#define APT_DTFALE	2
+#define APT_DTCERT	3
+#define APT_LOCAFAL	4
+#define APT_DTNASC	5
+#define APT_SEXO	6
+#define APT_ESTCFA	7
+#define APT_NOMAE	8
+#define APT_NACION	9
+#define APT_UFFAL	10
+#define APT_CODMUN	11
+#define APT_ENDFAL	12
+#define APT_CMPFAL	13
+#define APT_BAIFAL	14
+#define APT_CEPFAL	15
+#define APT_DTSEPU	16
+#define APT_HRSEPU	17
+#define APT_OBS		18
+#define APT_CPF		19
+#define APT_RG		20
+#define APT_RELIGI	21
+#define APT_USO		22
+#define APT_TIPPET	23
+#define APT_RACA	24
+#define APT_CORPEL	25
+#define APT_PORTE	26
+#define APT_CLICEM	27
+#define APT_LOJCEM	28
+#define APT_CAUSA	29
+
+/*/{Protheus.doc} RUTILE41
+Classe para integracao de empresas
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/04/2024
+/*/
+User function RUTILE41()
+Return(Nil)
+
+/*/{Protheus.doc} IntegraEmpresas
+Classe para integracao de empresas
+@type class
+@version 1.0
+@author g.sampaio
+@since 06/04/2024
+/*/
+	Class IntegraEmpresas
+
+		Public Data aDadosInt       	As Array
+		Public Data aServInt        	As Array
+		Public Data aDadosUJ0			As Array
+
+		// dados da origem
+		Public Data cFilialOri     		As Character
+		Public Data cContratoOri   	 	As Character
+		Public Data cCNPJFilOri			As Character
+		Public Data cApontaOri			As Character
+		Public Data cClienteOri			As Character
+		Public Data cLojaOri			As Character
+		Public Data cCGCCliOri			As Character
+
+		// dados do destino
+		Public Data cFilialDes      	As Character
+		Public Data cContratoDes    	As Character
+		Public Data cApontaDes			As Character
+		Public Data cTipoEndDes			As Character
+		Public Data cOcupaGavDes		As Character
+		Public Data cUsoServico			As Character
+
+		Public Data lIntegracao			As Logical
+		Public Data lServicoIntegracao	As Logical
+		Public Data lExclusaoApt		As Logical
+
+		Public Method New() Constructor		// metodo construtor
+		Public Method ServicoIntegracao()	// metodo para identificar o servico executado entre os servicos de origem
+		Public Method ExecutaIntegracao()	// metodo para executar a integracao
+		Public Method ValidaIntegracao()	// metodo para validar se ja existe dados de integracao para o contrato
+		Public Method IncluiContrato()		// metodo para inclusao de contrato de integracao(cemiterio)
+		Public Method IncluiAptServico()	// metodo para inclusao de apontamento de servico de integracao(cemiterio)
+		Public Method ExcluiIntegracao()	// metodo para exclui os dados de integracao(cemiterio)
+		Public Method CancelaContrato()		// metodo para cancelar o contrato de integracao(cemiterio)
+		Public Method ExcluiAptIntegracao()	// metodo para excluir o apontamento de integracao(cemiterio)
+		Public Method EnderecoIntegracao()	// metodo para validar se a integracao esta enderecada(cemiterio)
+		Public Method StatusAptIntegracao()	// metodo para validar o status do apontamento de integracao(cemiterio)
+		Public Method ValidaCtrDestino()	// metodo para validar o contrato de origem a partir do contrato de destino(cemiterio)
+		Public Method ValidApon()			// metodo para validar se o apontamento tem mais servicos de integracao no destino(cemiterio)
+
+	EndClass
+
+/*/{Protheus.doc} IntegraEmpresas::New
+Metodo construtor para integracao de empresas
+@type method
+@version 1.0 
+@author g.sampaio
+@since 03/08/2021
+@param cFilInt, character, filial de origem da integracao
+@param cContrato, character, contrato de origem para integracao
+@param cApontamento, character, apontamento de origem da integracao
+/*/
+Method New(cFilInt, cContrato, cApontamento) Class IntegraEmpresas
+
+	Local aEmpAux	As Array
+	Local cQuery    As Character
+	Local cAliasTab As Character
+	Local lIntEmp	As Logical
+
+	Default cFilInt			:= ""
+	Default cContrato   	:= ""
+	Default cApontamento	:= ""
+
+	// atribui valores a variaveis
+	aEmpAux		:= {}
+	cQuery      := ""
+	cAliasTab   := "TRBEMP"
+	lIntEmp		:= SuperGetMV("MV_XINTEMP", .F., .F.) // habilito o uso da integracao de empresas
+
+	// atribuo valor as variaveis da classe
+	Self:aDadosInt       	:= {}
+	Self:aServInt        	:= {}
+	Self:aDadosUJ0			:= {}
+	Self:cFilialOri      	:= ""
+	Self:cContratoOri    	:= ""
+	Self:cCNPJFilOri		:= ""
+	Self:cApontaOri			:= ""
+	Self:cClienteOri		:= ""
+	Self:cLojaOri			:= ""
+	Self:cFilialDes      	:= ""
+	Self:cContratoDes    	:= ""
+	Self:cApontaDes			:= ""
+	Self:cTipoEndDes		:= ""
+	Self:cUsoServico		:= ""
+	Self:cCGCCliOri			:= ""
+	Self:lIntegracao		:= .F.
+	Self:lServicoIntegracao := .F.
+	Self:lExclusaoApt		:= .F.
+
+	// verifico se usa a integacao de empresas
+	if lIntEmp
+
+		// contrato de origem da integracao
+		Self:cFilialOri     := cFilInt
+		Self:cContratoOri   := cContrato
+		Self:cApontaOri		:= cApontamento
+
+		// funcao para retornar os dados do contrato de origem
+		ClienteRetDados(Self:cFilialOri, Self:cContratoOri, Self:cApontaOri, @Self:cClienteOri, @Self:cLojaOri, @Self:cCGCCliOri)
+
+		// consulta dos cadastros para integracao de empresas
+		cQuery := " SELECT "
+		cQuery += " UZ4.UZ4_CODIGO 	AS CODIGOINT, "
+		cQuery += " UZ4.UZ4_FILORI 	AS FILORI, "
+		cQuery += " UZ5.UZ5_ITEM  	AS ITEMDES, "
+		cQuery += " UZ5.UZ5_FILDES 	AS FILDES, "
+		cQuery += " UZ6.UZ6_ITEM   	AS ITSERV, "
+		cQuery += " UZ6.UZ6_PLNORI 	AS PLANOORI, "
+		cQuery += " UZ6.UZ6_SRVORI 	AS SERVORI, "
+		cQuery += " UZ6.UZ6_PRDDST 	AS PRODCEM, "
+		cQuery += " UZ6.UZ6_SRVDES 	AS SERVDES "
+		cQuery += " FROM " + RetSqlName("UZ4") + " UZ4 "
+		cQuery += " INNER JOIN " + RetSqlName("UZ5") + " UZ5 ON UZ5.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UZ5.UZ5_FILIAL = UZ4.UZ4_FILIAL "
+		cQuery += " AND UZ5.UZ5_CODIGO = UZ4.UZ4_CODIGO "
+		cQuery += " INNER JOIN " + RetSqlName("UZ6") + " UZ6 ON UZ5.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UZ6.UZ6_FILIAL = UZ4.UZ4_FILIAL "
+		cQuery += " AND UZ6.UZ6_CODIGO = UZ4.UZ4_CODIGO "
+		cQuery += " AND UZ6.UZ6_ITDES = UZ5.UZ5_ITEM "
+		cQuery += " WHERE UZ4.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UZ4.UZ4_FILIAL = '" + xFilial("UZ4") + "' "
+		cQuery += " AND UZ4.UZ4_FILORI = '" + Self:cFilialOri + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		while (cAliasTab)->(!Eof())
+
+			aAdd(Self:aDadosInt, {;
+				(cAliasTab)->CODIGOINT,;
+				(cAliasTab)->ITEMDES,;
+				(cAliasTab)->FILDES,;
+				(cAliasTab)->SERVORI,;
+				(cAliasTab)->PRODCEM,;
+				(cAliasTab)->SERVDES,;
+				(cAliasTab)->PLANOORI,;
+				})
+
+			(cAliasTab)->(DBSkip())
+		endDo
+
+		// verifico se tem dados para integracao
+		if Len(Self:aDadosInt) > 0
+
+			Self:lIntegracao	:= .T. // sinalizo que tem integracao ativa
+			aEmpAux				:= FWSM0Util():GetSM0Data( cEmpAnt , Self:cFilialOri, { "M0_CGC" } ) // pego o cnpj da filial de origem
+			Self:cCNPJFilOri 	:= aEmpAux[1, 2] // conteudo de retorno
+
+			// pego os dados do apontamento de servico(cabecalho)
+			Self:aDadosUJ0 	:= UJ0RetDados( Self:cFilialOri, Self:cContratoOri, Self:cApontaOri)
+
+		endIf
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} IntegraEmpresas::ServicoIntegracao
+metodo para validacao se o servico executado 
+esta cadastrado na integracao de empresas
+@type method
+@version 1.0  
+@author g.sampaio
+@since 03/08/2021
+@param cCodServ, character, codigo do servico executado
+/*/
+Method ServicoIntegracao(cCodServ, cPlanoContratado) Class IntegraEmpresas
+
+	Local aArea 		As Array
+	Local aAreaSB1		As Array
+	Local lPlanoPet 	As Logical
+	Local nPosInt       As Numeric
+
+	Default cCodServ    		:= ""
+	Default cPlanoContratado	:= ""
+
+	// atribuo valor a varivel
+	aArea		:= GetArea()
+	aAreaSB1	:= SB1->(GetArea())
+	lPlanoPet	:= SuperGetMV("MV_XPLNPET", .F., .F.)
+	nPosInt   	:= 0
+
+	// verifico se o codigo do servico esta presente nos dados da integracao
+	If !Empty(cPlanoContratado)
+		nPosInt := AScan(Self:aDadosInt, {|x| AllTrim(x[P_PLANOORI]) == AllTrim(cPlanoContratado) .And. AllTrim(x[P_SERVORI]) == AllTrim(cCodServ) })
+	EndIf
+
+	If nPosInt == 0
+		nPosInt := AScan(Self:aDadosInt, {|x| AllTrim(x[P_SERVORI]) == AllTrim(cCodServ) })
+	EndIf
+
+	// se encontrar o servico, adiciono nos servicos de integracao
+	if nPosInt > 0
+
+		aAdd( Self:aServInt, Self:aDadosInt[nPosInt])
+
+		// verifico se o array de servicos de integracao tem dados
+		if Len(Self:aServInt) > 0
+			Self:lServicoIntegracao := .T. // sinalizo que existe servico de integracao
+
+			// posiciono no cadastro de produtos para auxiliar na funcao para
+			// validacao ValIntEmpresas no programa PFUNA034
+			SB1->(DbSetOrder(1))
+			if SB1->( MsSeek( U_IntRetFilial("SB1", Self:aDadosInt[nPosInt, P_FILDES]) + Self:aDadosInt[nPosInt, P_SERVDES] ) )
+				Self:cTipoEndDes	:= SB1->B1_XREQSER
+				Self:cOcupaGavDes	:= SB1->B1_XOCUGAV
+
+				if lPlanoPet
+					Self:cUsoServico	:= SB1->B1_XUSOSRV
+				endIf
+			endIf
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaSB1)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} IntegraEmpresas::ExecutaIntegracao
+metodo para executar a integracao
+@type method
+@version 1.0 
+@author g.sampaio
+@since 03/08/2021
+@return logical, retorno sobre a execucao da integracao
+/*/
+Method ExecutaIntegracao() Class IntegraEmpresas
+
+	Local aArea			As Array
+	Local aAreaUF2		As Array
+	Local aAreaUJ0		As Array
+	Local aAreaUJ2		As Array
+	Local lRetorno		As Logical
+	Local nIntegracao 	As Numeric
+
+	// atribui valor das variaveis
+	aArea 		:= GetArea()
+	aAreaUF2	:= UF2->(GetArea())
+	aAreaUJ0	:= UJ0->(GetArea())
+	aAreaUJ2	:= UJ2->(GetArea())
+	lRetorno	:= .F.
+	nIntegracao := 0
+
+	// verifico se existem servidos para a integracao
+	if Len(Self:aServInt) > 0
+
+		// percorro os servicos de integracao
+		for nIntegracao := 1 To Len(Self:aServInt)
+
+			// valido os dados para a integracao
+			if Self:ValidaIntegracao(Self:aServInt[nIntegracao, 3], Self:aServInt[nIntegracao, 5], Self:aServInt[nIntegracao, 6])
+
+				// inclui o apontamento de servicos
+				if Self:IncluiAptServico(Self:aServInt[nIntegracao, 6])
+
+					// retorno do metodo
+					lRetorno := .T.
+
+					//==================================
+					// GRAVO INFORMACOES NO APONTAMENTO
+					//==================================
+					BEGIN TRANSACTION
+
+						// posiciono no apontamento de servicos
+						UJ0->(DBSetOrder(1))
+						if UJ0->( MsSeek( U_IntRetFilial("UJ0", Self:cFilialOri ) + Self:cApontaOri ) )
+
+							if UJ0->(Reclock("UJ0", .F.))
+								UJ0->UJ0_TPAPON	:= "2"	// gravo que e um apontamento que tem integracao
+								UJ0->(MsUnlock())
+							else
+								UJ0->(DisarmTransaction())
+							endIf
+
+							// posiciono no servico executado
+							UJ2->(DbSetOrder(2))
+							if UJ2->( MsSeek( UJ0->UJ0_FILIAL + UJ0->UJ0_CODIGO + Self:aServInt[nIntegracao, 4] ) )
+
+								// gravo as informacoes do contrato de destino
+								if UJ2->(Reclock("UJ2", .F.))
+									UJ2->UJ2_FILINT	:= Self:cFilialDes
+									UJ2->UJ2_CTRINT := Self:cContratoDes
+									UJ2->UJ2_APTINT := Self:cApontaDes
+									UJ2->(MsUnlock())
+								else
+									UJ2->(DisarmTransaction())
+								endIf
+							endIf
+
+						endIf
+
+					END TRANSACTION
+
+				endIf
+
+			else
+
+				// incluo o contrato
+				if Self:IncluiContrato(Self:aServInt[nIntegracao])
+
+					//==================================
+					// GRAVO INFORMACOES NO CONTRATO
+					//==================================
+					BEGIN TRANSACTION
+
+						// posiciono no contrato de origem
+						UF2->(DbSetOrder(1))
+						if UF2->(MsSeek( U_IntRetFilial("UF2", Self:cFilialOri) + Self:cContratoOri ))
+
+							if UF2->(Reclock("UF2",.F.))
+								UF2->UF2_TPCONT := "2"
+								UF2->(MsUnlock())
+							else
+								UF2->(DisarmTransaction())
+							endIf
+
+						endIf
+
+					END TRANSACTION
+
+					// inclui o apontamento de servicos
+					if Self:IncluiAptServico(Self:aServInt[nIntegracao, 6])
+
+						// retorno do metodo
+						lRetorno := .T.
+
+						//==================================
+						// GRAVO INFORMACOES NO APONTAMENTO
+						//==================================
+						BEGIN TRANSACTION
+
+							// posiciono no apontamento de servicos
+							UJ0->(DBSetOrder(1))
+							if UJ0->( MsSeek( U_IntRetFilial("UJ0", Self:cFilialOri ) + Self:cApontaOri ) )
+
+								if UJ0->(Reclock("UJ0", .F.))
+									UJ0->UJ0_TPAPON	:= "2"	// gravo que e um apontamento que tem integracao
+									UJ0->(MsUnlock())
+								else
+									UJ0->(DisarmTransaction())
+								endIf
+
+								// posiciono no servico executado
+								UJ2->(DbSetOrder(2))
+								if UJ2->( MsSeek( UJ0->UJ0_FILIAL + UJ0->UJ0_CODIGO + Self:aServInt[nIntegracao, 4] ) )
+
+									// gravo as informacoes do contrato de destino
+									if UJ2->(Reclock("UJ2", .F.))
+										UJ2->UJ2_FILINT	:= Self:cFilialDes
+										UJ2->UJ2_CTRINT := Self:cContratoDes
+										UJ2->UJ2_APTINT := Self:cApontaDes
+										UJ2->(MsUnlock())
+									else
+										UJ2->(DisarmTransaction())
+									endIf
+								endIf
+
+							endIf
+
+						END TRANSACTION
+
+					endIf
+
+				endIf
+
+			endIf
+
+		next nIntegracao
+
+	endIf
+
+	RestArea(aAreaUJ2)
+	RestArea(aAreaUJ0)
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::ValidaIntegracao
+Metodo para validar se ja existe contrato vinculado
+para o contrato de origem e de acordo(ou nao) com
+os parametros do metodo
+@type method
+@version 1.0  
+@author g.sampaio
+@since 04/08/2021
+@param cFilialIntegracao, character, filial de integracao
+@param cProdutoIntegracao, character, produto de cemiterio
+@param cServicoIntegracao, character, servico executado
+@return logical, retorno sobre a integracao de empresas
+/*/
+Method ValidaIntegracao( cFilialIntegracao, cProdutoIntegracao, cServicoIntegracao ) Class IntegraEmpresas
+
+	Local cQuery    As Character
+	Local cAliasTab As Character
+	Local lRetorno  As Logical
+
+	Default cFilialIntegracao   := ""
+	Default cProdutoIntegracao  := ""
+	Default cServicoIntegracao  := ""
+
+	// atribui valor da variavel
+	cQuery 		:= ""
+	cAliasTab 	:= "TRBINT"
+	lRetorno	:= .F.
+
+	cQuery := " SELECT U00.U00_FILIAL FILIALCEM, U00.U00_CODIGO CONTRATO "
+	cQuery += " FROM " + RetSqlName("U00") + " U00 "
+	cQuery += " INNER JOIN " + RetSqlName("U37") + " U37 ON U37.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U37.U37_FILIAL = U00.U00_FILIAL "
+	cQuery += " AND U37.U37_CODIGO = U00.U00_CODIGO"
+
+	if !Empty(cServicoIntegracao)
+		cQuery += " AND U37.U37_SERVIC = '" + cServicoIntegracao + "' "
+	endIf
+	cQuery += " WHERE U00.D_E_L_E_T_ = ' '"
+	cQuery += " AND U00.U00_STATUS = 'A' "
+
+	if !Empty(cFilialIntegracao)
+		cQuery += " AND U00.U00_FILIAL = '" + cFilialIntegracao + "' "
+	endIf
+
+	if !Empty(cProdutoIntegracao)
+		cQuery += " AND U00.U00_PLANO  = '" + cProdutoIntegracao + "' "
+	endIf
+
+	cQuery += " AND U00.U00_TPCONT = '2' "
+	cQuery += " AND U00.U00_FILINT = '" + Self:cFilialOri + "' "
+	cQuery += " AND U00.U00_CTRINT = '" + Self:cContratoOri + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	// caso tenha dados de integracao
+	if (cAliasTab)->(!Eof())
+		lRetorno    := .T.
+
+		// dados do contrato de cemiterio
+		Self:cFilialDes 	:= (cAliasTab)->FILIALCEM
+		Self:cContratoDes	:= (cAliasTab)->CONTRATO
+
+	else // sem integracao
+		// dados do contrato de cemiterio
+		Self:cFilialDes 	:= ""
+		Self:cContratoDes	:= ""
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::IncluiContrato
+Funcao para incluir o contrato da integracao
+de empresas no modulo de cemiterio
+@type method
+@version 1.0 
+@author g.sampaio
+@since 04/08/2021
+@param aIntegracao, array, array de dados da integracao
+@return logical, retorno sobre a inclusao do contrato
+/*/
+Method IncluiContrato(aIntegracao) Class IntegraEmpresas
+
+	Local aArea				As Array
+	Local aAreaU00 			As Array
+	Local aAreaSA1			As Array
+	Local aCabec			As Array
+	Local aAutorizados		As Array
+	Local aMensagens		As Array
+	Local aProdutos			As Array
+	Local aServicos			As Array
+	Local cFilBkp			As Character
+	Local cVendedorInt		As Character
+	Local cIndiceInt		As Character
+	Local cLogIntegracao	As Character
+	Local cCGCOrigem		As Character
+	Local lRetorno			As Logical
+	Local lPlanoPet			As Logical
+
+	Default aIntegracao	:= {}
+
+	// atribui valor das variaveis
+	aArea			:= GetArea()
+	aAreaU00		:= U00->(GetArea())
+	aAreaSA1		:= SA1->(GetArea())
+	aCabec			:= {}
+	aAutorizados	:= {}
+	aMensagens		:= {}
+	aProdutos		:= {}
+	aServicos		:= {}
+	cFilBkp			:= cFilAnt
+	cVendedorInt	:= SuperGetMV("MV_XVENINT", .F., "000000")
+	cIndiceInt		:= SuperGetMV("MV_XINDINT", .F., "001")
+	cLogIntegracao	:= ""
+	lRetorno		:= .F.
+	lPlanoPet		:= .F.
+	lCliOrigem		:= .F.
+
+	// preencho as informacoes de destino
+	Self:cFilialDes := aIntegracao[P_FILDES]
+
+	// altero a filial de destino
+	cFilAnt 		:= Self:cFilialDes
+
+	// verifico se o plano pet esta habilitado
+	lPlanoPet	:= SuperGetMV("MV_XPLNPET", .F., .F.) // habilito o uso do plano pet
+	lCliOrigem	:= SuperGetMV("MV_XINTCLI", .F., .T.) // habilito o uso da integracao de empresas
+
+	If lCliOrigem
+		cCGCOrigem := Self:cCGCCliOri
+	Else
+		cCGCOrigem := Self:cCNPJFilOri
+	EndIf
+
+	// dados do cessionario
+	SA1->(DbSetOrder(3))
+	if SA1->(MsSeek( U_IntRetFilial("SA1", Self:cFilialOri) + cCGCOrigem ))
+
+		// preenchimento dos dados do cabecalho do contrto de cemiterio
+		AAdd( aCabec, {"U00_PLANO"   	, aIntegracao[P_PRODCEM]} )
+		AAdd( aCabec, {"U00_VENDED"		, cVendedorInt } )
+		AAdd( aCabec, {"U00_DATA"		, dDatabase } )
+		AAdd( aCabec, {"U00_FAQUIS"		, "I"})
+		AAdd( aCabec, {"U00_CLIENT"   	, SA1->A1_COD 	} )
+		AAdd( aCabec, {"U00_LOJA"     	, SA1->A1_LOJA  } )
+		AAdd( aCabec, {"U00_VLRENT"		, 0 })
+		AAdd( aCabec, {"U00_QTDPAR"		, 1 })
+		AAdd( aCabec, {"U00_PRIMVE"		, dDatabase })
+		AAdd( aCabec, {"U00_INDICE"		, cIndiceInt })
+		AAdd( aCabec, {"U00_TXMANU"		, 0 })
+
+		// dados de autorizados
+		aAutorizados := AutorizadoRetDados( Self:cFilialOri, Self:cClienteOri,  Self:cLojaOri )
+
+		// preencho os dados da mensagem
+		aMensagens	:= RetMensagem( Self:cFilialOri, Self:cClienteOri,  Self:cLojaOri, Self:cContratoOri )
+
+		BEGIN TRANSACTION
+
+			U00->(DBSetOrder(1))
+
+			// executo o execauto de inclusao de contratos
+			if U_RCPGE004(aCabec, aAutorizados, aMensagens, 3, /*aProdutos*/, /*aServicos*/, @cLogIntegracao)
+
+				// retorno do metod de inclusao
+				lRetorno := .T.
+
+				if U00->(Reclock("U00",.F.))
+					U00->U00_TPCONT 	:= "2"
+					U00->U00_FILINT		:= Self:cFilialOri
+					U00->U00_CTRINT		:= Self:cContratoOri
+
+					// ativo o contrato
+					U00->U00_STATUS		:= "A"
+					U00->U00_DTATIV		:= dDataBase
+
+					if lPlanoPet .And. Len(Self:aDadosUJ0) > 0
+						U00->U00_USO	:= Self:aDadosUJ0[APT_USO]
+					endIf
+
+					U00->(MsUnlock())
+				else
+					U00->(DisarmTransaction())
+				endIf
+
+				// contrato de destino
+				Self:cContratoDes	:= U00->U00_CODIGO
+
+			endIf
+
+		END TRANSACTION
+
+	endIf
+
+	// restauro a filial de origem
+	if !Empty(cFilBkp)
+		cFilAnt := cFilBkp
+	endIf
+
+	RestArea(aAreaSA1)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} AutorizadoRetDados
+Funcao para retornar os dados a serem 
+preenchidos do autorizado do contrato
+@type function
+@version 1.0 
+@author g.sampaio
+@since 04/08/2021
+@param cFilialOri, character, filial de origem
+@param cClienteOri, character, cliente de oiregem
+@param cLojaOri, character, loja de origem
+@return array, retorna os dados do autorizado
+/*/
+Static Function AutorizadoRetDados( cFilialOri, cClienteOri, cLojaOri )
+
+	Local aArea		As Array
+	Local aAreaSA1	As Array
+	Local aItensAut	As Array
+	Local aRetorno	As Array
+
+	Default cFilialOri	:= ""
+	Default cClienteOri	:= ""
+	Default cLojaOri	:= ""
+
+	// defino o valor das variaveis
+	aArea 		:= GetArea()
+	aAreaSA1	:= SA1->(GetArea())
+	aItensAut	:= {}
+	aRetorno	:= {}
+
+	// posiciono no cadastro de cliente
+	SA1->(DBSetOrder(1))
+	if SA1->(MsSeek( U_IntRetFilial("SA1", cFilialOri)+cClienteOri+cLojaOri ))
+
+		aAdd(aItensAut, {"U02_ITEM"		, U02ProxItem() 	})
+		aAdd(aItensAut, {"U02_CODCLI"	, AllTrim(SA1->A1_COD)		})
+		aAdd(aItensAut, {"U02_LOJCLI"	, AllTrim(SA1->A1_LOJA)		})
+		aAdd(aItensAut, {"U02_NOME"		, AllTrim(SA1->A1_NOME)		})
+		aAdd(aItensAut, {"U02_GRAUPA"	, "OU"	 			})// Outros
+		aAdd(aItensAut, {"U02_CPF"		, AllTrim(SA1->A1_CGC)		})
+		aAdd(aItensAut, {"U02_CI"		, AllTrim(SA1->A1_PFISICA)	})
+
+		// caso o cliente contem data de nascimento preenchida
+		if !Empty(SA1->A1_XDTNASC)
+			aAdd(aItensAut, {"U02_DTNASC", SA1->A1_XDTNASC})
+			aAdd(aItensAut, {"U02_IDADE", U_UAgeCalculate(SA1->A1_XDTNASC,dDataBase)})
+		EndIf
+
+		aAdd(aItensAut, {"U02_SEXO"		, AllTrim(SA1->A1_XSEXO)		})
+		aAdd(aItensAut, {"U02_ESTCIV"	, AllTrim(SA1->A1_XESTCIV)	})
+		aAdd(aItensAut, {"U02_END"		, AllTrim(SA1->A1_ENDCOB)	})
+		aAdd(aItensAut, {"U02_COMPLE"	, AllTrim(SA1->A1_COMPLEM)	})
+		aAdd(aItensAut, {"U02_BAIRRO"	, AllTrim(SA1->A1_BAIRROC)	})
+		aAdd(aItensAut, {"U02_CEP"		, AllTrim(SA1->A1_CEP)		})
+		aAdd(aItensAut, {"U02_EST"		, AllTrim(SA1->A1_EST)		})
+		aAdd(aItensAut, {"U02_CODMUN"	, AllTrim(SA1->A1_CODMUN)	})
+		aAdd(aItensAut, {"U02_MUN"		, AllTrim(SA1->A1_MUN)		})
+		aAdd(aItensAut, {"U02_DDD"		, AllTrim(SA1->A1_DDD)		})
+		aAdd(aItensAut, {"U02_FONE"		, AllTrim(SA1->A1_TEL)		})
+		aAdd(aItensAut, {"U02_CELULA"	, AllTrim(SA1->A1_XCEL)		})
+		aAdd(aItensAut, {"U02_EMAIL"	, AllTrim(SA1->A1_EMAIL)		})
+		aAdd(aItensAut, {"U02_STATUS"	, "1"				}) // titular
+
+		// alimento o array de retorno
+		aAdd(aRetorno, aItensAut )
+
+	endIf
+
+	RestArea(aAreaSA1)
+	RestArea(aArea)
+
+Return(aRetorno)
+
+/*/{Protheus.doc} RetMensagem
+Retorna os dados da mensagem do contrato
+@type function
+@version 1.0  
+@author g.sampaio
+@since 04/08/2021
+@param cFilialOri, character, filial de origem
+@param cClienteOri, character, cliente de oiregem
+@param cLojaOri, character, loja de origem
+@return array, retorna os dados de mensagens
+/*/
+Static Function RetMensagem( cFilialOri, cClienteOri, cLojaOri,cContratoOri )
+
+	Local aItensMsg		As Array
+	Local aRetorno		As Array
+	Local cDescriMsg	As Character
+
+	Default cFilialOri	:= ""
+	Default cClienteOri	:= ""
+	Default cLojaOri	:= ""
+
+	// atribui valor as variaveis
+	aItensMsg 	:= {}
+	aRetorno	:= {}
+	cDescriMsg	:= ""
+
+	cDescriMsg := "CONTRATO DE ORIGEM DA INTEGRACAO DE EMPRESAS"
+	cDescriMsg += "Filial Origem :" + cFilialOri
+	cDescriMsg += "Contrato Origem :" + cContratoOri
+	cDescriMsg += "Cliente Origem :" + cClienteOri + " - " + cLojaOri
+
+	// adicionado dos itens
+	aAdd(aItensMsg, {"U03_ITEM"		, U03ProxItem()				} )
+	aAdd(aItensMsg, {"U03_HISTOR"	, "INTEGRACAO DE EMPRESAS"	} )
+	aAdd(aItensMsg, {"U03_DESCRI"	, cDescriMsg 				} )
+	aAdd(aItensMsg, {"U03_MOSTRA"	, "S" 						} )
+	aAdd(aItensMsg, {"U03_DTVIGE"	, Stod("20491231")			} )
+
+	// alimento o array de retorno
+	aAdd(aRetorno, aItensMsg)
+
+Return(aRetorno)
+
+/*/{Protheus.doc} RetProdutos
+Retorna os dados de produtos da composicao de produtos
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/08/2021
+@param cFilialDestino, character, filial de destino da integracao
+@param cProdutoCemiterio, character, produto de destino da integracao
+@return array, retorna os dados de produtos
+/*/
+Static Function RetProdutos( cFilialDestino, cProdutoCemiterio)
+
+	Local aItensCemiterio	As Array
+	Local aRetorno			As Array
+	Local cQuery 			As Character
+	Local cAliasTab			As Character
+
+	Default cFilialDestino		:= ""
+	Default cProdutoCemiterio	:= ""
+
+	// atirbui valor das variaveis
+	aItensCemiterio := {}
+	aRetorno		:= {}
+	cQuery			:= ""
+	cAliasTab 		:= "TRBPRO"
+
+	cQuery := " SELECT U06.U06_CODIGO, U06.U06_ITEM, U06.U06_PRODUT, U06.U06_QUANT "
+	cQuery += " FROM " + RetSqlName("U06") + " U06 "
+	cQuery += " WHERE U06.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U06.U06_FILIAL = '" + cFilialDestino + "'"
+	cQuery += " AND U06.U06_CODIGO = '" + cProdutoCemiterio + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	while (cAliasTab)->(!Eof())
+
+		aItensCemiterio := {}
+		AAdd(aItensCemiterio, {"U01_ITEM"	, (cAliasTab)->U06_ITEM 	})
+		AAdd(aItensCemiterio, {"U01_PROD"	, (cAliasTab)->U06_PRODUT	})
+		AAdd(aItensCemiterio, {"U01_QUANT"	, (cAliasTab)->U06_QUANT	})
+
+		// alimento o array de retorno
+		AAdd(aRetorno, aItensCemiterio)
+
+		(cAliasTab)->(DBSkip())
+	endDo
+
+Return(aRetorno)
+
+/*/{Protheus.doc} RetServicos
+Retorna os dados de servicos da composicao de produtos
+@type function
+@version 1.0  
+@author g.sampaio
+@since 04/08/2021
+@param cFilialDestino, character, filial de destino da integracao
+@param cProdutoCemiterio, character, produto de destino da integracao
+@return array, retorna os dados de servicos
+/*/
+Static Function RetServicos(cFilialDestino, cProdutoCemiterio)
+
+	Local aServicosCemiterio	As Array
+	Local aRetorno				As Array
+	Local cQuery 				As Character
+	Local cAliasTab				As Character
+
+	Default cFilialDestino		:= ""
+	Default cProdutoCemiterio	:= ""
+
+	// atirbui valor das variaveis
+	aServicosCemiterio 	:= {}
+	aRetorno			:= {}
+	cQuery				:= ""
+	cAliasTab			:= "TRBSER"
+
+	cQuery := " SELECT U36.U36_CODIGO, U36.U36_ITEM, U36.U36_SERVIC, U36.U36_QUANT "
+	cQuery += " FROM " + RetSqlName("U36") + " U36 "
+	cQuery += " WHERE U36.D_E_L_E_T_ = ' ' "
+	cQuery += " AND U36.U36_FILIAL = '" + cFilialDestino + "'"
+	cQuery += " AND U36.U36_CODIGO = '" + cProdutoCemiterio + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	while (cAliasTab)->(!Eof())
+
+		aServicosCemiterio := {}
+		AAdd(aServicosCemiterio, {"U37_ITEM"	, (cAliasTab)->U36_ITEM		})
+		AAdd(aServicosCemiterio, {"U37_SERVIC"	, (cAliasTab)->U36_SERVIC	})
+		AAdd(aServicosCemiterio, {"U37_QUANT"	, (cAliasTab)->U36_QUANT	})
+
+		// alimento o array de retorno
+		AAdd(aRetorno, aServicosCemiterio)
+
+		(cAliasTab)->(DBSkip())
+	endDo
+
+Return(aRetorno)
+
+/*/{Protheus.doc} U02ProxItem
+funcao para retornar o proximo item da U02
+@type function
+@version 1.0
+@author g.sampaio
+@since 16/12/2020
+@param cCodContrato, character, codigo do contrato
+@return character, retorna o proximo item do autorizado
+/*/
+Static Function U02ProxItem( cCodContrato )
+
+	Local cQuery 	As Character
+	Local cAliasTab	As Character
+	Local cRetorno	As Character
+
+	Default cCodContrato	:= ""
+
+	// atribuo valor das variaveis
+	cQuery 		:= ""
+	cAliasTab	:= "TRBU02"
+	cRetorno	:= ""
+
+	if !Empty(cCodContrato)
+
+		cQuery := " SELECT MAX(U02_ITEM) MAXITEM FROM " + RetSqlName("U02") + " U02 "
+		cQuery += " WHERE U02.D_E_L_E_T_ = ' '"
+		cQuery += " AND U02.U02_FILIAL = '" + xFilial("U02") + "'"
+		cQuery += " AND U02.U02_CODIGO = '" + cCodContrato + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		if (cAliasTab)->(!Eof())
+			cRetorno	:= Soma1(AllTrim((cAliasTab)->MAXITEM))
+		endIf
+
+	endIf
+
+	// caso nao tiver retorno
+	if Empty(cRetorno)
+		cRetorno := StrZero(1,TamSX3("U02_ITEM")[1]) // incicio pelo item 1
+	endIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} U03ProxItem
+Retorna proximo item para cadastro de mensagens do contrato
+@type function
+@version 1.0
+@author nata.queiroz
+@since 04/03/2020
+@param cCodCtr, character, codigo do contrato
+@return character, retorna o proximo item 
+/*/
+Static Function U03ProxItem(cCodCtr)
+
+	Local aArea     := GetArea()
+	Local cProxItm  := ""
+	Local cQry      := ""
+
+	Default cCodCtr := ""
+
+	if !Empty(cCodCtr)
+
+		cQry := "SELECT MAX(U03_ITEM) MAXITEM "
+		cQry += "FROM " + RetSqlName("U03")
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "AND U03_FILIAL = '"+ xFilial("U03") +"' "
+		cQry += "AND U03_CODIGO = '"+ AllTrim(cCodCtr) +"' "
+
+		cQry := ChangeQuery(cQry)
+
+		MPSysOpenQuery(cQry, "TRBU03")
+
+		//-- Existe registros na tabela --//
+		If TRBU03->(!Eof())
+			cProxItm := Soma1(TRBU03->MAXITEM)
+		EndIf
+
+	endIf
+
+	// caso nao tiver retorno
+	if Empty(cProxItm)
+		cProxItm := StrZero(1,TamSX3("U03_ITEM")[1]) // incicio pelo item 1
+	endIf
+
+	RestArea(aArea)
+
+Return(cProxItm)
+
+/*/{Protheus.doc} IntegraEmpresas::IncluiAptServico
+Metodo para incluir o apontamento de servico
+de cemiterio
+@type method
+@version 1.0 
+@author g.sampaio
+@since 04/08/2021
+@param cServicoApto, character, servico para o apontamento de servicos
+@return logical, retorno sobre a inclusao do apontamento de servicos
+/*/
+Method IncluiAptServico(cServicoApto) Class IntegraEmpresas
+
+	Local aArea					As Array
+	Local aAreaSB1				As Array
+	Local aAreaUJV				As Array
+	Local aAptServico			As Array
+	Local cCodAptServic			As Character
+	Local cFilBkp				As Character
+	Local cTabPad				As Character
+	Local cQuadDest				As Character
+	Local cModuDest				As Character
+	Local cJaziDest				As Character
+	Local cGaveDest				As Character
+	Local cCremDest				As Character
+	Local cNichoCDest			As Character
+	Local cOssarDest			As Character
+	Local cNichoODest			As Character
+	Local lPlanoPet				As Logical
+	Local lRetorno				As Logical
+	Local oModAptServCemiterio	As Object
+
+	Default cServicoApto	:= ""
+
+	// defino valor as variaveis
+	aArea					:= GetArea()
+	aAreaSB1				:= SB1->(GetArea())
+	aAreaUJV				:= UJV->(GetArea())
+	aAptServico				:= {}
+	cFilBkp					:= cFilAnt
+	cCodAptServic			:= ""
+	cTabPad					:= ""
+	cQuadDest				:= ""
+	cModuDest				:= ""
+	cJaziDest				:= ""
+	cGaveDest				:= ""
+	cCremDest				:= ""
+	cNichoCDest				:= ""
+	cOssarDest				:= ""
+	cNichoODest				:= ""
+	lRetorno				:= .F.
+	lPlanoPet				:= SuperGetMV("MV_XPLNPET", .F., .F.) // habilito o uso do plano pet
+	oModAptServCemiterio	:= ModAptServCemiterio():New()
+
+	// altero a filial de destino
+	cFilAnt := Self:cFilialDes
+
+	// pego a tabela de precos padrao da filial de destino
+	cTabPad 	:= SuperGetMv("MV_XTABSER", .F.,"001")
+	cQuadDest	:= SuperGetMv("MV_XQDTMP", .F., Replicate("9",TamSX3("U04_QUADRA")[1]))
+	cModuDest	:= SuperGetMv("MV_XMDTMP", .F., Replicate("9",TamSX3("U04_MODULO")[1]))
+	cJaziDest	:= SuperGetMv("MV_XJZTMP", .F., StrZero(1,TamSX3("U04_JAZIGO")[1]) )
+	cCremDest	:= SuperGetMv("MV_XCRTMP", .F., Replicate("9",TamSX3("U04_CREMAT")[1]))
+	cNichoCDest	:= SuperGetMv("MV_XNCTMP", .F., StrZero(1,TamSX3("U04_NICHOC")[1]))
+	cOssarDest	:= SuperGetMv("MV_XOSTMP", .F., "V" + StrZero(0,TamSX3("U04_OSSARI")[1]-1))
+	cNichoODest	:= SuperGetMv("MV_XNOTMP", .F., StrZero(1,TamSX3("U04_OSSARI")[1]))
+
+	// posiciono no cadastro de produtos
+	SB1->(DbSetOrder(1))
+	if SB1->(MsSeek( U_IntRetFilial("SB1", Self:cFilialDes ) + cServicoApto ))
+
+		//=============================================================
+		// monto os dados do apontamento de servico no modelo de dados
+		//=============================================================
+		cCodAptServic	:= GetSXENum("UJV","UJV_CODIGO")
+
+		oModAptServCemiterio:filial 				:= U_InitCmpDados("UJV","UJV_FILIAL", U_IntRetFilial("UJV", Self:cFilialDes ))
+		oModAptServCemiterio:codigo 				:= U_InitCmpDados("UJV","UJV_CODIGO", cCodAptServic )
+		oModAptServCemiterio:contrato 				:= U_InitCmpDados("UJV","UJV_CONTRA", Self:cContratoDes )
+
+		// pego os dados do contrato
+		U00->(DbSetOrder(1))
+		if U00->(MsSeek( U_IntRetFilial("U00", Self:cFilialDes) + Self:cContratoDes ))
+			oModAptServCemiterio:cliente                := U_InitCmpDados("UJV","UJV_CODCLI", U00->U00_CLIENT)
+			oModAptServCemiterio:loja_cliente           := U_InitCmpDados("UJV","UJV_LOJCLI", U00->U00_LOJA)
+		endif
+
+		oModAptServCemiterio:servico                := U_InitCmpDados("UJV","UJV_SERVIC", cServicoApto)
+
+		// pego os dados do autorizado
+		U02->(DbSetOrder(2))
+		if U02->(MsSeek( U_IntRetFilial("U02", Self:cFilialDes ) + Self:cContratoDes + Self:cClienteOri + Self:cLojaOri ))
+			oModAptServCemiterio:autorizado             := U_InitCmpDados("UJV","UJV_AUTORI", U02->U02_ITEM)
+		endif
+
+		oModAptServCemiterio:atendente              := U_InitCmpDados("UJV","UJV_USRATE", cUserName)
+		oModAptServCemiterio:data_apt               := U_InitCmpDados("UJV","UJV_DATA", dDataBase)
+		oModAptServCemiterio:hora_apt        		:= U_InitCmpDados("UJV","UJV_HORA", SubStr(Time(),1,5))
+		oModAptServCemiterio:data_obito            	:= U_InitCmpDados("UJV","UJV_DTOBT", Self:aDadosUJ0[APT_DTFALE])
+		oModAptServCemiterio:causa_morte            := U_InitCmpDados("UJV","UJV_CAUSA", Self:aDAdosUJ0[APT_CAUSA])
+		oModAptServCemiterio:tabela_preco           := U_InitCmpDados("UJV","UJV_TABPRC", cTabPad)
+		oModAptServCemiterio:observacao             := U_InitCmpDados("UJV","UJV_OBS", Self:aDadosUJ0[APT_OBS])
+		oModAptServCemiterio:data_certidao          := U_InitCmpDados("UJV","UJV_DTCERT", Self:aDadosUJ0[APT_DTCERT])
+		oModAptServCemiterio:local_falecimento      := U_InitCmpDados("UJV","UJV_LOCFAL", Self:aDadosUJ0[APT_LOCAFAL])
+		oModAptServCemiterio:falecido               := U_InitCmpDados("UJV","UJV_NOME", Self:aDadosUJ0[APT_NOMEFA])
+		oModAptServCemiterio:data_nascimento        := U_InitCmpDados("UJV","UJV_DTNASC", Self:aDadosUJ0[APT_DTNASC])
+		oModAptServCemiterio:sexo                   := U_InitCmpDados("UJV","UJV_SEXO", Self:aDadosUJ0[APT_SEXO])
+		oModAptServCemiterio:estado_civil           := U_InitCmpDados("UJV","UJV_ESTCIV", Self:aDadosUJ0[APT_ESTCFA])
+		oModAptServCemiterio:nacionalidade          := U_InitCmpDados("UJV","UJV_NACION", Self:aDadosUJ0[APT_NACION])
+		oModAptServCemiterio:estado                 := U_InitCmpDados("UJV","UJV_UF", Self:aDadosUJ0[APT_UFFAL])
+		oModAptServCemiterio:codigo_municipio       := U_InitCmpDados("UJV","UJV_CODMUN", Self:aDadosUJ0[APT_CODMUN])
+		oModAptServCemiterio:nome_mae               := U_InitCmpDados("UJV","UJV_NOMAE", Self:aDadosUJ0[APT_NOMAE])
+		oModAptServCemiterio:cliente_pv             := U_InitCmpDados("UJV","UJV_CLIENT",Self:aDadosUJ0[APT_CLICEM])
+		oModAptServCemiterio:loja_pv                := U_InitCmpDados("UJV","UJV_LOJA", Self:aDadosUJ0[APT_LOJCEM])
+
+		aEmpAux	:= FWSM0Util():GetSM0Data( cEmpAnt , Self:cFilialOri, { "M0_NOME" } ) // pego o cnpj da filial de origem
+
+		oModAptServCemiterio:funeraria              := U_InitCmpDados("UJV","UJV_FUNERA", aEmpAux[1, 2] )
+
+		if SB1->B1_XREQSER == "J"// Jazigo
+
+			// funcao para validar o endereco de destino
+			ValEndTemporario(Self:cFilialDes, Self:cContratoDes, cServicoApto, "J", cQuadDest, cModuDest, @cJaziDest, @cGaveDest )
+
+			oModAptServCemiterio:quadra                 := U_InitCmpDados("UJV","UJV_QUADRA", cQuadDest)
+			oModAptServCemiterio:modulo                 := U_InitCmpDados("UJV","UJV_MODULO", cModuDest)
+			oModAptServCemiterio:jazigo                 := U_InitCmpDados("UJV","UJV_JAZIGO", cJaziDest)
+			oModAptServCemiterio:gaveta                 := U_InitCmpDados("UJV","UJV_GAVETA", cGaveDest)
+
+		elseIf SB1->B1_XREQSER == "C"// Crematorio
+
+			// funcao para validar o endereco de destino
+			ValEndTemporario(Self:cFilialDes, Self:cContratoDes, cServicoApto, "C", cCremDest, @cNichoCDest )
+
+			oModAptServCemiterio:crematorio             := U_InitCmpDados("UJV","UJV_CREMAT", cCremDest)
+			oModAptServCemiterio:nicho_crematorio       := U_InitCmpDados("UJV","UJV_NICHOC", cNichoCDest)
+		elseIf SB1->B1_XREQSER == "O"// Ossario
+
+			// funcao para validar o endereco de destino
+			ValEndTemporario(Self:cFilialDes, Self:cContratoDes, cServicoApto, "O", @cOssarDest, @cNichoODest )
+
+			oModAptServCemiterio:ossario                := U_InitCmpDados("UJV","UJV_OSSARI", cOssarDest)
+			oModAptServCemiterio:nicho_ossario          := U_InitCmpDados("UJV","UJV_NICHOO", cNichoODest)
+
+		endIf
+
+		if !Empty(Self:aDadosUJ0[APT_DTSEPU])
+			oModAptServCemiterio:data_sepultamento            	:= U_InitCmpDados("UJV","UJV_DTSEPU", Self:aDadosUJ0[APT_DTSEPU])
+		else
+			oModAptServCemiterio:data_sepultamento            	:= U_InitCmpDados("UJV","UJV_DTSEPU", dDataBase)
+		endIf
+
+		if !Empty(Self:aDadosUJ0[APT_HRSEPU])
+			oModAptServCemiterio:hora_sepultamento            	:= U_InitCmpDados("UJV","UJV_HORASE", Self:aDadosUJ0[APT_HRSEPU])
+		else
+			oModAptServCemiterio:hora_sepultamento            	:= U_InitCmpDados("UJV","UJV_HORASE", SubStr(Time(),1,5))
+		endIf
+
+		oModAptServCemiterio:origem                 := U_InitCmpDados("UJV","UJV_ORIGEM", "RUTILE41")
+		oModAptServCemiterio:endereco_falecido      := U_InitCmpDados("UJV","UJV_ENDFAL", Self:aDadosUJ0[APT_ENDFAL])
+		oModAptServCemiterio:complemento_falecido   := U_InitCmpDados("UJV","UJV_CMPFAL", Self:aDadosUJ0[APT_CMPFAL])
+		oModAptServCemiterio:bairro_falecido        := U_InitCmpDados("UJV","UJV_BAIFAL", Self:aDadosUJ0[APT_BAIFAL])
+		oModAptServCemiterio:cep_falecido           := U_InitCmpDados("UJV","UJV_CEPFAÇ", Self:aDadosUJ0[APT_CEPFAL])
+		oModAptServCemiterio:tipo_pet               := U_InitCmpDados("UJV","UJV_TIPPET", Self:aDadosUJ0[APT_TIPPET])
+		oModAptServCemiterio:raca_pet               := U_InitCmpDados("UJV","UJV_RACA", Self:aDadosUJ0[APT_RACA])
+		oModAptServCemiterio:corpelagem_pet         := U_InitCmpDados("UJV","UJV_CORPEL", Self:aDadosUJ0[APT_CORPEL])
+		oModAptServCemiterio:porte_pet              := U_InitCmpDados("UJV","UJV_PORTE", Self:aDadosUJ0[APT_PORTE])
+		oModAptServCemiterio:cpf_falecido           := U_InitCmpDados("UJV","UJV_CPFFAL", Self:aDadosUJ0[APT_CPF])
+		oModAptServCemiterio:rg_falecido            := U_InitCmpDados("UJV","UJV_RGFAL", Self:aDadosUJ0[APT_RG])
+		oModAptServCemiterio:religiao_falecido      := U_InitCmpDados("UJV","UJV_RELIGI", Self:aDadosUJ0[APT_RELIGI])
+
+		// atualizo o modelo de dados
+		oModAptServCemiterio:toJsonObject()
+
+		//==================================================
+		// monto os dados do apontamento de servico
+		//==================================================
+
+		// vou gerar o apontamento de servicos
+		aadd(aAptServico,{"UJV_FILIAL"		, oModAptServCemiterio:filial	})
+		aadd(aAptServico,{"UJV_CODIGO"		, oModAptServCemiterio:codigo	})
+		aadd(aAptServico,{"UJV_CONTRA"		, oModAptServCemiterio:contrato	})
+		aadd(aAptServico,{"UJV_SERVIC"		, oModAptServCemiterio:servico  })
+
+		// pego os dados do contrato
+		U00->(DbSetOrder(1))
+		if U00->(MsSeek( U_IntRetFilial("U00", Self:cFilialDes) + Self:cContratoDes ))
+			aadd(aAptServico,{"UJV_CODCLI"		, oModAptServCemiterio:cliente			})
+			aadd(aAptServico,{"UJV_LOJCLI"		, oModAptServCemiterio:loja_cliente		})
+		endIf
+
+		U02->(DbSetOrder(2))
+		if U02->(MsSeek( U_IntRetFilial("U02", Self:cFilialDes ) + Self:cContratoDes + Self:cClienteOri + Self:cLojaOri ))
+			aadd(aAptServico,{"UJV_AUTORI"		, oModAptServCemiterio:autorizado		})
+		endIf
+
+		aadd(aAptServico,{"UJV_USRATE"		, oModAptServCemiterio:atendente			})
+		aadd(aAptServico,{"UJV_DATA"		, oModAptServCemiterio:data_apt				})
+		aadd(aAptServico,{"UJV_HORA"		, oModAptServCemiterio:hora_apt				})
+		aadd(aAptServico,{"UJV_DTSEPU"		, oModAptServCemiterio:data_sepultamento	})
+		aadd(aAptServico,{"UJV_HORASE"		, oModAptServCemiterio:hora_sepultamento	})
+		aadd(aAptServico,{"UJV_TABPRC"		, oModAptServCemiterio:tabela_preco			})
+		aadd(aAptServico,{"UJV_OBS"			, oModAptServCemiterio:observacao			})
+		aadd(aAptServico,{"UJV_DTOBT"		, oModAptServCemiterio:data_obito			})
+		aadd(aAptServico,{"UJV_DTCERT"		, oModAptServCemiterio:data_certidao		})
+		aadd(aAptServico,{"UJV_LOCFAL"		, oModAptServCemiterio:local_falecimento	})
+		aadd(aAptServico,{"UJV_CAUSA"		, oModAptServCemiterio:causa_morte	})
+		aadd(aAptServico,{"UJV_NOME"		, oModAptServCemiterio:falecido				})
+		aadd(aAptServico,{"UJV_DTNASC"		, oModAptServCemiterio:data_nascimento		})
+		aadd(aAptServico,{"UJV_SEXO"		, oModAptServCemiterio:sexo					})
+		aadd(aAptServico,{"UJV_ESTCIV"		, oModAptServCemiterio:estado_civil			})
+		aadd(aAptServico,{"UJV_NOMAE"		, oModAptServCemiterio:nome_mae				})
+
+		if lPlanoPet
+			aadd(aAptServico,{"UJV_TIPPET"		, oModAptServCemiterio:tipo_pet			})
+			aadd(aAptServico,{"UJV_RACA"		, oModAptServCemiterio:raca_pet			})
+			aadd(aAptServico,{"UJV_CORPEL"		, oModAptServCemiterio:corpelagem_pet	})
+			aadd(aAptServico,{"UJV_PORTE"		, oModAptServCemiterio:porte_pet		})
+		endIf
+
+		if SB1->B1_XREQSER == "J"// Jazigo
+
+			aadd(aAptServico,{"UJV_QUADRA"		, oModAptServCemiterio:quadra	}) // quadra destino
+			aadd(aAptServico,{"UJV_MODULO"		, oModAptServCemiterio:modulo 	}) // modulo destino
+			aadd(aAptServico,{"UJV_JAZIGO"		, oModAptServCemiterio:jazigo	}) // jazigo destino
+			aadd(aAptServico,{"UJV_GAVETA"		, oModAptServCemiterio:gaveta	}) // gaveta destino
+
+		elseIf SB1->B1_XREQSER == "C"// Crematorio
+
+			aadd(aAptServico,{"UJV_CREMAT"		, oModAptServCemiterio:crematorio 		}) // crematorio destino
+			aadd(aAptServico,{"UJV_NICHOC"		, oModAptServCemiterio:nicho_crematorio	}) // nicho crematorio destino
+
+		elseIf SB1->B1_XREQSER == "O"// Ossario
+
+			aadd(aAptServico,{"UJV_OSSARI"		, oModAptServCemiterio:ossario			}) // ossario destino
+			aadd(aAptServico,{"UJV_NICHOO"		, oModAptServCemiterio:nicho_ossario	}) // nicho ossario destino
+
+		endIf
+
+		// cliente para o faturamento do apontamento de gestao de cemiterio
+		if !Empty(Self:aDadosUJ0[APT_CLICEM]) .And. !Empty(Self:aDadosUJ0[APT_LOJCEM])
+			aadd(aAptServico,{"UJV_CLIENT"		, oModAptServCemiterio:cliente_pv	})
+			aadd(aAptServico,{"UJV_LOJA"		, oModAptServCemiterio:loja_pv	})
+		endIf
+
+		aadd(aAptServico,{"UJV_ORIGEM"		, oModAptServCemiterio:origem	})
+
+	endIf
+
+	// executo o execauto de apontamento de servicos
+	if Len(aAptServico) > 0
+
+		BEGIN TRANSACTION
+
+			// execauto de apotnamento de servicos cemiterio
+			lRetorno := U_RCPGE056( 3, aAptServico)
+
+			// verifico se deu certo
+			if lRetorno
+
+				UJV->(ConfirmSX8()) // confirmo o controle de numeracao
+
+				// pego o codigo do apontamento de destino
+				Self:cApontaDes := UJV->UJV_CODIGO
+
+				if UJV->(Reclock("UJV",.F.))
+					UJV->UJV_TPAPON		:= "2"
+					UJV->UJV_FILINT		:= Self:cFilialOri
+					UJV->UJV_CTRINT		:= Self:cContratoOri
+					UJV->UJV_APTINT		:= Self:cApontaOri
+					UJV->UJV_STATUS 	:= "E" // gravo status do endereco como efetivado
+					UJV->UJV_STENDE		:= "R" // gravo status do endereco como efetivado
+
+					if lPlanoPet .And. Len(Self:aDadosUJ0) > 0
+						UJV->UJV_USO	:= Self:aDadosUJ0[APT_USO]
+					endIf
+
+					UJV->(MsUnlock())
+				else
+					UJV->(DisarmTransaction())
+				endIf
+
+			else
+				UJV->(RollBackSX8())// desfaco o controle de numeracao
+
+			endIf
+
+		END TRANSACTION
+
+	endIf
+
+	if !Empty(cFilBkp)
+		cFilAnt	:= cFilBkp
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ClienteRetDados
+Retorno os dados do cliente original.
+com contrato - titular do contrato
+sem contrato - cliente do pedido de vendas do apontamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/08/2021
+@param cFilContrato, character, filial do contrato
+@param cContrato, character, contrato de origem
+@param cApontamento, character, apontamento de origem
+@param cClienteRet, character, cliente de retorno
+@param cLojaRet, character, loja de retorno
+/*/
+Static Function ClienteRetDados(cFilContrato, cContrato, cApontamento, cClienteRet, cLojaRet, cCGCCliRet)
+
+	Local cQuery 	As Character
+	Local cAliasTab	As Character
+
+	Default cFilContrato	:= ""
+	Default cContrato		:= ""
+	Default cApontamento	:= ""
+	Default cClienteRet		:= ""
+	Default cLojaRet		:= ""
+	Default cCGCCliRet		:= ""
+
+	// atribuo valor as variaveis
+	cAliasTab	:= "TRBCLI"
+
+	// caso seja um apontamento de associado
+	if !Empty(cContrato)
+
+		cQuery := " SELECT UF2.UF2_CLIENT AS CLIENTE, UF2.UF2_LOJA AS LOJA, SA1.A1_CGC AS CGC FROM " + RetSqlName("UF2") + " UF2 "
+		cQuery += " INNER JOIN " + RetSqlName("SA1") + " SA1 ON SA1.D_E_L_E_T_ = ' ' "
+		cQuery += " AND SA1.A1_FILIAL 	= '" + U_IntRetFilial("SA1", cFilContrato) + "' "
+		cQuery += " AND SA1.A1_COD 		= UF2.UF2_CLIENT "
+		cQuery += " AND SA1.A1_LOJA 	= UF2.UF2_LOJA "
+		cQuery += " WHERE UF2.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UF2.UF2_FILIAL 	= '" + U_IntRetFilial("UF2", cFilContrato) + "' "
+		cQuery += " AND UF2.UF2_CODIGO 	= '" + cContrato + "' "
+
+	else // apontamento particular
+
+		cQuery := " SELECT UJ0.UJ0_CLIPV AS CLIENTE, UJ0.UJ0_LOJAPV AS LOJA, SA1.A1_CGC AS CGC FROM " + RetSqlName("UJ0") + " UJ0 "
+		cQuery += " INNER JOIN " + RetSqlName("SA1") + " SA1 ON SA1.D_E_L_E_T_ = ' ' "
+		cQuery += " AND SA1.A1_FILIAL 	= '" + U_IntRetFilial("SA1", cFilContrato) + "' "
+		cQuery += " AND SA1.A1_COD 		= UJ0.UJ0_CLIPV "
+		cQuery += " AND SA1.A1_LOJA 	= UJ0.UJ0_LOJAPV "
+		cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+		cQuery += " AND UJ0.UJ0_FILIAL 	= '" + U_IntRetFilial("UJ0", cFilContrato) + "' "
+		cQuery += " AND UJ0.UJ0_CODIGO 	= '" + cApontamento + "' "
+
+	endIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	// retorno os dados do cliente
+	if (cAliasTab)->(!Eof())
+		cClienteRet	:= (cAliasTab)->CLIENTE
+		cLojaRet	:= (cAliasTab)->LOJA
+		cCGCCliRet	:= (cAliasTab)->CGC
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} UJ0RetDados
+Funcao para retornar os dados do apontamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 03/08/2021
+@param cFilialOri, character, filial de origem
+@param cContratoOri, character, contrato de origem
+@param cApontaOri, character, apontamento de origem
+@return array, array de dados do apontamento
+/*/
+Static Function UJ0RetDados( cFilialOri, cContratoOri, cApontaOri)
+
+	Local aRetorno		As Array
+	Local cQuery 		As Character
+	Local cBancoDeDados	As Character
+	Local lPlanoPet		As Logical
+
+	Default cFilialOri		:= ""
+	Default cContratoOri	:= ""
+	Default cApontaOri		:= ""
+
+	// atribuo valor as variaveis
+	aRetorno		:= {}
+	cQuery			:= ""
+	cAliasTab		:= ""
+	lPlanoPet		:= SuperGetMV("MV_XPLNPET", .F., .F.) // habilito o uso do plano pet
+
+	// pego o banco de dados da aplicacao
+	cBancoDeDados := TcGetDB()
+
+	// caso nao tenha retorno coloco o conteudo padrao
+	if Empty(cBancoDeDados)
+		cBancoDeDados	:= "MSSQL" // conteudo padrao para SQL Server
+	endIf
+
+	// consulta para retornar os dados do apontamento de servico de origem
+	cQuery := " SELECT "
+	cQuery += " UJ0.UJ0_NOMEFA,"
+	cQuery += " UJ0.UJ0_DTFALE,"
+	cQuery += " UJ0.UJ0_DTCERT,"
+	cQuery += " UJ0.UJ0_LOCFAL,"
+	cQuery += " UJ0.UJ0_DTNASC,"
+	cQuery += " UJ0.UJ0_SEXO,"
+	cQuery += " UJ0.UJ0_ESTCFA,"
+	cQuery += " UJ0.UJ0_NOMAE,"
+	cQuery += " UJ0.UJ0_NACION,"
+	cQuery += " UJ0.UJ0_UFFAL,"
+	cQuery += " UJ0.UJ0_CODMUN,"
+	cQuery += " UJ0.UJ0_ENDFAL,"
+	cQuery += " UJ0.UJ0_CMPFAL,"
+	cQuery += " UJ0.UJ0_BAIFAL,"
+	cQuery += " UJ0.UJ0_CEPFAL,"
+	cQuery += " UJ0.UJ0_DTSEPU,"
+	cQuery += " UJ0.UJ0_HRSEPU,"
+
+	If cBancoDeDados == "ORACLE"
+		cQuery += " COALESCE(TO_CHAR(UJ0.UJ0_OBSERV), ' ') AS UJ0_OBSERV,"
+	Else
+		cQuery += " ISNULL(CONVERT(VARCHAR(2047), CONVERT(VARBINARY(2047), UJ0.UJ0_OBSERV)),'') AS UJ0_OBSERV,"
+	EndIf
+
+	cQuery += " UJ0.UJ0_CPF,"
+	cQuery += " UJ0.UJ0_RG,"
+	cQuery += " UJ0.UJ0_RELIGI,"
+
+	// caso for
+	if lPlanoPet
+		cQuery += " UJ0.UJ0_USO, "
+		cQuery += " UJ0.UJ0_TIPPET, "
+		cQuery += " UJ0.UJ0_RACA, "
+		cQuery += " UJ0.UJ0_CORPEL, "
+		cQuery += " UJ0.UJ0_PORTE, "
+	else
+		cQuery += " '' AS UJ0_USO,"
+		cQuery += " '' AS UJ0_TIPPET,"
+		cQuery += " '' AS UJ0_RACA,"
+		cQuery += " '' AS UJ0_CORPEL,"
+		cQuery += " '' AS UJ0_PORTE, "
+	endIf
+
+	cQuery += " UJ0.UJ0_CLIINT,"
+	cQuery += " UJ0.UJ0_LOJINT, "
+	cQuery += " UJ0.UJ0_CAUSFA "
+	cQuery += " FROM " + RetSqlName("UJ0") + " UJ0 "
+	cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJ0.UJ0_FILIAL 	= '" + U_IntRetFilial("UJ0", cFilialOri) + "' "
+
+	if !Empty(cContratoOri)
+		cQuery += " AND UJ0.UJ0_CONTRA	= '" + cContratoOri + "' "
+	endIf
+
+	cQuery += " AND UJ0.UJ0_CODIGO 	= '" + cApontaOri + "' "
+
+	if Select("TRBUJ0") > 0
+		TRBUJ0->(DbCloseArea())
+	endif
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, "TRBUJ0")
+
+	if TRBUJ0->(!Eof())
+		aAdd(aRetorno, TRBUJ0->UJ0_NOMEFA)
+		aAdd(aRetorno, TRBUJ0->UJ0_DTFALE)
+		aAdd(aRetorno, TRBUJ0->UJ0_DTCERT)
+		aAdd(aRetorno, TRBUJ0->UJ0_LOCFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_DTNASC)
+		aAdd(aRetorno, TRBUJ0->UJ0_SEXO)
+		aAdd(aRetorno, TRBUJ0->UJ0_ESTCFA)
+		aAdd(aRetorno, TRBUJ0->UJ0_NOMAE)
+		aAdd(aRetorno, TRBUJ0->UJ0_NACION)
+		aAdd(aRetorno, TRBUJ0->UJ0_UFFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_CODMUN)
+		aAdd(aRetorno, TRBUJ0->UJ0_ENDFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_CMPFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_BAIFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_CEPFAL)
+		aAdd(aRetorno, TRBUJ0->UJ0_DTSEPU)
+		aAdd(aRetorno, TRBUJ0->UJ0_HRSEPU)
+		aAdd(aRetorno, TRBUJ0->UJ0_OBSERV)
+		aAdd(aRetorno, TRBUJ0->UJ0_CPF)
+		aAdd(aRetorno, TRBUJ0->UJ0_RG)
+		aAdd(aRetorno, TRBUJ0->UJ0_RELIGI)
+
+		if lPlanoPet
+			aAdd(aRetorno, TRBUJ0->UJ0_USO)
+			aAdd(aRetorno, TRBUJ0->UJ0_TIPPET)
+			aAdd(aRetorno, TRBUJ0->UJ0_RACA)
+			aAdd(aRetorno, TRBUJ0->UJ0_CORPEL)
+			aAdd(aRetorno, TRBUJ0->UJ0_PORTE)
+		else
+			aAdd(aRetorno, "")
+			aAdd(aRetorno, "")
+			aAdd(aRetorno, "")
+			aAdd(aRetorno, "")
+			aAdd(aRetorno, "")
+		endIf
+
+		aAdd(aRetorno, TRBUJ0->UJ0_CLIINT)
+		aAdd(aRetorno, TRBUJ0->UJ0_LOJINT)
+		aAdd(aRetorno, TRBUJ0->UJ0_CAUSFA)
+
+	endIf
+
+	TRBUJ0->(DbCloseArea())
+
+Return(aRetorno)
+
+/*/{Protheus.doc} ValEndTemporario
+Validacao do endereco temporario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/08/2021
+@param cFilialDes, character, filial de destino
+@param cContratoDes, character, contrato de destino
+@param cServicoApto, character, servico de apontamento
+@param cTipoEnd, character, tipo de endereco
+@param cEnd1, character, endereco 1 (J=Quadra;C=Crematorio;O=Ossuario)
+@param cEnd2, character, endereco 2 (J=Modulo;C=Nicho Crematorio;O=Nicho Ossuario)
+@param cEnd3, character, endereco 3 (J=Jazigo)
+@param cEnd4, character, endereco 4 (J=Gaveta)
+/*/
+Static Function ValEndTemporario( cFilialDes, cContratoDes, cServicoApto, cTipoEnd, cEnd1, cEnd2, cEnd3, cEnd4 )
+
+	Local cQuery 		As Character
+	Local cAliasTab		As Character
+	Local nQtdGavetas	As Numeric
+	Local nX			As Numeric
+
+	Default cFilContrato	:= ""
+	Default cContrato		:= ""
+	Default cClienteRet		:= ""
+	Default cLojaRet		:= ""
+
+	// atribuo valor as variaveis
+	cQuery		:= ""
+	cAliasTab 	:= "TRBEND"
+	nQtdGavetas	:= SuperGetMv("MV_XQTDGVJ",.F.,3)
+	nX			:= 0
+
+	if cTipoEnd == "C"// endereco de crematoio
+
+		cQuery := " SELECT "
+		cQuery += " 	U12.U12_CODIGO, "
+		cQuery += " 	U12.U12_DESC "
+		cQuery += " FROM  "
+		cQuery += RetSQLName("U12") + " U12 "
+		cQuery += " WHERE U12.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND U12.U12_FILIAL = '" + U_IntRetFilial("U12", cFilialDes) + "'  "
+		cQuery += " 	AND U12.U12_STATUS = 'S' "
+		cQuery += " 	AND U12.U12_CREMAT = '" + cEnd1 + "'  "
+		cQuery += " 	AND U12.U12_CODIGO = '" + cEnd2 + "'  "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		if (cAliasTab)->(!Eof())
+
+			cEnd2 := Soma1(cEnd2)
+
+			GeraCrematorioTMP(cFilialDes, cEnd1, cEnd2)
+
+		Else
+
+			GeraCrematorioTMP(cFilialDes, cEnd1, cEnd2)
+
+		endIf
+
+	elseIf cTipoEnd == "J" // endereco de jazigo
+
+		cQuery := " SELECT U10.U10_CODIGO FROM " + RetSqlName("U10") + " U10
+		cQuery += " WHERE U10.D_E_L_E_T_ = ' '
+		cQuery += " AND U10.U10_FILIAL = '" + U_IntRetFilial("U10", cFilialDes) + "' "
+		cQuery += " AND U10.U10_QUADRA = '" + cEnd1 + "' "
+		cQuery += " AND U10.U10_MODULO = '" + cEnd2 + "' "
+		cQuery += " AND U10.U10_CODIGO = '" + cEnd3 + "' "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		if (cAliasTab)->(!Eof())
+
+			//verifico se a gaveta ja esta enderecada
+			For nX := 1 To nQtdGavetas
+
+				// verifico se a gaveta esta preenchida
+				if Empty(cEnd4)
+
+					if U_GavetaValida( cContratoDes, cServicoApto, cEnd1, cEnd2, cEnd3, StrZero(nX,TamSX3("U04_GAVETA")[1]), "", .F. )
+						cEnd4 := StrZero(nX,TamSX3("U04_GAVETA")[1])
+					endIf
+
+				endIf
+
+			Next nX
+
+			// verifico se a gaveta esta preenchida
+			if Empty(cEnd4)
+
+				// gero um novo jazigo
+				cEnd3 := Soma1(cEnd3)
+				cEnd4 := StrZero(1,TamSX3("U04_GAVETA")[1]) // gero na gaveta 01
+
+				// gero o registro do jazigo temporario
+				GeraJazigoTMP(cFilialDes, cEnd1, cEnd2, cEnd3)
+			endIf
+
+		else
+
+			// gero o registro do jazigo temporario
+			GeraJazigoTMP(cFilialDes, cEnd1, cEnd2, cEnd3)
+
+		endIf
+
+	elseIf cTipoEnd == "O" // endereco de ossario
+
+		///////////////////////////////////////////////////////////////////////
+		///////////////// CONSULTO NICHOS COM CAPACIDADE DISPONIVEL //////////
+		//////////////////////////////////////////////////////////////////////
+		cQuery := " SELECT "
+		cQuery += " U14_CODIGO, "
+		cQuery += " U14_DESC "
+		cQuery += " FROM "
+		cQuery += RetSQLName("U14") + " U14 "
+		cQuery += " WHERE U14.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND U14.U14_FILIAL = '" + U_IntRetFilial("U14", cFilialDes) + "'
+		cQuery += " 	AND U14.U14_STATUS = 'S' "
+		cQuery += " 	AND U14.U14_OSSARI = '" + cEnd1 + "'  "
+		cQuery += " 	AND U14.U14_CAPACI > (SELECT  "
+		cQuery += " 						COUNT(*) UTILIZADO "
+		cQuery += " 						FROM "
+		cQuery +=  						RetSQLName("U04") + " U04 "
+		cQuery += " 							WHERE "
+		cQuery += " 							U04.D_E_L_E_T_ = ' ' "
+		cQuery += " 							AND U04.U04_FILIAL = '" + xFilial("U04") + "'
+		cQuery += " 							AND U04.U04_TIPO = 'O' "
+		cQuery += " 							AND U04.U04_OSSARI = U14.U14_OSSARI "
+		cQuery += " 							AND U04.U04_NICHOO = U14.U14_CODIGO) "
+		cQuery += " ORDER BY U14_CODIGO "
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		if (cAliasTab)->(Eof())
+
+			cEnd1 := Soma1(cEnd1)
+
+			GeraOssarioTMP(cFilialDes, cEnd1, cEnd2)
+
+		endIf
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraJazigoTMP
+Funcao para gerar o jazigo temporario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/08/2021
+@param cFilialDes, character, codigo 
+@param cQuadra, character, codigo da quadra temporaria
+@param cModulo, character, codigo do modulo temporario
+@param cJazigo, character, codigo do jazigo temporario
+/*/
+Static Function GeraJazigoTMP(cFilialDes, cQuadra, cModulo, cJazigo)
+
+	Local aArea 		As Array
+	Local aAreaU08		As Array
+	Local aAreaU09		As Array
+	Local aAreaU10		As Array
+	Local cDscQD		As Character
+	Local cDscMOD		As Character
+	Local cDscJaz		As Character
+
+	Default cQuadra	:= ""
+	Default cModulo	:= ""
+	Default cJazigo	:= ""
+
+	// atribuo valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU08	:= U08->(GetArea())
+	aAreaU09	:= U09->(GetArea())
+	aAreaU10	:= U10->(GetArea())
+	cDscQD		:= SuperGetMV("MV_XDSCQD",,"QD")
+	cDscMOD		:= SuperGetMV("MV_XDSCMOD",,"MD")
+	cDscJaz		:= SuperGetMV("MV_XDSCJAZ",,"JZ")
+
+	BEGIN TRANSACTION
+
+		// se nao houver quadra, gero a quadra
+		U08->(DBSetOrder(1))
+		if !U08->(MsSeek( U_IntRetFilial("U08", cFilialDes) + cQuadra ))
+
+			if U08->(Reclock("U08",.T.))
+				U08->U08_FILIAL := U_IntRetFilial("U08", cFilialDes)
+				U08->U08_CODIGO	:= cQuadra
+				U08->U08_STATUS	:= "S"
+				U08->U08_DESC	:= "QUADRA TEMPORARIA " + cQuadra
+				U08->(MsUnLock())
+
+			else
+				U08->(DisarmTransaction())
+			endIf
+		endIf
+
+		// se nao houver quadra, gero a quadra
+		U09->(DBSetOrder(1))
+		if !U09->(MsSeek( U_IntRetFilial("U09", cFilialDes) + cQuadra + cModulo))
+
+			if U09->(Reclock("U09",.T.))
+				U09->U09_FILIAL := U_IntRetFilial("U09", cFilialDes)
+				U09->U09_QUADRA	:= cQuadra
+				U09->U09_CODIGO	:= cModulo
+				U09->U09_STATUS	:= "S"
+				U09->U09_DESC	:= "MODULO TEMPORARIO " + cModulo
+				U09->(MsUnLock())
+
+			else
+				U09->(DisarmTransaction())
+			endIf
+		endIf
+
+		// se nao houver jazigo, gero o jazigo
+		U10->(DBSetOrder(1))
+		if !U10->(MsSeek( U_IntRetFilial("U10", cFilialDes) + cQuadra + cModulo + cJazigo ))
+
+			if U10->(Reclock("U10",.T.))
+				U10->U10_FILIAL := U_IntRetFilial("U10", cFilialDes)
+				U10->U10_QUADRA	:= cQuadra
+				U10->U10_MODULO	:= cModulo
+				U10->U10_CODIGO	:= cJazigo
+				U10->U10_STATUS	:= "S"
+				U10->U10_DESC	:= cDscQD + " " + cQuadra + " " + cDscMOD + " " + cModulo + " " + cDscJaz + " " + cJazigo
+				U10->(MsUnLock())
+
+			else
+				U10->(DisarmTransaction())
+			endIf
+
+		endIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU10)
+	RestArea(aAreaU09)
+	RestArea(aAreaU08)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraCrematorioTMP
+funcao para gerar o crematorio temporario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/08/2021
+@param cFilialDes, character, filial de destino
+@param cCrematorio, character, crematorio de destino
+@param cNichoCrema, character, nicho crematorio
+/*/
+Static Function GeraCrematorioTMP(cFilialDes, cCrematorio, cNichoCrema)
+
+	Local aArea 		As Array
+	Local aAreaU11		As Array
+	Local aAreaU12		As Array
+
+	Default cFilialDes	:= ""
+	Default cCrematorio	:= ""
+	Default cNichoCrema	:= ""
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaU11 	:= U11->(GetArea())
+	aAreaU12	:= U12->(GetArea())
+
+	BEGIN TRANSACTION
+
+		// se nao houver o crematorio, gero o crematorio
+		U11->(DBSetOrder(1))
+		if !U11->(MsSeek( U_IntRetFilial("U11", cFilialDes) + cCrematorio ))
+
+			if U11->(Reclock("U11",.T.))
+				U11->U11_FILIAL := U_IntRetFilial("U11", cFilialDes)
+				U11->U11_CODIGO	:= cCrematorio
+				U11->U11_DESC	:= "CREMATORIO TEMPORARIO " + cCrematorio
+				U11->U11_STATUS	:= "S"
+				U11->(MsUnlock())
+			else
+				U11->(DisarmTransaction())
+			endIf
+
+		endIf
+
+		// se nao houver o nicho crematorio, gero o nicho crematorio
+		U12->(DBSetOrder(1))
+		if !U12->(MsSeek( U_IntRetFilial("U12", cFilialDes) + cCrematorio + cNichoCrema ))
+
+			if U12->(Reclock("U12",.T.))
+				U12->U12_FILIAL := U_IntRetFilial("U12", cFilialDes)
+				U12->U12_CREMAT	:= cCrematorio
+				U12->U12_CODIGO := cNichoCrema
+				U12->U12_DESC	:= "NICHO TEMPORARIO " + cNichoCrema
+				U12->U12_STATUS	:= "S"
+				U12->(MsUnlock())
+			else
+				U12->(DisarmTransaction())
+			endIf
+
+		endIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU12)
+	RestArea(aAreaU11)
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function GeraOssarioTMP(cFilialDes, cOssario, cNichoOsssario)
+
+	Local aArea 		As Array
+	Local aAreaU13		As Array
+	Local aAreaU14		As Array
+
+	Default cFilialDes	:= ""
+	Default cCrematorio	:= ""
+	Default cNichoCrema	:= ""
+
+	aArea 		:= GetArea()
+	aAreaU13	:= U13->(GetArea())
+	aAreaU14	:= U14->(GetArea())
+
+	BEGIN TRANSACTION
+
+		U13->(DBSetOrder(1))
+		if !U13->(MsSeek(xFilial("U13")+cOssario))
+			if U13->(Reclock("U13",.T.))
+				U13->U13_FILIAL := xFilial("U13")
+				U13->U13_CODIGO := cOssario
+				U13->U13_STATUS := "S"
+				U13->U13_DESC   := "OSSARIO TEMPORARIO " + cOssario
+				U13->(MsUnlock())
+			else
+				U13->(DisarmTransaction())
+			endIf
+		endIf
+
+		U14->(DBSetOrder(1))
+		if !U14->(MsSeek(xFilial("U14")+cOssario+cNichoOsssario))
+			if U14->(Reclock("U14",.T.))
+				U14->U14_FILIAL := xFilial("U14")
+				U14->U14_OSSARI := cOssario
+				U14->U14_CODIGO := cNichoOsssario
+				U14->U14_STATUS := "S"
+				U14->U14_DESC   := "NICHO TEMPORARIO " + cNichoOsssario
+				U14->U14_CAPACI := 10
+				U14->(MsUnlock())
+			else
+				U14->(DisarmTransaction())
+			endIf
+		endIf
+
+	END TRANSACTION
+
+	RestArea(aAreaU14)
+	RestArea(aAreaU13)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} IntegraEmpresas::EnderecoIntegracao
+Metodo para verificar se existe enderecamento
+para o contrato de destino
+@type method
+@version 1.0
+@author g.sampaio
+@since 08/08/2021
+@return logical, retorna se existe ou nao enderecamento para o contrato de destino
+/*/
+Method EnderecoIntegracao() Class IntegraEmpresas
+
+	Local cQuery  	As Character
+	Local cAliasTab	As Character
+	Local lRetorno	As Logical
+
+	// atribui valor as variaveis
+	lRetorno	:= .F.
+	cAliasTab 	:= "TRBU04"
+
+	cQuery := "SELECT COUNT(*) CONTA_END"
+	cQuery += " FROM " + RetSqlName("U04") + " U04 "
+	cQuery += " WHERE U04.D_E_L_E_T_  = ' '"
+	cQuery += " AND U04.U04_FILIAL 	= '" + U_IntRetFilial("U04", Self:cFilialDes) + "'"
+	cQuery += " AND U04.U04_CODIGO 	= '" + Self:cContratoDes + "'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	If (cAliasTab)->(!Eof())
+
+		// se o contador for maior que zero exsite enderecamento
+		if (cAliasTab)->CONTA_END > 0
+			lRetorno := .T.
+		endIf
+
+	Endif
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::CancelaContrato
+Metodo para realizar o cancelamento do contrato de cemiterio
+@type method
+@version 1.0
+@author g.sampaio
+@since 09/08/2021
+@param cCodCan, character, codigo de cancelamento
+/*/
+Method CancelaContrato(cCodCan) Class IntegraEmpresas
+
+	Local aArea 			As Array
+	Local aAreaU00 			As Array
+	Local lAtivaRegra		As Logical
+	Local lRetorno			As Logical
+	Local oTaxaManutencao	As Object
+
+	// atrubui valor as variaveis
+	aArea 			:= GetArea()
+	aAreaU00		:= U00->(GetArea())
+	lAtivaRegra		:= SuperGetMv("MV_XREGCEM",,.F.)
+	lRetorno		:= .F.
+	oTaxaManutencao	:= Nil
+
+	U00->(DbSetOrder(1))
+	if U00->(MsSeek( U_IntRetFilial("U00", Self:cFilialDes ) + Self:cContratoDes ))
+
+		RecLock("U00",.F.)
+		U00->U00_DTCANC := dDataBase
+		U00->U00_CODCAN := cCodCan
+		U00->U00_MOTCAN := cMotCan
+		U00->U00_USRCAN := cUserName
+		U00->U00_STATUS := "C" //Cancelado
+		U00->(MsUnlock())
+
+		lRetorno := .T.
+
+		// verufuci
+		if lRetorno .And. lAtivaRegra .And. !Empty(U00->U00_REGRA)
+
+			// chamo a classe de taxa de manutencao
+			oTaxaManutencao := RegraTaxaManutencao():New(U00->U00_REGRA)
+
+			// verifico se tem taxa de manutencao
+			lRetorno := oTaxaManutencao:ExcluiManutencao(Stod(""), Stod(""), U00->U00_CODIGO, U00->U00_CODIGO)
+
+		endIf
+
+	endIf
+
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::ExcluiIntegracao
+Método para exclusao de dados da integracao
+@type method
+@version 1.0
+@author g.sampaio
+@since 09/08/2021
+/*/
+Method ExcluiIntegracao() Class IntegraEmpresas
+
+	Local aArea 			As Array
+	Local aAreaU00 			As Array
+	Local aAreaUJ0			As Array
+	Local aAreaUJ2			As Array
+	Local aCabec			As Array
+	Local cQuery			As Character
+	Local cAliasTab			As Character
+	Local cLogIntegracao	As Character
+	Local cFilBkp			As Character
+	Local dDtAtvBkp			As Date
+	Local lRetorno			As Logical
+	Local nIntegracao		As Numeric
+
+	// atribui valor as variaveis
+	aArea 			:= GetArea()
+	aAreaU00		:= U00->(GetArea())
+	aAreaUJ0		:= UJ0->(GetArea())
+	aAreaUJ2		:= UJ2->(GetArea())
+	aCabec			:= {}
+	cLogIntegracao	:= ""
+	cAliasTab 		:= "TRBEMP"
+	cQuery			:= ""
+	dDtAtvBkp		:= Stod("")
+	cFilBkp			:= cFilAnt
+	lRetorno		:= .F.
+	nIntegracao		:= 0
+
+	cFilAnt	:= Self:cFilialDes
+
+	U00->(DbSetOrder(1))
+	if U00->( MsSeek( U_IntRetFilial("U00", Self:cFilialDes ) + Self:cContratoDes ) )
+
+		cQuery := " SELECT "
+		cQuery += " 	UJ0.UJ0_FILIAL, "
+		cQuery += " 	UJ0.UJ0_CONTRA, "
+		cQuery += " 	UJ0.UJ0_CODIGO, "
+		cQuery += " 	UJ0.UJ0_PLANOC, "
+		cQuery += " 	UJ2.UJ2_ITEM, "
+		cQuery += " 	UJ2.UJ2_OK, "
+		cQuery += " 	UJ2.UJ2_PRODUT, "
+		cQuery += " 	UJ2.UJ2_QUANT "
+		cQuery += " FROM " + RetSQLName("UJ0") + " UJ0 INNER JOIN " + RetSQLName("UJ2") + " UJ2 ON UJ2.D_E_L_E_T_ = ' ' "
+		cQuery += " 	AND UJ2.UJ2_FILIAL = UJ0.UJ0_FILIAL "
+		cQuery += " 	AND UJ2.UJ2_CODIGO = UJ0.UJ0_CODIGO "
+		cQuery += " 	AND UJ2.UJ2_OK 		= 'T' "
+		cQuery += " 	AND UJ2.UJ2_FILINT	= '" + Self:cFilialDes + "' "
+		cQuery += " 	AND UJ2.UJ2_CTRINT  = '" + Self:cContratoDes + "' "
+		cQuery += " 	AND UJ2.UJ2_APTINT 	<> '' "
+		cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+		cQuery += "		AND UJ0.UJ0_FILIAL = '" + Self:cFilialOri + "' "
+		cQuery += " 	AND UJ0.UJ0_TPAPON = '2' "
+		cQuery += " 	AND UJ0.UJ0_CONTRA = '" + Self:cContratoOri + "' "
+
+		if !Empty(Self:cApontaOri)
+			cQuery += " 	AND UJ0.UJ0_CODIGO = '" + Self:cApontaOri + "' "
+		endIf
+
+		cQuery := ChangeQuery(cQuery)
+
+		MPSysOpenQuery( cQuery, cAliasTab)
+
+		while (cAliasTab)->(!Eof())
+
+			// vejo se possui algum servico para integracao
+			Self:ServicoIntegracao((cAliasTab)->UJ2_PRODUT, (cAliasTab)->UJ0_PLANOC)
+
+			(cAliasTab)->(dbSkip())
+		endDo
+
+		BEGIN TRANSACTION
+
+			dDtAtvBkp := U00->U00_DTATIV
+
+			if U00->(Reclock("U00",.F.))
+				// mudo o status do o contrato
+				U00->U00_STATUS		:= "P"
+				U00->U00_DTATIV		:= Stod("")
+
+				U00->(MsUnlock())
+			else
+				U00->(DisarmTransaction())
+			endIf
+
+			// verifico se existem servidos para a integracao
+			if Len(Self:aServInt) > 0
+
+				// percorro os servicos de integracao
+				for nIntegracao := 1 To Len(Self:aServInt)
+
+					// exclui o apontamento
+					if Self:ExcluiAptIntegracao()
+
+						// cabecalho do contrato
+						AAdd( aCabec, {"U00_FILIAL"   	, U00->U00_FILIAL } )
+						AAdd( aCabec, {"U00_CODIGO"		, U00->U00_CODIGO } )
+
+						// executo o execauto de inclusao de contratos
+						if U_RCPGE004(aCabec, /*aAutorizados*/, /*aMensagens*/, 5, /*aProdutos*/, /*aServicos*/, @cLogIntegracao)
+
+							lRetorno := .T.
+
+							// verifico se tem servico e executo a integracao
+							if Self:lServicoIntegracao
+
+								// posiciono no apontamento de servicos
+								UJ0->(DBSetOrder(1))
+								if UJ0->( MsSeek( U_IntRetFilial("UJ0", Self:cFilialOri ) + Self:cApontaOri ) )
+
+									// verifico se posso limpar os dados do apontamento
+									if Self:ValidApon( UJ0->UJ0_FILIAL, UJ0->UJ0_CONTRA, UJ0->UJ0_CODIGO, Self:aServInt[nIntegracao, P_SERVORI])
+
+										if UJ0->(Reclock("UJ0", .F.))
+											UJ0->UJ0_TPAPON	:= "1"	// gravo que e um apontamento que tem integracao
+											UJ0->(MsUnlock())
+										else
+											UJ0->(DisarmTransaction())
+										endIf
+
+									endIf
+
+									// posiciono no servico executado
+									UJ2->(DbSetOrder(2))
+									if UJ2->( MsSeek( UJ0->UJ0_FILIAL + UJ0->UJ0_CODIGO + Self:aServInt[nIntegracao, P_SERVORI] ) )
+
+										// gravo as informacoes do contrato de destino
+										if UJ2->(Reclock("UJ2", .F.))
+											UJ2->UJ2_FILINT	:= ""
+											UJ2->UJ2_CTRINT := ""
+											UJ2->UJ2_APTINT := ""
+											UJ2->(MsUnlock())
+										else
+											UJ2->(DisarmTransaction())
+										endIf
+									else
+										lRetorno := .F.
+									endIf
+
+								else
+									lRetorno := .F.
+
+								endIf
+
+							else
+
+								lRetorno := .F.
+
+							endIf
+
+						endIf
+
+					endIf
+
+					if !lRetorno
+						Exit
+					endIf
+
+				Next nIntegracao
+
+			elseIf FWIsInCallStack("U_PFUNA034") .And. Self:lExclusaoApt // caso for executado do ponto de entrada
+
+				// exclui o apontamento
+				if Self:ExcluiAptIntegracao()
+
+					// cabecalho do contrato
+					AAdd( aCabec, {"U00_FILIAL"   	, U00->U00_FILIAL } )
+					AAdd( aCabec, {"U00_CODIGO"		, U00->U00_CODIGO } )
+
+					// executo o execauto de inclusao de contratos
+					if U_RCPGE004(aCabec, /*aAutorizados*/, /*aMensagens*/, 5, /*aProdutos*/, /*aServicos*/, @cLogIntegracao)
+
+						lRetorno := .T.
+
+					endIf
+
+				endIf
+
+			endIf
+
+			if !lRetorno
+				DisarmTransaction()
+			endIf
+
+		END TRANSACTION
+
+	endIf
+
+	if !Empty(cFilBkp)
+		cFilAnt	:= cFilBkp
+	endIf
+
+	RestArea(aAreaUJ2)
+	RestArea(aAreaUJ0)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::ExcluiAptIntegracao
+Metodo para exclusao de apontamento de servicos
+de cemiterio da integracao
+@type method
+@version 1.0
+@author g.sampaio
+@since 09/08/2021
+/*/
+Method ExcluiAptIntegracao() Class IntegraEmpresas
+
+	Local aArea 			As Array
+	Local aAreaU00 			As Array
+	Local aAreaUJ0			As Array
+	Local aAreaUJ2			As Array
+	Local aAptServico		As Array
+	Local cQuery			As Character
+	Local cAliasTab			As Character
+	Local cLogIntegracao	As Character
+	Local cFilBkp			As Character
+	Local lRetorno			As Logical
+	Local nIntegracao		As Numeric
+
+	// atribui valor as variaveis
+	aArea 					:= GetArea()
+	aAreaU00				:= U00->(GetArea())
+	aAreaUJ0				:= UJ0->(GetArea())
+	aAreaUJ2				:= UJ2->(GetArea())
+	aAptServico				:= {}
+	cLogIntegracao			:= ""
+	cAliasTab				:= ""
+	cQuery					:= ""
+	cFilBkp					:= cFilAnt
+	lRetorno				:= .T.
+	nIntegracao				:= 0
+	oModAptServCemiterio	:= ModAptServCemiterio():New()
+
+	cFilAnt := Self:cFilialDes
+
+	cQuery := " SELECT "
+	cQuery += " UJV.UJV_FILIAL, "
+	cQuery += " UJV.UJV_CONTRA, "
+	cQuery += " UJV.UJV_CODIGO "
+	cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = '" + Self:cFilialDes + "'"
+	cQuery += " AND UJV.UJV_CONTRA = '" + Self:cContratoDes + "'
+	cQuery += " AND UJV.UJV_FILINT = '" + Self:cFilialOri + "' "
+	cQuery += " AND UJV.UJV_CTRINT = '" + Self:cContratoOri + "' "
+
+	if !Empty(Self:cApontaOri)
+		cQuery += " AND UJV.UJV_APTINT = '" + Self:cApontaOri + "' "
+	endIf
+
+	cQuery += " AND UJV.UJV_TPAPON = '2' " // apontamento de integracao
+	cQuery += " AND UJV.UJV_STATUS <> 'F'"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	if (cAliasTab)->(!Eof())
+
+		UJV->(DbSetOrder(1))
+		if UJV->(MsSeek( U_IntRetFilial("UJV", (cAliasTab)->UJV_FILIAL ) + (cAliasTab)->UJV_CODIGO ))
+
+			oModAptServCemiterio:filial 				:= U_InitCmpDados("UJV","UJV_FILIAL", UJV->UJV_FILIAL )
+			oModAptServCemiterio:codigo 				:= U_InitCmpDados("UJV","UJV_CODIGO", UJV->UJV_CODIGO )
+			oModAptServCemiterio:contrato 				:= U_InitCmpDados("UJV","UJV_CONTRA", UJV->UJV_CONTRA )
+			oModAptServCemiterio:cliente                := U_InitCmpDados("UJV","UJV_CODCLI", UJV->UJV_CODCLI)
+			oModAptServCemiterio:loja_cliente           := U_InitCmpDados("UJV","UJV_LOJCLI", UJV->UJV_LOJCLI)
+			oModAptServCemiterio:servico                := U_InitCmpDados("UJV","UJV_SERVIC", UJV->UJV_SERVIC)
+
+			// atualizo o modelo de dados
+			oModAptServCemiterio:toJsonObject()
+
+			//==================================================
+			// monto os dados do apontamento de servico
+			//==================================================
+
+			// vou gerar o apontamento de servicos
+			aadd(aAptServico,{"UJV_FILIAL"		, oModAptServCemiterio:filial			})
+			aadd(aAptServico,{"UJV_CODIGO"		, oModAptServCemiterio:codigo			})
+			aadd(aAptServico,{"UJV_CONTRA"		, oModAptServCemiterio:contrato			})
+			aadd(aAptServico,{"UJV_SERVIC"		, oModAptServCemiterio:servico  		})
+			aadd(aAptServico,{"UJV_CODCLI"		, oModAptServCemiterio:cliente			})
+			aadd(aAptServico,{"UJV_LOJCLI"		, oModAptServCemiterio:loja_cliente		})
+
+			// executo o execauto de apontamento de servicos
+			if Len(aAptServico) > 0
+
+				// execauto de apotnamento de servicos cemiterio
+				lRetorno := U_RCPGE056( 5, aAptServico)
+
+			endIf
+
+		else
+			lRetorno := .F.
+		endIf
+
+	endIf
+
+	if !Empty(cFilBkp)
+		cFilAnt	:= cFilBkp
+	endIf
+
+	RestArea(aAreaUJ2)
+	RestArea(aAreaUJ0)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::StatusAptIntegracao
+Metodo para validar o status do apontamento
+retorno falso se o status estiver finalizado
+@type method
+@version 1.0
+@author g.sampaio
+@since 09/08/2021
+@return logical, retorno sobre o status
+/*/
+Method StatusAptIntegracao() Class IntegraEmpresas
+
+	Local aArea 			As Array
+	Local cQuery			As Character
+	Local cAliasTab			As Character
+	Local lRetorno			As Logical
+
+	// atribui valor as variaveis
+	aArea 			:= GetArea()
+	cAliasTab		:= ""
+	cQuery			:= ""
+	lRetorno		:= .T.
+
+	cQuery := " SELECT "
+	cQuery += " UJV.UJV_FILIAL, "
+	cQuery += " UJV.UJV_CONTRA, "
+	cQuery += " UJV.UJV_CODIGO, "
+	cQuery += " UJV.UJV_STATUS"
+	cQuery += " FROM " + RetSQLName("UJV") + " UJV WHERE UJV.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UJV.UJV_FILIAL = '" + Self:cFilialDes + "'"
+	cQuery += " AND UJV.UJV_CONTRA = '" + Self:cContratoDes + "'
+	cQuery += " AND UJV.UJV_FILINT = '" + Self:cFilialOri + "' "
+	cQuery += " AND UJV.UJV_CTRINT = '" + Self:cContratoOri + "' "
+	if !Empty(Self:cApontaOri)
+		cQuery += " AND UJV.UJV_APTINT = '" + Self:cApontaOri + "' "
+	endIf
+	cQuery += " AND UJV.UJV_TPAPON = '2' " // apontamento de integracao
+
+	cAliasTab := FwExecCachedQuery():OpenQuery( cQuery,/*cAlias*/, /*aSetField*/, /*cDriver*/, "240", "60")
+
+	if (cAliasTab)->(!Eof())
+
+		if (cAliasTab)->UJV_STATUS == "F" // status finalizado
+			lRetorno := .F.
+		endIf
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::ValidaCtrDestino
+description
+@type method
+@version  
+@author g.sampaio
+@since 10/08/2021
+@param cFilialDestino, character, param_description
+@param cContratoDestino, character, param_description
+@param cApontamentoDestino, character, param_description
+@return variant, return_description
+/*/
+Method ValidaCtrDestino( cFilialDestino, cContratoDestino, cApontamentoDestino ) Class IntegraEmpresas
+
+	Local cQuery 	As Character
+	Local cAliasTab	As Character
+	Local lRetorno	As Logical
+
+	Default cFilialDestino		:= ""
+	Default cContratoDestino	:= ""
+	Default cApontamentoDestino	:= ""
+
+	// atribui valor as variaveis
+	cQuery 		:= ""
+	cAliasTab 	:= "TRBEMP"
+	lRetorno	:= .F.
+
+	cQuery := " SELECT "
+	cQuery += " 	UJ0.UJ0_FILIAL, "
+	cQuery += " 	UJ0.UJ0_CONTRA, "
+	cQuery += " 	UJ0.UJ0_CODIGO, "
+	cQuery += " 	UJ2.UJ2_ITEM, "
+	cQuery += " 	UJ2.UJ2_OK, "
+	cQuery += " 	UJ2.UJ2_PRODUT, "
+	cQuery += " 	UJ2.UJ2_QUANT "
+	cQuery += " FROM " + RetSQLName("UJ0") + " UJ0 INNER JOIN " + RetSQLName("UJ2") + " UJ2 ON UJ2.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND UJ2.UJ2_FILIAL = UJ0.UJ0_FILIAL "
+	cQuery += " 	AND UJ2.UJ2_CODIGO = UJ0.UJ0_CODIGO "
+	cQuery += " 	AND UJ2.UJ2_OK 		= 'T' "
+	cQuery += " 	AND UJ2.UJ2_FILINT	= '" + cFilialDestino + "' "
+	cQuery += " 	AND UJ2.UJ2_CTRINT  = '" + cContratoDestino + "' "
+
+	if !Empty(cApontamentoDestino)
+		cQuery += " 	AND UJ2.UJ2_APTINT 	= '" + cApontamentoDestino +"' "
+	endIf
+
+	cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+	cQuery += "		AND UJ0.UJ0_FILIAL = '" + U_IntRetFilial("UJ0", Self:cFilialOri ) + "' "
+	cQuery += " 	AND UJ0.UJ0_CONTRA = '" + Self:cContratoOri + "' "
+
+	if !Empty(Self:cApontaOri)
+		cQuery += " 	AND UJ0.UJ0_CODIGO = '" + Self:cApontaOri + "' "
+	endIf
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	if (cAliasTab)->(!Eof())
+		lRetorno := .T.
+
+		// dados do contrato de destino
+		Self:cFilialDes		:= cFilialDestino
+		Self:cContratoDes   := cContratoDestino
+
+		if !Empty(cApontamentoDestino)
+			Self:cApontaDes		:= cApontamentoDestino
+		else
+			Self:cApontaDes		:= (cAliasTab)->UJ0_CODIGO
+		endIf
+
+		// caso não tenha o apontamento de origem preenchido
+		if Empty(Self:cApontaOri)
+			Self:cApontaOri := (cAliasTab)->UJ0_CODIGO
+		endIf
+
+	endIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} IntegraEmpresas::ValidApon
+description
+@type method
+@version  
+@author g.sampaio
+@since 12/08/2021
+@param cFilialApon, character, param_description
+@param cContrApon, character, param_description
+@param cCodAponta, character, param_description
+@return variant, return_description
+/*/
+Method ValidApon( cFilialApon, cContrApon, cCodAponta, cServicoApto) Class IntegraEmpresas
+
+	Local cQuery	As Character
+	Local cAliasTab	As Character
+	Local lRetorno	As Logical
+
+	Default cFilialApon		:= ""
+	Default cContrApon		:= ""
+	Default cCodAponta		:= ""
+	Default cServicoApto	:= ""
+
+	// atribui valor a variavel
+	cQuery	 	:= ""
+	cAliasTab 	:= "TRBVAL"
+	lRetorno 	:= .T.
+
+	cQuery := " SELECT "
+	cQuery += " 	UJ0.UJ0_FILIAL, "
+	cQuery += " 	UJ0.UJ0_CONTRA, "
+	cQuery += " 	UJ0.UJ0_CODIGO, "
+	cQuery += " 	UJ2.UJ2_ITEM, "
+	cQuery += " 	UJ2.UJ2_OK, "
+	cQuery += " 	UJ2.UJ2_PRODUT, "
+	cQuery += " 	UJ2.UJ2_QUANT "
+	cQuery += " FROM " + RetSQLName("UJ0") + " UJ0 INNER JOIN " + RetSQLName("UJ2") + " UJ2 ON UJ2.D_E_L_E_T_ = ' ' "
+	cQuery += " 	AND UJ2.UJ2_FILIAL = UJ0.UJ0_FILIAL "
+	cQuery += " 	AND UJ2.UJ2_CODIGO = UJ0.UJ0_CODIGO "
+	cQuery += " 	AND UJ2.UJ2_OK 		= 'T' "
+
+	if !Empty(Self:cFilialDes)
+		cQuery += " 	AND UJ2.UJ2_FILINT	<> '" + Self:cFilialDes + "' "
+	endIf
+
+	if !Empty(Self:cContratoDes)
+		cQuery += " 	AND UJ2.UJ2_CTRINT  <> '" + Self:cContratoDes + "' "
+	endIf
+
+	if !Empty(Self:cApontaDes)
+		cQuery += " 	AND UJ2.UJ2_APTINT 	<> '" + Self:cApontaDes +"' "
+	endIf
+
+	if !Empty(cServicoApto)
+		cQuery += " 	AND UJ2.UJ2_PRODUT 	<> '" + cServicoApto +"' "
+	endIf
+
+	cQuery += " WHERE UJ0.D_E_L_E_T_ = ' ' "
+	cQuery += "		AND UJ0.UJ0_FILIAL = '" + cFilialApon + "' "
+	cQuery += " 	AND UJ0.UJ0_CONTRA = '" + cContrApon + "' "
+	cQuery += " 	AND UJ0.UJ0_CODIGO = '" + cCodAponta + "' "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, cAliasTab)
+
+	if (cAliasTab)->(!Eof())
+		lRetorno := .F.
+	endIf
+
+Return(lRetorno)

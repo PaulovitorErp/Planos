@@ -1,0 +1,191 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RUTILE80
+Consulta Especifica de Produtos personalizados
+SB1PER
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/12/2021
+@return logical, retorno logico da funcao
+/*/
+User Function RUTILE80()
+
+	Local aBrwProdutos      As Array
+	Local bFiltro           As CodeBlock
+	Local cDescFiltro       As Character
+	Local cBotaoCSSCinza	As Character
+	Local cBotaoCSSAzul		As Character
+	Local cBotaoCSSVermelho	As Character
+	Local oBrwProdutos      As Object
+	Local oButton1          As Object
+	Local oButton2          As Object
+	Local oButton3          As Object
+	Local oGet1	            As Object
+	Local oGroup1           As Object
+	Local oSay1             As Object
+	Local oDlgProdutos      As Object
+	Local oButtonVirtus		As Object
+
+	Public __xxcCodProduto := ""
+
+	// atribui valor das variaveis
+	aBrwProdutos    := {}
+	__xxcCodProduto := ""
+	cDescFiltro     := Space(80)
+	oDlgProdutos    := Nil
+
+	// inicio a classe de butoes virtus
+	oButtonVirtus		:= CSSButtonVirtus():New()
+
+	cBotaoCSSCinza	    := oButtonVirtus:CSSButtonGray(2000)
+	cBotaoCSSAzul		:= oButtonVirtus:CSSButtonBlue(2000)
+	cBotaoCSSVermelho	:= oButtonVirtus:CSSButtonRed(2000)
+
+	// defino o bloco de código
+	bFiltro := {|| FWMsgRun(, {|oSay| GetConsulta(cDescFiltro, @aBrwProdutos, @oBrwProdutos, @oDlgProdutos) }, "Aguarde", "Filtrando os produtos peronalizados...") }
+
+	DEFINE MSDIALOG oDlgProdutos TITLE "Consulta Produtos Personalizados" FROM 000, 000  TO 400, 600 COLORS 0, 16777215 PIXEL
+
+	@ 002, 005 GROUP oGroup1 TO 034, 295 OF oDlgProdutos COLOR 0, 16777215 PIXEL
+	@ 004, 013 SAY oSay1 PROMPT "Codigo/Descricao do Produto" SIZE 072, 007 OF oDlgProdutos COLORS 0, 16777215 PIXEL
+	@ 014, 014 MSGET oGet1 VAR cDescFiltro PICTURE "@!" SIZE 205, 013 OF oDlgProdutos COLORS 0, 16777215 PIXEL VALID (iif(!Empty(cDescFiltro) .And. Len(AllTrim(cDescFiltro)) >= 3,Eval(bFiltro),.T.))
+	@ 010, 237 BUTTON oButton3 PROMPT "Pesquisar" SIZE 041, 017 OF oDlgProdutos PIXEL ACTION (GetConsulta(cDescFiltro, @aBrwProdutos, @oBrwProdutos, @oDlgProdutos))
+
+	GetConsulta(cDescFiltro, @aBrwProdutos, @oBrwProdutos, @oDlgProdutos)
+
+	@ 165, 005 GROUP oGroup2 TO 195, 295 OF oDlgProdutos COLOR 0, 16777215 PIXEL
+	@ 172, 245 BUTTON oButton1 PROMPT "Confirmar" SIZE 043, 016 OF oDlgProdutos PIXEL ACTION(__xxcCodProduto := aBrwProdutos[oBrwProdutos:nAT, 1], oDlgProdutos:End())
+	@ 172, 190 BUTTON oButton2 PROMPT "Cancelar" SIZE 043, 015 OF oDlgProdutos PIXEL ACTION(__xxcCodProduto := "", oDlgProdutos:End())
+
+	//============================
+	// Tratamento de CSS da tela
+	//============================
+	oButton1:SetCss(cBotaoCSSAzul)
+	oButton2:SetCss(cBotaoCSSVermelho)
+	oButton3:SetCss(cBotaoCSSCinza)
+
+	ACTIVATE MSDIALOG oDlgProdutos CENTERED
+
+Return(.T.)
+
+/*/{Protheus.doc} GetConsulta
+Funcao para montar a tela de consulta
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/12/2021
+@param cDescFiltro, character, campo de pesquisa do filtro
+@param aBrwProdutos, array, array do browse de produtos
+@param oBrwProdutos, object, objeto do browse de produtos
+@param oDlgProdutos, object, objeto da tela de produtos
+@return logical, retorno logico da funcao
+/*/
+Static Function GetConsulta(cDescFiltro As Character, aBrwProdutos As Array, oBrwProdutos As Object, oDlgProdutos As Object)
+
+	Local cQuery    As Character
+	Local lRetorno  As Logical
+
+	Default cDescFiltro     := ""
+	Default aBrwProdutos    := {}
+	Default oBrwProdutos    := Nil
+	Default oDlgProdutos    := Nil
+
+	// atribui valor as variaveis
+	cQuery      := ""
+	lRetorno    := .T.
+
+	cQuery := " SELECT SB1.B1_COD CODIGO, SB1.B1_DESC DESCRICAO "
+	cQuery += " FROM " + RetSqlName("SB1") + " SB1 "
+	cQuery += " WHERE SB1.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SB1.B1_FILIAL = '"+ xFilial("SB1") +"' "
+	cQuery += "   AND SB1.B1_XPERSON = 'S' "
+
+	if !Empty(cDescFiltro)
+		cQuery += " AND ( SB1.B1_COD LIKE '%"+AllTrim(cDescFiltro)+"%' OR SB1.B1_DESC LIKE '%"+AllTrim(cDescFiltro)+"%' )
+	endIf
+
+	cQuery += " ORDER BY SB1.B1_DESC "
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery( cQuery, 'TRBSB1' )
+
+	// limpo a variavel
+	aBrwProdutos := {}
+	FreeObj(oBrwProdutos)
+	oBrwProdutos := Nil
+
+	if TRBSB1->(!Eof())
+
+		While TRBSB1->(!Eof())
+
+			// alimento o array de dados
+			AAdd(aBrwProdutos,{ TRBSB1->CODIGO, TRBSB1->DESCRICAO })
+
+			TRBSB1->(DbSkip())
+		EndDo
+
+	else
+
+		AAdd(aBrwProdutos,{"", ""})
+		MsgAlert("Não foram encontrados dados para a pesquisa!", "Atenção!")
+
+	endIf
+
+	if Select("TRBSB1") > 0
+		TRBSB1->(DBCloseArea())
+	endIf
+
+	// monto o browse novamente
+	BrwProdutos(@aBrwProdutos, @oBrwProdutos, @oDlgProdutos)
+
+	If oBrwProdutos <> Nil
+		oBrwProdutos:Refresh()
+	EndIf
+
+	If oDlgProdutos <> Nil
+		oDlgProdutos:Refresh()
+	EndIf
+
+Return(.T.)
+
+/*/{Protheus.doc} BrwProdutos
+Monta o Browse de Produtos
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/12/2021
+@param aBrwProdutos, array, array do browse de produtos
+@param oBrwProdutos, object, objeto do browse de produtos
+@param oDlgProdutos, object, objeto da tela de produtos
+/*/
+Static Function BrwProdutos(aBrwProdutos As Array, oBrwProdutos As Object, oDlgProdutos As Object)
+
+	Default aBrwProdutos := {}
+
+	@ 036, 005 LISTBOX oBrwProdutos Fields HEADER "Codigo","Descrição" SIZE 290, 125 OF oDlgProdutos PIXEL ColSizes 50,50
+	oBrwProdutos:SetArray(aBrwProdutos)
+	oBrwProdutos:bLine := {|| {;
+		aBrwProdutos[oBrwProdutos:nAt,1],;
+		aBrwProdutos[oBrwProdutos:nAt,2];
+		}}
+
+	// DoubleClick event
+	oBrwProdutos:bLDblClick := {|| __xxcCodProduto := aBrwProdutos[oBrwProdutos:nAt,1], oDlgProdutos:End(),;
+		oBrwProdutos:DrawSelect()}
+
+Return(Nil)
+
+/*/{Protheus.doc} RUTILE80A
+retorno da consulta especifica de servicos
+para integracao
+@type function
+@version 1.0
+@author g.sampaio
+@since 29/07/2021
+@return character, retorna a variavel estatica
+/*/
+User Function RUTLE80A()
+Return(__xxcCodProduto)
+

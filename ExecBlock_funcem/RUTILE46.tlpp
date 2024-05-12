@@ -1,0 +1,1947 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TOPCONN.CH"
+
+/*/{Protheus.doc} RUTILE46
+Novo Painel Financeiro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 05/08/2021
+/*/
+User Function RUTILE46
+
+	Local cTitle := "Painel Financeiro do Contrato" // Título da Janela Principal
+	Local aSizeAut := MsAdvSize(.F./*lEnchBar*/) // Array com as dimensoes da tela principal
+	Local aObjects := {} // Array com os objetos da tela
+	Local aInfo := {} // Array para utilizacao do MsAdvSize
+	Local aPosObj := {} // Array com as coordenadas para posicionamento dos objetos
+	Local nFinWidth := 0
+	Local nFinHeight := 0
+	Local nDashWidth := 0
+	Local nDashHeight := 0
+	Local cCodModulo := U_RetModul()
+	Local oTotalizers := JsonObject():New()
+
+	Local oPanelFin := Nil
+	Local oPanelDash := Nil
+	Local oPaintDash := Nil
+	Local oLayoutFin := Nil
+	Local aTFolderAbas := {}
+	Local oTFolderAbas := Nil
+	Local oPanelTotalizers := Nil
+	Local oPanelOptionsBar := Nil
+	Local oSayTotal := Nil
+	Local lCheckTotal := .F.
+
+	Local oMenuRenegociar := Nil
+	Local oMenuBoleto := Nil
+	Local oMenuDiversos := Nil
+
+	Local oBtnOpc1 := Nil
+	Local oBtnOpc2 := Nil
+	Local oBtnOpc3 := Nil
+	Local oBtnOpc4 := Nil
+	Local bBtnOpc4 := {|| ExecutarOperacao(cAliasTrb1, 14, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oBtnOpc5 := Nil
+
+	Local oItemOpc1 := Nil
+	Local bItemOpc1 := {|| ExecutarOperacao(cAliasTrb1, 1, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc2 := Nil
+	Local bItemOpc2 := {|| ExecutarOperacao(cAliasTrb1, 2, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc3 := Nil
+	Local bItemOpc3 := {|| ExecutarOperacao(cAliasTrb1, 3, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc4 := Nil
+	Local bItemOpc4 := {|| ExecutarOperacao(cAliasTrb1, 4, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc5 := Nil
+	Local bItemOpc5 := {|| ExecutarOperacao(cAliasTrb1, 5, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc6 := Nil
+	Local bItemOpc6 := {|| ExecutarOperacao(cAliasTrb1, 6, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc7 := Nil
+	Local bItemOpc7 := {|| ExecutarOperacao(cAliasTrb1, 7, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc8 := Nil
+	Local bItemOpc8 := {|| ExecutarOperacao(cAliasTrb1, 8, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc9 := Nil
+	Local bItemOpc9 := {|| ExecutarOperacao(cAliasTrb1, 9, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc10 := Nil
+	Local bItemOpc10 := {|| ExecutarOperacao(cAliasTrb1, 10, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc11 := Nil
+	Local bItemOpc11 := {|| ExecutarOperacao(cAliasTrb1, 11, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc12 := Nil
+	Local bItemOpc12 := {|| ExecutarOperacao(cAliasTrb1, 12, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc13 := Nil
+	Local bItemOpc13 := {|| ExecutarOperacao(cAliasTrb1, 13, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc15 := Nil
+	Local bItemOpc15 := {|| ExecutarOperacao(cAliasTrb2, 15, @oPainelFin, @oTFolderAbas, bStarted) }
+	Local oItemOpc16 := Nil
+	Local bItemOpc16 := {|| ExecutarOperacao(cAliasTrb1, 16, @oPainelFin, @oTFolderAbas, bStarted) }
+
+	Local oBrowse1 := Nil
+	Local oTempParcAbertas := Nil
+	Local cAliasTrb1 := "TBR1"
+
+	Local oBrowse2 := Nil
+	Local oTempParcBaixadas := Nil
+	Local cAliasTrb2 := "TBR2"
+
+	Local oBrowse3 := Nil
+	Local oTempHistReajustes := Nil
+	Local cAliasTrb3 := "TBR3"
+
+	Local oBrowse4 := Nil
+	Local oTempRecorrencia := Nil
+	Local cAliasTrb4 := "TBR4"
+
+	Local oPainelFin := Nil
+
+	Local bStarted := {|| FWMsgRun(,;
+		{|| CarregarDadosContrato(@oPainelFin, cAliasTrb1, cAliasTrb2, cAliasTrb3, cAliasTrb4,;
+		@oBrowse1, @oBrowse2, @oBrowse3, oBrowse4, @oPaintDash, nDashWidth, nDashHeight) },;
+		'Aguarde...','Buscando dados do contrato...') }
+
+	Local bRefreshTotal := {|| RefreshTotal(cAliasTrb1, @oSayTotal, @oTotalizers, @lCheckTotal) }
+
+	// dados customizados
+	Local aMenuCustom	:= {}
+	Local nMenuCustom	:= 0
+
+	Static oDlg := Nil // Janela Principal
+
+	// Inicializa classe de operações do painel financeiro
+	InitPainelFinClass(cCodModulo, @oPainelFin)
+
+	// Parametros Objeto Principal
+	AADD( aObjects, { 87, 100, .T., .T. } ) // Financeiro
+	AADD( aObjects, { 13, 100, .T., .T. } ) // Dashboard
+	aInfo := { aSizeAut[1], aSizeAut[2], aSizeAut[3], aSizeAut[4], 2, 2 }
+	aPosObj := MsObjSize(aInfo, aObjects, .T. , .T.) // Mantem proporcao - Calcula Horizontal
+	nFinWidth := aPosObj[1,4]-aPosObj[1,2] // Largura do Painel Financeiro
+	nFinHeight := aPosObj[1,3]-aPosObj[1,1] // Altura do Painel Financeiro
+	nDashWidth := aPosObj[2,4]-aPosObj[2,2] // Largura do Painel de Dashboard
+	nDashHeight := aPosObj[2,3]-aPosObj[2,1] // Altura do Painel de Dashboard
+
+	DEFINE MSDIALOG oDlg TITLE cTitle FROM aSizeAut[7], 0 TO aSizeAut[6], aSizeAut[5] COLORS 0, 16777215 PIXEL
+
+	// Bloco de inicialização
+	oDlg:bStart := bStarted
+
+	// Financeiro
+	oPanelFin := tPanel():New(aPosObj[1,1], aPosObj[1,2], "Financeiro", oDlg, /*oFont*/, .T.,, /*nClrText*/,/*nClrBack*/, nFinWidth, nFinHeight)
+
+	// Layout Financeiro
+	oLayoutFin := tPanel():New(aPosObj[1,1], aPosObj[1,2], "", oPanelFin, /*oFont*/, .T.,, /*nClrText*/,/*nClrBack*/, nFinWidth, nFinHeight*0.75)
+	oPanelTotalizers := tPanel():New(aPosObj[1,1]+nFinHeight*0.75, aPosObj[1,2], "", oPanelFin, /*oFont*/, .T.,, /*nClrText*/,/*nClrBack*/, nFinWidth, nFinHeight*0.15)
+	oPanelOptionsBar := tPanel():New(aPosObj[1,1]+nFinHeight*0.90, aPosObj[1,2], "", oPanelFin, /*oFont*/, .T.,, /*nClrText*/,/*nClrBack*/, nFinWidth, nFinHeight*0.10)
+
+	// Abas Financeiro
+	aTFolderAbas := { "Parcelas Em Aberto", "Parcelas Baixadas", "Histórico de Reajustes", "Recorrência" }
+	oTFolderAbas := TFolder():New(0,0,aTFolderAbas,,oLayoutFin,,,,.T.,,(oLayoutFin:nWidth/2)-2,(oLayoutFin:nHeight/2)-2)
+
+	CriarBrowseParcAbertas(oTFolderAbas:aDialogs[1], @oBrowse1, @oTempParcAbertas, cAliasTrb1, bRefreshTotal)
+	CriarBrowseParcBaixadas(oTFolderAbas:aDialogs[2], @oBrowse2, @oTempParcBaixadas, cAliasTrb2, @oPainelFin)
+	CriarBrowseHistReajustes(oTFolderAbas:aDialogs[3], @oBrowse3, @oTempHistReajustes, cAliasTrb3)
+	CriarDialogRecorrencia(oTFolderAbas:aDialogs[4], @oBrowse4, @oTempRecorrencia, cAliasTrb4, nFinWidth, nFinHeight, @oPainelFin, bStarted)
+
+	// Totalizadores
+	CriarTotalizadores(@oPanelTotalizers, @oSayTotal, @lCheckTotal, @oTotalizers, bRefreshTotal)
+
+	// Barra de Opções
+	// Layout Opções
+
+	// Menu - Renegociar Parcelas
+	oMenuRenegociar := TMenu():New(0, 0, 0, 0, .T.)
+	oItemOpc1 := TMenuItem():New(oMenuRenegociar:Owner(), "Gerar Liquidação",,,, bItemOpc1,,,,,,,,, .T.)
+	oItemOpc2 := TMenuItem():New(oMenuRenegociar:Owner(), "Cancelar Liquidação",,,, bItemOpc2,,,,,,,,, .T.)
+	oItemOpc3 := TMenuItem():New(oMenuRenegociar:Owner(), "Detalhar Liquidação",,,, bItemOpc3,,,,,,,,, .T.)
+	oItemOpc4 := TMenuItem():New(oMenuRenegociar:Owner(), "Reliquidar",,,, bItemOpc4,,,,,,,,, .T.)
+	oMenuRenegociar:Add(oItemOpc1)
+	oMenuRenegociar:Add(oItemOpc2)
+	oMenuRenegociar:Add(oItemOpc3)
+	oMenuRenegociar:Add(oItemOpc4)
+
+	// verifico se o o ponto de entrada esta compliado
+	If ExistBlock("PEMNUREN46")
+
+		// dados para customizacao do menu de diversos do painel financeiro
+		aMenuCustom := ExecBlock( "PEMNUREN46", .F. ,.F., { oMenuRenegociar } )
+
+		For nMenuCustom := 1 To Len(aMenuCustom)
+			oMenuRenegociar:Add(aMenuCustom[nMenuCustom])
+		Next nMenuCustom
+
+		aMenuCustom := {}
+
+	EndIf
+
+	// Menu - Boletos Bancários
+	oMenuBoleto := TMenu():New(0, 0, 0, 0, .T.)
+	oItemOpc5 := TMenuItem():New(oMenuBoleto:Owner(), "Gerar/Imprimir",,,, bItemOpc5,,,,,,,,, .T.)
+	oItemOpc6 := TMenuItem():New(oMenuBoleto:Owner(), "Transferir",,,, bItemOpc6,,,,,,,,, .T.)
+	oMenuBoleto:Add(oItemOpc5)
+	oMenuBoleto:Add(oItemOpc6)
+
+	// verifico se o o ponto de entrada esta compliado
+	If ExistBlock("PEMNUBOL46")
+
+		// dados para customizacao do menu de diversos do painel financeiro
+		aMenuCustom := ExecBlock( "PEMNUBOL46", .F. ,.F., { oMenuBoleto } )
+
+		For nMenuCustom := 1 To Len(aMenuCustom)
+			oMenuBoleto:Add(aMenuCustom[nMenuCustom])
+		Next nMenuCustom
+
+		aMenuCustom := {}
+
+	EndIf
+
+	// Menu - Diversos
+	oMenuDiversos := TMenu():New(0, 0, 0, 0, .T.)
+	If cCodModulo == "CEM"
+		oItemOpc7 := TMenuItem():New(oMenuDiversos:Owner(), "Antecipação de Financiamento",,,, bItemOpc7,,,,,,,,, .T.)
+	EndIf
+	oItemOpc8 := TMenuItem():New(oMenuDiversos:Owner(), "Alteração de Vencimentos",,,, bItemOpc8,,,,,,,,, .T.)
+	oItemOpc9 := TMenuItem():New(oMenuDiversos:Owner(), "Remover da Recorrência",,,, bItemOpc9,,,,,,,,, .T.)
+	If cCodModulo == "FUN"
+		oItemOpc10 := TMenuItem():New(oMenuDiversos:Owner(), "Alterar Forma de Pagamento",,,, bItemOpc10,,,,,,,,, .T.)
+	EndIf
+	oItemOpc11 := TMenuItem():New(oMenuDiversos:Owner(), "Alterar Título",,,, bItemOpc11,,,,,,,,, .T.)
+	oItemOpc12 := TMenuItem():New(oMenuDiversos:Owner(), "Posição do Cliente",,,, bItemOpc12,,,,,,,,, .T.)
+	oItemOpc13 := TMenuItem():New(oMenuDiversos:Owner(), "Incluir Novo Título",,,, bItemOpc13,,,,,,,,, .T.)
+	oItemOpc15 := TMenuItem():New(oMenuDiversos:Owner(), "Detalhes da Baixa",,,, bItemOpc15,,,,,,,,, .T.)
+	oItemOpc16 := TMenuItem():New(oMenuDiversos:Owner(), "Gerar Link de Pagamento",,,, bItemOpc16,,,,,,,,, .T.)
+
+	If cCodModulo == "CEM"
+		oMenuDiversos:Add(oItemOpc7)
+	EndIf
+	oMenuDiversos:Add(oItemOpc8)
+	oMenuDiversos:Add(oItemOpc9)
+	If cCodModulo == "FUN"
+		oMenuDiversos:Add(oItemOpc10)
+	EndIf
+	oMenuDiversos:Add(oItemOpc11)
+	oMenuDiversos:Add(oItemOpc12)
+	oMenuDiversos:Add(oItemOpc13)
+	oMenuDiversos:Add(oItemOpc15)
+	oMenuDiversos:Add(oItemOpc16)
+
+	// verifico se o o ponto de entrada esta compliado
+	If ExistBlock("PEMNUDIV46")
+
+		// dados para customizacao do menu de diversos do painel financeiro
+		aMenuCustom := ExecBlock( "PEMNUDIV46", .F. ,.F., { oMenuDiversos } )
+
+		For nMenuCustom := 1 To Len(aMenuCustom)
+			oMenuDiversos:Add(aMenuCustom[nMenuCustom])
+		Next nMenuCustom
+
+		aMenuCustom := {}
+
+	EndIf
+
+	// Botões
+	nQtdBtn := 5
+	nLarBtn := (nFinWidth/nQtdBtn) - 20
+	nColBtn := (nFinWidth/nQtdBtn)/2-(nLarBtn/2)
+	oBtnOpc1 := TButton():New(10, nColBtn, "Renegociar Parcelas", oPanelOptionsBar, {|| }, nLarBtn, 15,,,.F.,.T.,.F.,,.F.,,,.F.)
+	nColBtn += (nFinWidth/nQtdBtn)
+	oBtnOpc2 := TButton():New(10, nColBtn, "Boleto Bancário", oPanelOptionsBar, {|| }, nLarBtn, 15,,,.F.,.T.,.F.,,.F.,,,.F.)
+	nColBtn += (nFinWidth/nQtdBtn)
+	oBtnOpc3 := TButton():New(10, nColBtn, "Diversos", oPanelOptionsBar, {|| }, nLarBtn, 15,,,.F.,.T.,.F.,,.F.,,,.F.)
+	nColBtn += (nFinWidth/nQtdBtn)
+	oBtnOpc4 := TButton():New(10, nColBtn, "Baixar", oPanelOptionsBar, bBtnOpc4, nLarBtn, 15,,,.F.,.T.,.F.,,.F.,,,.F.)
+	nColBtn += (nFinWidth/nQtdBtn)
+	oBtnOpc5 := TButton():New(10, nColBtn, "Fechar", oPanelOptionsBar, {|| oDlg:End() }, nLarBtn, 15,,,.F.,.T.,.F.,,.F.,,,.F.)
+
+	// Pop Up Menus
+	oBtnOpc1:SetPopupMenu(oMenuRenegociar)
+	oBtnOpc2:SetPopupMenu(oMenuBoleto)
+	oBtnOpc3:SetPopupMenu(oMenuDiversos)
+
+	// Dashboard
+	oPanelDash := tPanel():New(aPosObj[2,1], aPosObj[2,2], "", oDlg, /*oFont*/, .T.,, /*nClrText*/,/*nClrBack*/, nDashWidth, nDashHeight)
+	oPaintDash := TPaintPanel():new(0, 0, nDashWidth, nDashHeight, oPanelDash)
+
+	// Dashboard Ações
+	oPaintDash:blClicked := {|| DashClicked(oPaintDash:ShapeAtu, @oPainelFin, cAliasTrb1, @oBrowse1, @oTFolderAbas) }
+
+	// Dashboard paineis
+	AddDashShapes(@oPaintDash, nDashWidth, nDashHeight)
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+	oTempParcAbertas:Delete()
+	oTempParcBaixadas:Delete()
+	oTempHistReajustes:Delete()
+	oTempRecorrencia:Delete()
+
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( DbCloseArea() )
+	EndIf
+
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( DbCloseArea() )
+	EndIf
+
+	If Select(cAliasTrb3) > 0
+		(cAliasTrb3)->( DbCloseArea() )
+	EndIf
+
+	If Select(cAliasTrb4) > 0
+		(cAliasTrb4)->( DbCloseArea() )
+	EndIf
+
+Return Nil
+
+/*/{Protheus.doc} AddDashShapes
+Adiciona paineis no dashboard
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 9/1/2021
+@param oPaintDash, object, oPaintDash
+@param nWidth, numeric, nWidth
+@param nHeight, numeric, nHeight
+@param nHeight, object, nHeight
+/*/
+Static Function AddDashShapes(oPaintDash, nWidth, nHeight, oTotal)
+	Local cWidth := "0"
+	Local cHeight := "0"
+
+	Local cTitAbertosVlr := AllTrim(Transform(0, "@E 999,999,999.99"))
+	Local cTitAbertosQtd := cValToChar(0)
+	Local cTitVencidosVlr := AllTrim(Transform(0, "@E 999,999,999.99"))
+	Local cTitVencidosQtd := cValToChar(0)
+	Local cTitBaixadosVlr := AllTrim(Transform(0, "@E 999,999,999.99"))
+	Local cTitBaixadosQtd := cValToChar(0)
+	Local cCarenciaVlr := AllTrim(Transform(0, "@E 999,999,999.99"))
+	Local cCarenciaQtd := cValToChar(0)
+
+	Default oPaintDash := Nil
+	Default nWidth := 0
+	Default nHeight := 0
+	Default oTotal := Nil
+
+	If oTotal <> Nil
+		cTitAbertosVlr := AllTrim(Transform(oTotal["titAbertosVlr"], "@E 999,999,999.99"))
+		cTitAbertosQtd := cValToChar(oTotal["titAbertosQtd"])
+		cTitVencidosVlr := AllTrim(Transform(oTotal["titVencidosVlr"], "@E 999,999,999.99"))
+		cTitVencidosQtd := cValToChar(oTotal["titVencidosQtd"])
+		cTitBaixadosVlr := AllTrim(Transform(oTotal["titBaixadosVlr"], "@E 999,999,999.99"))
+		cTitBaixadosQtd := cValToChar(oTotal["titBaixadosQtd"])
+		cCarenciaVlr := AllTrim(Transform(oTotal["carenciaVlr"], "@E 999,999,999.99"))
+		cCarenciaQtd := cValToChar(oTotal["carenciaQtd"])
+	EndIf
+
+	cWidth := cValToChar(nWidth * 2)
+	cHeight := cValToChar(nHeight * 0.45)
+
+	oPaintDash:ClearAll()
+
+	// Títulos Em Aberto
+	oPaintDash:addShape("id=1;type=1;left=10;top=10;width="+ cWidth +";height="+ cHeight +;
+		";gradient=1,0,0,0,0,0.0,#dddddd;gradient-hover=1,0,0,0,0,0.0,#cccccc;pen-width=1;pen-color=#cccccc;can-move=0;can-mark=1;tooltip=Valor em Aberto: R$: " + cTitAbertosVlr + "")
+	oPaintDash:addShape("id=1;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.06) +";width="+ cWidth +;
+		";height=50;text=Em Aberto;")
+	oPaintDash:addShape("id=1;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.22) +";width="+ cWidth +;
+		";height=75;text=R$ "+ cTitAbertosVlr +"; ")
+	oPaintDash:addShape("id=1;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.34) +";width="+ cWidth +;
+		";height=50;text="+ cTitAbertosQtd +" Títulos;")
+
+	// Títulos Vencidos
+	oPaintDash:addShape("id=2;type=1;left=10;top="+ cValToChar(nHeight * 0.523) +";width="+ cWidth +";height="+ cHeight +;
+		";gradient=1,0,0,0,0,0.0,#dddddd;gradient-hover=1,0,0,0,0,0.0,#cccccc;pen-width=1;pen-color=#cccccc;can-move=0;can-mark=1;")
+	oPaintDash:addShape("id=2;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.553) +";width="+ cWidth +;
+		";height=50;text=Vencidos;")
+	oPaintDash:addShape("id=2;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.710) +";width="+ cWidth +;
+		";height=75;text=R$ "+ cTitVencidosVlr +";")
+	oPaintDash:addShape("id=2;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 0.85) +";width="+ cWidth +;
+		";height=50;text="+ cTitVencidosQtd +" Títulos;")
+
+	// Títulos Baixados
+	oPaintDash:addShape("id=3;type=1;left=10;top="+ cValToChar(nHeight * 1.015) +";width="+ cWidth +";height="+ cHeight +;
+		";gradient=1,0,0,0,0,0.0,#dddddd;gradient-hover=1,0,0,0,0,0.0,#cccccc;pen-width=1;pen-color=#cccccc;can-move=0;can-mark=1;")
+	oPaintDash:addShape("id=3;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.045) +";width="+ cWidth +;
+		";height=50;text=Baixados;")
+	oPaintDash:addShape("id=3;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.202) +";width="+ cWidth +;
+		";height=75;text=R$ "+ cTitBaixadosVlr +";")
+	oPaintDash:addShape("id=3;type=7;pen-width=1;pen-color=#000000;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.33) +";width="+ cWidth +;
+		";height=50;text="+ cTitBaixadosQtd +" Títulos;")
+
+	// Carencia
+	oPaintDash:addShape("id=4;type=1;left=10;top="+ cValToChar(nHeight * 1.506) +";width="+ cWidth +";height="+ cHeight +;
+		";gradient=1,0,0,0,0,0.0,#c09102;pen-width=1;pen-color=#b18502;can-move=0;can-mark=0;")
+	oPaintDash:addShape("id=4;type=7;pen-width=1;pen-color=#ffffff;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.537) +;
+		";width="+ cWidth +";height=50;text=Carência;")
+	oPaintDash:addShape("id=4;type=7;pen-width=1;pen-color=#ffffff;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.670) +;
+		";width="+ cWidth +";height=75;text=R$ "+ cCarenciaVlr +";")
+	oPaintDash:addShape("id=4;type=7;pen-width=1;pen-color=#ffffff;font=arial,15,0,0,3;left=10;top="+ cValToChar(nHeight * 1.813) +;
+		";width="+ cWidth +";height=50;text="+ cCarenciaQtd +" Dias;")
+
+Return
+
+/*/{Protheus.doc} InitPainelFinClass
+Inicializa classe de operações do painel financeiro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 17/11/2021
+@param cCodModulo, character, cCodModulo
+@param oPainelFin, object, oPainelFin
+/*/
+Static Function InitPainelFinClass(cCodModulo, oPainelFin)
+
+	Default cCodModulo := "FUN"
+	Default oPainelFin := Nil
+
+	If cCodModulo == "FUN"
+		oPainelFin := PainelFin():New(cCodModulo, UF2->UF2_CODIGO)
+	ElseIf cCodModulo == "CEM"
+		oPainelFin := PainelFin():New(cCodModulo, U00->U00_CODIGO)
+	Else
+		MsgAlert("Não foi possivel determinar o modulo de uso do Painel!")
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} CriarBrowseParcAbertas
+Cria Browse de Títulos Em Abertos
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 06/09/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param oTempTable, object, oTempTable
+@param cAliasTrb, character, cAliasTrb
+@param bRefreshTotal, codeblock, bRefreshTotal
+/*/
+Static Function CriarBrowseParcAbertas(oDialog, oBrowse, oTempTable, cAliasTrb, bRefreshTotal)
+	Local aFields 			:= {}
+	Local aFieldsCustom 	:= {}
+	Local aHeadAux 			:= {}
+	Local aHeadAuxCustom 	:= {}
+	Local aColunas 			:= {}
+	Local lAtivaRelatorio 	:= SuperGetMV("MV_XATIVREL", .F., .F.)
+	Local lConsVlrCheio		:= SuperGetMV("MV_XCONVLR", .F., .T.)
+	Local lFuneraria 		:= SuperGetMV("MV_XFUNE", .F., .F.)
+	Local oColumn 			:= Nil
+	Local nX 				:= 0
+	Local nY 				:= 0
+	Local bLDblClick 		:= {|oBrowse| LDblClick(oBrowse, cAliasTrb, .T., bRefreshTotal) }
+	Local bHeaderClick 		:= {|oBrowse| HeaderClick(oBrowse, cAliasTrb, bRefreshTotal) }
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default oTempTable := Nil
+	Default cAliasTrb := ""
+	Default bRefreshTotal := {|| }
+
+	//----------------------------//
+	//-- Cria tabela temporária --//
+	//----------------------------//
+	AADD(aFields, {"TB1_FILIAL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+
+	if lFuneraria
+		AADD(aFields, {"TB1_STATUS", TamSX3('UF2_STATUS')[3], TamSX3('UF2_STATUS')[1], TamSX3('UF2_STATUS')[2]})
+	else
+		AADD(aFields, {"TB1_STATUS", TamSX3('U00_STATUS')[3], TamSX3('U00_STATUS')[1], TamSX3('U00_STATUS')[2]})
+	endif
+
+	AADD(aFields, {"TB1_MARK", "L", 1, 0})
+	AADD(aFields, {"TB1_VLORG", TamSX3('E1_VALOR')[3], TamSX3('E1_VALOR')[1], TamSX3('E1_VALOR')[2]})
+
+	If !lConsVlrCheio
+		AADD(aFields, {"TB1_ACRES", TamSX3('E1_ACRESC')[3], TamSX3('E1_ACRESC')[1], TamSX3('E1_ACRESC')[2]})
+		AADD(aFields, {"TB1_DECRE", TamSX3('E1_DECRESC')[3], TamSX3('E1_DECRESC')[1], TamSX3('E1_DECRESC')[2]})
+	EndIf
+
+	AADD(aFields, {"TB1_VLJRM", TamSX3('E1_VALOR')[3], TamSX3('E1_VALOR')[1], TamSX3('E1_VALOR')[2]})
+	AADD(aFields, {"TB1_PREFIX", TamSX3('E1_PREFIXO')[3], TamSX3('E1_PREFIXO')[1], TamSX3('E1_PREFIXO')[2]})
+	AADD(aFields, {"TB1_NUM", TamSX3('E1_NUM')[3], TamSX3('E1_NUM')[1], TamSX3('E1_NUM')[2]})
+	AADD(aFields, {"TB1_PARCEL", TamSX3('E1_PARCELA')[3], TamSX3('E1_PARCELA')[1], TamSX3('E1_PARCELA')[2]})
+	AADD(aFields, {"TB1_TIPO", TamSX3('E1_TIPO')[3], TamSX3('E1_TIPO')[1], TamSX3('E1_TIPO')[2]})
+	AADD(aFields, {"TB1_PARCDE", "C", 7, 0})
+	AADD(aFields, {"TB1_VENCOR", TamSX3('E1_VENCORI')[3], TamSX3('E1_VENCORI')[1], TamSX3('E1_VENCORI')[2]})
+	AADD(aFields, {"TB1_VENCRE", TamSX3('E1_VENCREA')[3], TamSX3('E1_VENCREA')[1], TamSX3('E1_VENCREA')[2]})
+	AADD(aFields, {"TB1_NATURZ", TamSX3('ED_DESCRIC')[3], TamSX3('ED_DESCRIC')[1], TamSX3('ED_DESCRIC')[2]})
+	AADD(aFields, {"TB1_BANCO", TamSX3('A6_COD')[3], TamSX3('A6_COD')[1], TamSX3('A6_COD')[2]})
+	AADD(aFields, {"TB1_AGENC", TamSX3('A6_AGENCIA')[3], TamSX3('A6_AGENCIA')[1], TamSX3('A6_AGENCIA')[2]})
+	AADD(aFields, {"TB1_CONTA", TamSX3('A6_NUMCON')[3], TamSX3('A6_NUMCON')[1], TamSX3('A6_NUMCON')[2]})
+	AADD(aFields, {"TB1_CLI", TamSX3('A1_COD')[3], TamSX3('A1_COD')[1], TamSX3('A1_COD')[2]})
+	AADD(aFields, {"TB1_LOJA", TamSX3('A1_LOJA')[3], TamSX3('A1_LOJA')[1], TamSX3('A1_LOJA')[2]})
+	AADD(aFields, {"TB1_NOME", TamSX3('A1_NOME')[3], TamSX3('A1_NOME')[1], TamSX3('A1_NOME')[2]})
+	AADD(aFields, {"TB1_EMIS", TamSX3('E1_EMISSAO')[3], TamSX3('E1_EMISSAO')[1], TamSX3('E1_EMISSAO')[2]})
+
+	If ExistBlock("PECMPT46")
+
+		// dados para customizacao das col
+		aFieldsCustom := ExecBlock( "PECMPT46", .F. ,.F., { aFields, "A" } )
+
+		For nY := 1 To Len(aFieldsCustom)
+			AADD(aFields, aFieldsCustom[nY])
+		Next nY
+
+	EndIf
+
+	If Select(cAliasTrb) > 0
+		(cAliasTrb)->( DbCloseArea() )
+	EndIf
+
+	If oTempTable <> Nil
+		FreeObj(oTempTable)
+	EndIf
+
+	oTempTable := FWTemporaryTable():New(cAliasTrb)
+	oTempTable:SetFields( aFields )
+	oTempTable:AddIndex("1", {"TB1_FILIAL", "TB1_VENCRE" } )
+	oTempTable:AddIndex("2", {"TB1_FILIAL", "TB1_VENCOR" } )
+	oTempTable:AddIndex("3", {"TB1_FILIAL", "TB1_PREFIX", "TB1_NUM", "TB1_PARCEL", "TB1_TIPO"} )
+	oTempTable:Create()
+
+	//------------------------------//
+	//-- Cria colunas para browse --//
+	//------------------------------//
+	//[1] - Campo da Temporaria
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB1_VLORG", "Valor Orig", TamSX3("E1_VALOR")[3], 9, 2, "@E 999,999,999.99" })
+	AADD(aHeadAux, {"TB1_VLJRM", "Valor Jur/Mlt", TamSX3("E1_VALOR")[3], 9, 2, "@E 999,999,999.99" })
+
+	If !lConsVlrCheio
+		AADD(aHeadAux, {"TB1_ACRES", "Acréscimo", TamSX3("E1_ACRESC")[3], 9, 2, "@E 999,999,999.99" })
+		AADD(aHeadAux, {"TB1_DECRE", "Desconto", TamSX3("E1_DECRESC")[3], 9, 2, "@E 999,999,999.99" })
+	EndIf
+
+	AADD(aHeadAux, {"TB1_VENCOR", "Vencto Orig", TamSX3("E1_VENCORI")[3], TamSX3("E1_VENCORI")[1], TamSX3("E1_VENCORI")[2], PesqPict("SE1","E1_VENCORI") })
+	AADD(aHeadAux, {"TB1_VENCRE", "Vencto Real", TamSX3("E1_VENCREA")[3], TamSX3("E1_VENCREA")[1], TamSX3("E1_VENCREA")[2], PesqPict("SE1","E1_VENCREA") })
+	AADD(aHeadAux, {"TB1_PREFIX", "Prefixo", TamSX3("E1_PREFIXO")[3], TamSX3("E1_PREFIXO")[1], TamSX3("E1_PREFIXO")[2], PesqPict("SE1","E1_PREFIXO") })
+	AADD(aHeadAux, {"TB1_NUM", "Número", TamSX3("E1_NUM")[3], TamSX3("E1_NUM")[1], TamSX3("E1_NUM")[2], PesqPict("SE1","E1_NUM") })
+	AADD(aHeadAux, {"TB1_PARCEL", "Parcela", TamSX3("E1_PARCELA")[3], TamSX3("E1_PARCELA")[1], TamSX3("E1_PARCELA")[2], PesqPict("SE1","E1_PARCELA") })
+	AADD(aHeadAux, {"TB1_TIPO", "Tipo", TamSX3("E1_TIPO")[3], TamSX3("E1_TIPO")[1], TamSX3("E1_TIPO")[2], PesqPict("SE1","E1_TIPO") })
+	AADD(aHeadAux, {"TB1_BANCO", "Banco", TamSX3("A6_COD")[3], TamSX3("A6_COD")[1], TamSX3("A6_COD")[2], PesqPict("SA6","A6_COD") })
+	AADD(aHeadAux, {"TB1_AGENC", "Agência", TamSX3("A6_AGENCIA")[3], TamSX3("A6_AGENCIA")[1], TamSX3("A6_AGENCIA")[2], PesqPict("SA6","A6_AGENCIA") })
+	AADD(aHeadAux, {"TB1_CONTA", "Conta", TamSX3("A6_NUMCON")[3], TamSX3("A6_NUMCON")[1], TamSX3("A6_NUMCON")[2], PesqPict("SA6","A6_NUMCON") })
+	AADD(aHeadAux, {"TB1_CLI", "Cliente", TamSX3("A1_COD")[3], TamSX3("A1_COD")[1], TamSX3("A1_COD")[2], PesqPict("SA1","A1_COD") })
+	AADD(aHeadAux, {"TB1_LOJA", "Loja", TamSX3("A1_LOJA")[3], TamSX3("A1_LOJA")[1], TamSX3("A1_LOJA")[2], PesqPict("SA1","A1_LOJA") })
+	AADD(aHeadAux, {"TB1_NOME", "Nome", TamSX3("A1_NOME")[3], TamSX3("A1_NOME")[1], TamSX3("A1_NOME")[2], PesqPict("SA1","A1_NOME") })
+	AADD(aHeadAux, {"TB1_EMIS", "Emissão", TamSX3("E1_EMISSAO")[3], TamSX3("E1_EMISSAO")[1], TamSX3("E1_EMISSAO")[2], PesqPict("SE1","E1_EMISSAO") })
+	AADD(aHeadAux, {"TB1_NATURZ", "Natureza", TamSX3("ED_DESCRIC")[3], TamSX3("ED_DESCRIC")[1], TamSX3("ED_DESCRIC")[2], PesqPict("SED","ED_DESCRIC") })
+	AADD(aHeadAux, {"TB1_PARCDE", "Parcela De", "C", 7, 0, "" })
+
+	If ExistBlock("PECMPB46")
+
+		// dados para customizacao das col
+		aHeadAuxCustom := ExecBlock( "PECMPB46", .F. ,.F., { aHeadAux, "A" } )
+
+		For nY := 1 To Len(aHeadAuxCustom)
+			AADD(aHeadAux, aHeadAuxCustom[nY])
+		Next nY
+
+	EndIf
+
+	If ExistBlock("PEFLDO46")
+
+		// dados para customizacao das col
+		aHeadAuxCustom := ExecBlock( "PEFLDO46", .F. ,.F., { aHeadAux, "A" } )
+
+		If Len(aHeadAuxCustom) > 0
+			aHeadAux := {}
+			For nY := 1 To Len(aHeadAuxCustom)
+				AADD(aHeadAux, aHeadAuxCustom[nY])
+			Next nY
+		EndIf
+
+	EndIf
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//-------------------------//
+	//-- Cria e ativa browse --//
+	//-------------------------//
+	oBrowse := FWBrowse():New()
+	oBrowse:OptionConfig(.T.)
+	if !lAtivaRelatorio
+		oBrowse:DisableReport()
+	endif
+	oBrowse:SetAlias(cAliasTrb)
+	oBrowse:SetDataTable()
+	oBrowse:SetInsert(.F.)
+	oBrowse:SetDelete(.F., {|| .F. })
+	oBrowse:AddLegend("TB1_STATUS == 'A'", "GREEN"	, "Parcela A Vencer")
+	oBrowse:AddLegend("TB1_STATUS == 'V'", "RED"	, "Parcela Vencida")
+	oBrowse:AddMarkColumns({|| IIF((cAliasTrb)->TB1_MARK, 'CHECKED', 'UNCHECKED') }, bLDblClick, bHeaderClick)
+	oBrowse:SetColumns(aColunas)
+	oBrowse:SetOwner(oDialog)
+	oBrowse:Activate()
+
+Return
+
+/*/{Protheus.doc} CriarBrowseParcBaixadas
+Cria Browse de Títulos Baixados
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 06/09/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param oTempTable, object, oTempTable
+@param cAliasTrb, character, cAliasTrb
+@param oPainelFin, object, oPainelFin
+/*/
+Static Function CriarBrowseParcBaixadas(oDialog, oBrowse, oTempTable, cAliasTrb, oPainelFin)
+	Local aFields 			:= {}
+	Local aFieldsCustom		:= {}
+	Local aHeadAux 			:= {}
+	Local aHeadAuxCustom 	:= {}
+	Local aColunas 			:= {}
+	Local oColumn 			:= Nil
+	Local bLDblClick 		:= {|| DetalhesBaixa(cAliasTrb, @oPainelFin) }
+	Local lAtivaRelatorio 	:= SuperGetMV("MV_XATIVREL", .F., .F.)
+	Local lConsVlrCheio		:= SuperGetMV("MV_XCONVLR", .F., .T.)
+	Local nX 				:= 0
+	Local nY 				:= 0
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default oTempTable := Nil
+	Default cAliasTrb := ""
+	Default oPainelFin := Nil
+
+	//----------------------------//
+	//-- Cria tabela temporária --//
+	//----------------------------//
+	AADD(aFields, {"TB2_VLORG", TamSX3('E1_VALOR')[3], TamSX3('E1_VALOR')[1], TamSX3('E1_VALOR')[2]})
+
+	If !lConsVlrCheio
+		AADD(aFields, {"TB2_ACRES", TamSX3('E1_ACRESC')[3], TamSX3('E1_ACRESC')[1], TamSX3('E1_ACRESC')[2]})
+		AADD(aFields, {"TB2_DECRE", TamSX3('E1_DECRESC')[3], TamSX3('E1_DECRESC')[1], TamSX3('E1_DECRESC')[2]})
+	EndIf
+
+	AADD(aFields, {"TB2_VLJRM", TamSX3('E1_VALOR')[3], TamSX3('E1_VALOR')[1], TamSX3('E1_VALOR')[2]})
+	AADD(aFields, {"TB2_VENCOR", TamSX3('E1_VENCORI')[3], TamSX3('E1_VENCORI')[1], TamSX3('E1_VENCORI')[2]})
+	AADD(aFields, {"TB2_VENCRE", TamSX3('E1_VENCREA')[3], TamSX3('E1_VENCREA')[1], TamSX3('E1_VENCREA')[2]})
+	AADD(aFields, {"TB2_PREFIX", TamSX3('E1_PREFIXO')[3], TamSX3('E1_PREFIXO')[1], TamSX3('E1_PREFIXO')[2]})
+	AADD(aFields, {"TB2_NUM", TamSX3('E1_NUM')[3], TamSX3('E1_NUM')[1], TamSX3('E1_NUM')[2]})
+	AADD(aFields, {"TB2_PARCEL", TamSX3('E1_PARCELA')[3], TamSX3('E1_PARCELA')[1], TamSX3('E1_PARCELA')[2]})
+	AADD(aFields, {"TB2_TIPO", TamSX3('E1_TIPO')[3], TamSX3('E1_TIPO')[1], TamSX3('E1_TIPO')[2]})
+	AADD(aFields, {"TB2_CLI", TamSX3('A1_COD')[3], TamSX3('A1_COD')[1], TamSX3('A1_COD')[2]})
+	AADD(aFields, {"TB2_LOJA", TamSX3('A1_LOJA')[3], TamSX3('A1_LOJA')[1], TamSX3('A1_LOJA')[2]})
+	AADD(aFields, {"TB2_NOME", TamSX3('A1_NOME')[3], TamSX3('A1_NOME')[1], TamSX3('A1_NOME')[2]})
+	AADD(aFields, {"TB2_EMIS", TamSX3('E1_EMISSAO')[3], TamSX3('E1_EMISSAO')[1], TamSX3('E1_EMISSAO')[2]})
+	AADD(aFields, {"TB2_BANCO", TamSX3('A6_COD')[3], TamSX3('A6_COD')[1], TamSX3('A6_COD')[2]})
+	AADD(aFields, {"TB2_AGENC", TamSX3('A6_AGENCIA')[3], TamSX3('A6_AGENCIA')[1], TamSX3('A6_AGENCIA')[2]})
+	AADD(aFields, {"TB2_CONTA", TamSX3('A6_NUMCON')[3], TamSX3('A6_NUMCON')[1], TamSX3('A6_NUMCON')[2]})
+	AADD(aFields, {"TB2_PARCDE", "C", 7, 0})
+	AADD(aFields, {"TB2_NATURZ", TamSX3('ED_DESCRIC')[3], TamSX3('ED_DESCRIC')[1], TamSX3('ED_DESCRIC')[2]})
+	AADD(aFields, {"TB2_FILIAL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+
+	If ExistBlock("PECMPT46")
+
+		// dados para customizacao das col
+		aFieldsCustom := ExecBlock( "PECMPT46", .F. ,.F., { aFields, "B" } )
+
+		For nY := 1 To Len(aFieldsCustom)
+			AADD(aFields, aFieldsCustom[nY])
+		Next nY
+
+	EndIf
+
+	If Select(cAliasTrb) > 0
+		(cAliasTrb)->( DbCloseArea() )
+	EndIf
+
+	If oTempTable <> Nil
+		FreeObj(oTempTable)
+	EndIf
+
+	oTempTable := FWTemporaryTable():New(cAliasTrb)
+	oTempTable:SetFields( aFields )
+	oTempTable:AddIndex("1", {"TB2_FILIAL", "TB2_PREFIX", "TB2_NUM", "TB2_PARCEL", "TB2_TIPO"} )
+	oTempTable:AddIndex("2", {"TB2_FILIAL", "TB2_VENCOR" } )
+	oTempTable:AddIndex("3", {"TB2_FILIAL", "TB2_VENCRE" } )
+	oTempTable:Create()
+
+	//------------------------------//
+	//-- Cria colunas para browse --//
+	//------------------------------//
+	//[1] - Campo da Temporaria
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB2_VLORG", "Valor Orig", TamSX3("E1_VALOR")[3], 9, 2, "@E 999,999.99" })
+
+	If !lConsVlrCheio
+		AADD(aHeadAux, {"TB2_ACRES", "Acréscimo", TamSX3("E1_ACRESC")[3], 9, 2, "@E 999,999.99" })
+		AADD(aHeadAux, {"TB2_DECRE", "Desconto", TamSX3("E1_DECRESC")[3], 9, 2, "@E 999,999.99" })
+	EndIf
+
+	AADD(aHeadAux, {"TB2_VLJRM", "Valor Jur/Mlt", TamSX3("E1_VALOR")[3], 9, 2, "@E 999,999.99" })
+	AADD(aHeadAux, {"TB2_VENCOR", "Vencto Orig", TamSX3("E1_VENCORI")[3], TamSX3("E1_VENCORI")[1], TamSX3("E1_VENCORI")[2], PesqPict("SE1","E1_VENCORI") })
+	AADD(aHeadAux, {"TB2_VENCRE", "Vencto Real", TamSX3("E1_VENCREA")[3], TamSX3("E1_VENCREA")[1], TamSX3("E1_VENCREA")[2], PesqPict("SE1","E1_VENCREA") })
+	AADD(aHeadAux, {"TB2_PREFIX", "Prefixo", TamSX3("E1_PREFIXO")[3], TamSX3("E1_PREFIXO")[1], TamSX3("E1_PREFIXO")[2], PesqPict("SE1","E1_PREFIXO") })
+	AADD(aHeadAux, {"TB2_NUM", "Número", TamSX3("E1_NUM")[3], TamSX3("E1_NUM")[1], TamSX3("E1_NUM")[2], PesqPict("SE1","E1_NUM") })
+	AADD(aHeadAux, {"TB2_PARCEL", "Parcela", TamSX3("E1_PARCELA")[3], TamSX3("E1_PARCELA")[1], TamSX3("E1_PARCELA")[2], PesqPict("SE1","E1_PARCELA") })
+	AADD(aHeadAux, {"TB2_TIPO", "Tipo", TamSX3("E1_TIPO")[3], TamSX3("E1_TIPO")[1], TamSX3("E1_TIPO")[2], PesqPict("SE1","E1_TIPO") })
+	AADD(aHeadAux, {"TB2_CLI", "Cliente", TamSX3("A1_COD")[3], TamSX3("A1_COD")[1], TamSX3("A1_COD")[2], PesqPict("SA1","A1_COD") })
+	AADD(aHeadAux, {"TB2_LOJA", "Loja", TamSX3("A1_LOJA")[3], TamSX3("A1_LOJA")[1], TamSX3("A1_LOJA")[2], PesqPict("SA1","A1_LOJA") })
+	AADD(aHeadAux, {"TB2_NOME", "Nome", TamSX3("A1_NOME")[3], TamSX3("A1_NOME")[1], TamSX3("A1_NOME")[2], PesqPict("SA1","A1_NOME") })
+	AADD(aHeadAux, {"TB2_EMIS", "Emissão", TamSX3("E1_EMISSAO")[3], TamSX3("E1_EMISSAO")[1], TamSX3("E1_EMISSAO")[2], PesqPict("SE1","E1_EMISSAO") })
+	AADD(aHeadAux, {"TB2_PARCDE", "Parcela De", "C", 7, 0, "" })
+	AADD(aHeadAux, {"TB2_BANCO", "Banco", TamSX3("A6_COD")[3], TamSX3("A6_COD")[1], TamSX3("A6_COD")[2], PesqPict("SA6","A6_COD") })
+	AADD(aHeadAux, {"TB2_AGENC", "Agência", TamSX3("A6_AGENCIA")[3], TamSX3("A6_AGENCIA")[1], TamSX3("A6_AGENCIA")[2], PesqPict("SA6","A6_AGENCIA") })
+	AADD(aHeadAux, {"TB2_CONTA", "Conta", TamSX3("A6_NUMCON")[3], TamSX3("A6_NUMCON")[1], TamSX3("A6_NUMCON")[2], PesqPict("SA6","A6_NUMCON") })
+	AADD(aHeadAux, {"TB2_NATURZ", "Natureza", TamSX3("ED_DESCRIC")[3], TamSX3("ED_DESCRIC")[1], TamSX3("ED_DESCRIC")[2], PesqPict("SED","ED_DESCRIC") })
+
+	If ExistBlock("PECMPB46")
+
+		// dados para customizacao das col
+		aHeadAuxCustom := ExecBlock( "PECMPB46", .F. ,.F., { aHeadAux, "B" } )
+
+		For nY := 1 To Len(aHeadAuxCustom)
+			AADD(aHeadAux, aHeadAuxCustom[nY])
+		Next nY
+
+	EndIf
+
+	If ExistBlock("PEFLDO46")
+
+		// dados para customizacao das col
+		aHeadAuxCustom := ExecBlock( "PEFLDO46", .F. ,.F., { aHeadAux, "B" } )
+
+		If Len(aHeadAuxCustom) > 0
+			aHeadAux := {}
+			For nY := 1 To Len(aHeadAuxCustom)
+				AADD(aHeadAux, aHeadAuxCustom[nY])
+			Next nY
+		EndIf
+
+	EndIf
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//-------------------------//
+	//-- Cria e ativa browse --//
+	//-------------------------//
+	oBrowse := FWBrowse():New()
+	oBrowse:DisableFilter()
+	oBrowse:DisableConfig()
+	if !lAtivaRelatorio
+		oBrowse:DisableReport()
+	endif
+
+	oBrowse:DisableSeek()
+	oBrowse:DisableSaveConfig()
+	oBrowse:SetAlias(cAliasTrb)
+	oBrowse:SetDataTable()
+	oBrowse:SetInsert(.F.)
+	oBrowse:SetDelete(.F., {|| .F. })
+	oBrowse:lHeaderClick := .F.
+	oBrowse:SetColumns(aColunas)
+	oBrowse:SetDoubleClick(bLDblClick)
+	oBrowse:SetOwner(oDialog)
+	oBrowse:Activate()
+
+Return(Nil)
+
+/*/{Protheus.doc} CriarBrowseHistReajustes
+Cria Browse de Histórico de Reajustes
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 29/10/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param oTempTable, object, oTempTable
+@param cAliasTrb, character, cAliasTrb
+/*/
+Static Function CriarBrowseHistReajustes(oDialog, oBrowse, oTempTable, cAliasTrb)
+	Local aFields := {}
+	Local aHeadAux := {}
+	Local aColunas := {}
+	Local oColumn := Nil
+	Local bLDblClick := {|| VisualizarReajuste(cAliasTrb) }
+	Local nX := 0
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default oTempTable := Nil
+	Default cAliasTrb := ""
+
+	//----------------------------//
+	//-- Cria tabela temporária --//
+	//----------------------------//
+	AADD(aFields, {"TB3_FILIAL", TamSX3('A1_FILIAL')[3], TamSX3('A1_FILIAL')[1], TamSX3('A1_FILIAL')[2]})
+	AADD(aFields, {"TB3_CODIGO", "C", 6, 0})
+	AADD(aFields, {"TB3_DATA","D", 8, 0})
+	AADD(aFields, {"TB3_PROREA","C", 6, 0})
+	AADD(aFields, {"TB3_MOD2", "C", 3, 0})
+	AADD(aFields, {"TB3_INDICE", "N", 6, 2})
+	AADD(aFields, {"TB3_VLADIC","N", 9, 2 })
+	AADD(aFields, {"TB3_VLRANT","N", 9, 2 })
+	AADD(aFields, {"TB3_VLRNOV","N", 9, 2})
+	AADD(aFields, {"TB3_VLRDIF","N", 9, 2 })
+	AADD(aFields, {"TB3_HISALT","C", 9, 0})
+
+	If Select(cAliasTrb) > 0
+		(cAliasTrb)->( DbCloseArea() )
+	EndIf
+
+	If oTempTable <> Nil
+		FreeObj(oTempTable)
+	EndIf
+
+	oTempTable := FWTemporaryTable():New(cAliasTrb)
+	oTempTable:SetFields( aFields )
+	oTempTable:AddIndex("1", {"TB3_FILIAL", "TB3_CODIGO"} )
+	oTempTable:Create()
+
+	//------------------------------//
+	//-- Cria colunas para browse --//
+	//------------------------------//
+	//[1] - Campo da Temporaria.
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB3_CODIGO", "Código", "C", 6, 0, "@!" })
+	AADD(aHeadAux, {"TB3_DATA", "Data Reajuste", "D", 8, 0,"@!"})
+	AADD(aHeadAux, {"TB3_PROREA", "Próximo Reajuste", "C", 6, 0, "@!"})
+	AADD(aHeadAux, {"TB3_MOD2", "Modelo 2", "C", 3, 0, "" })
+	AADD(aHeadAux, {"TB3_INDICE", "Índice Mod1", "N", 6, 2, "@E 999.99" })
+	AADD(aHeadAux, {"TB3_VLADIC", "Vlr Adic Mod1", "N", 9, 2, "@E 999,999,999.99" })
+	AADD(aHeadAux, {"TB3_VLRANT", "Vlr Ant Mod2", "N", 9, 2, "@E 999,999,999.99" })
+	AADD(aHeadAux, {"TB3_VLRNOV", "Vlr Novo Mod2", "N", 9, 2, "@E 999,999,999.99"})
+	AADD(aHeadAux, {"TB3_VLRDIF", "Vlr Dif Mod2", "N", 9, 2, "@E 999,999,999.99" })
+	AADD(aHeadAux, {"TB3_HISALT", "Cod Hist Alt", "C", 9, 0, "@!" })
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//-------------------------//
+	//-- Cria e ativa browse --//
+	//-------------------------//
+	oBrowse := FWBrowse():New()
+	oBrowse:DisableFilter()
+	oBrowse:DisableConfig()
+	oBrowse:DisableReport()
+	oBrowse:DisableSeek()
+	oBrowse:DisableSaveConfig()
+	oBrowse:SetAlias(cAliasTrb)
+	oBrowse:SetDataTable()
+	oBrowse:SetInsert(.F.)
+	oBrowse:SetDelete(.F., {|| .F. })
+	oBrowse:lHeaderClick := .F.
+	oBrowse:SetColumns(aColunas)
+	oBrowse:SetDoubleClick(bLDblClick)
+	oBrowse:SetOwner(oDialog)
+	oBrowse:Activate()
+
+Return
+
+/*/{Protheus.doc} CriarBrowseRecorrencia
+Cria Browse de Recorrência
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 11/11/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param oTempTable, object, oTempTable
+@param cAliasTrb, character, cAliasTrb
+/*/
+Static Function CriarBrowseRecorrencia(oDialog, oBrowse, oTempTable, cAliasTrb)
+	Local aFields := {}
+	Local aHeadAux := {}
+	Local aColunas := {}
+	Local oColumn := Nil
+	Local bLDblClick := {|| }
+	Local nX := 0
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default oTempTable := Nil
+	Default cAliasTrb := ""
+
+	//----------------------------//
+	//-- Cria tabela temporária --//
+	//----------------------------//
+	AADD(aFields, {"TB4_FILIAL", TamSX3('E1_FILIAL')[3], TamSX3('E1_FILIAL')[1], TamSX3('E1_FILIAL')[2]})
+	AADD(aFields, {"TB4_STATUS", "C", 1, 0})
+	AADD(aFields, {"TB4_FATURA", TamSX3('U65_CODVIN')[3], TamSX3('U65_CODVIN')[1], TamSX3('U65_CODVIN')[2]})
+	AADD(aFields, {"TB4_ENVIO", "C", 16, 0})
+	AADD(aFields, {"TB4_RETORN", "C", 16, 0})
+	AADD(aFields, {"TB4_PROCES", "C", 16, 0})
+	AADD(aFields, {"TB4_VALOR", TamSX3('E1_VALOR')[3], TamSX3('E1_VALOR')[1], TamSX3('E1_VALOR')[2]})
+	AADD(aFields, {"TB4_CHAVE", "C", 20, 0})
+	AADD(aFields, {"TB4_NOMCL", TamSX3('E1_NOMCLI')[3], TamSX3('E1_NOMCLI')[1], TamSX3('E1_NOMCLI')[2]})
+	AADD(aFields, {"TB4_EMISS", TamSX3('E1_EMISSAO')[3], TamSX3('E1_EMISSAO')[1], TamSX3('E1_EMISSAO')[2]})
+	AADD(aFields, {"TB4_VENCOR", TamSX3('E1_VENCORI')[3], TamSX3('E1_VENCORI')[1], TamSX3('E1_VENCORI')[2]})
+	AADD(aFields, {"TB4_VENCRE", TamSX3('E1_VENCREA')[3], TamSX3('E1_VENCREA')[1], TamSX3('E1_VENCREA')[2]})
+
+	If Select(cAliasTrb) > 0
+		(cAliasTrb)->( DbCloseArea() )
+	EndIf
+
+	If oTempTable <> Nil
+		FreeObj(oTempTable)
+	EndIf
+
+	oTempTable := FWTemporaryTable():New(cAliasTrb)
+	oTempTable:SetFields( aFields )
+	oTempTable:AddIndex("1", {"TB4_FILIAL", "TB4_FATURA"} )
+	oTempTable:Create()
+
+	//------------------------------//
+	//-- Cria colunas para browse --//
+	//------------------------------//
+	//[1] - Campo da Temporaria
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, {"TB4_FATURA", "Id Fatura", TamSX3("U65_CODVIN")[3], TamSX3("U65_CODVIN")[1], TamSX3("U65_CODVIN")[2], PesqPict("U65","U65_CODVIN") })
+	AADD(aHeadAux, {"TB4_ENVIO", "Dt/Hr Envio", "C", 16, 0, "" })
+	AADD(aHeadAux, {"TB4_RETORN", "Dt/Hr Retorno", "C", 16, 0, "" })
+	AADD(aHeadAux, {"TB4_PROCES", "Dt/Hr Processamento", "C", 16, 0, "" })
+	AADD(aHeadAux, {"TB4_VALOR", "Valor", TamSX3("E1_VALOR")[3], TamSX3("E1_VALOR")[1], TamSX3("E1_VALOR")[2], PesqPict("SE1","E1_VALOR") })
+	AADD(aHeadAux, {"TB4_CHAVE", "Chave Título", "C", 20, 0, "" })
+	AADD(aHeadAux, {"TB4_NOMCL", "Nome Cliente", TamSX3("E1_NOMCLI")[3], TamSX3("E1_NOMCLI")[1], TamSX3("E1_NOMCLI")[2], PesqPict("SE1","E1_NOMCLI") })
+	AADD(aHeadAux, {"TB4_EMISS", "Emissão", TamSX3("E1_EMISSAO")[3], TamSX3("E1_EMISSAO")[1], TamSX3("E1_EMISSAO")[2], PesqPict("SE1","E1_EMISSAO") })
+	AADD(aHeadAux, {"TB4_VENCOR", "Vencto Original", TamSX3("E1_VENCORI")[3], TamSX3("E1_VENCORI")[1], TamSX3("E1_VENCORI")[2], PesqPict("SE1","E1_VENCORI") })
+	AADD(aHeadAux, {"TB4_VENCRE", "Vencto Real", TamSX3("E1_VENCREA")[3], TamSX3("E1_VENCREA")[1], TamSX3("E1_VENCREA")[2], PesqPict("SE1","E1_VENCREA") })
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(&("{|| " + cAliasTrb + "->" + aHeadAux[nX][1] +"}"))
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//-------------------------//
+	//-- Cria e ativa browse --//
+	//-------------------------//
+	oBrowse := FWBrowse():New()
+	oBrowse:DisableFilter()
+	oBrowse:DisableConfig()
+	oBrowse:DisableReport()
+	oBrowse:DisableSeek()
+	oBrowse:DisableSaveConfig()
+	oBrowse:SetAlias(cAliasTrb)
+	oBrowse:SetDataTable()
+	oBrowse:SetInsert(.F.)
+	oBrowse:SetDelete(.F., {|| .F. })
+	oBrowse:AddLegend("TB4_STATUS == '1'", "BR_VIOLETA"	, "Pendente de Envio")
+	oBrowse:AddLegend("TB4_STATUS == '2'", "BR_VERDE"	, "Enviado")
+	oBrowse:AddLegend("TB4_STATUS == '3'", "BR_AMARELO"	, "Retornado")
+	oBrowse:AddLegend("TB4_STATUS == '4'", "BR_VERMELHO", "Baixado")
+	oBrowse:lHeaderClick := .F.
+	oBrowse:SetColumns(aColunas)
+	oBrowse:SetDoubleClick(bLDblClick)
+	oBrowse:SetOwner(oDialog)
+	oBrowse:Activate()
+
+Return
+
+/*/{Protheus.doc} CriarDialogRecorrencia
+Cria dialog de recorrência
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 10/11/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param oTempTable, object, oTempTable
+@param cAliasTrb, character, cAliasTrb
+@param nFinWidth, numeric, nFinWidth
+@param nFinHeight, numeric, nFinHeight
+@param oPainelFin, object, oPainelFin
+@param bRefreshData, codeblock, bRefreshData
+/*/
+Static Function CriarDialogRecorrencia(oDialog, oBrowse, oTempTable, cAliasTrb, nFinWidth, nFinHeight, oPainelFin, bRefreshData)
+	Local oJsonPerfilPagto := Nil
+
+	Local oSay1 := Nil
+	Local cSay1 := "Dados do Perfil de Pagamento"
+
+	Local oSay2 := Nil
+	Local cSay2 := "Cartão"
+	Local oSay3 := Nil
+	Local cSay3 := "Bandeira"
+	Local oSay4 := Nil
+	Local cSay4 := "Nome Títular"
+	Local oSay5 := Nil
+	Local cSay5 := "Cliente Vindi"
+	Local oSay6 := Nil
+	Local cSay6 := "Código Perfil"
+	Local oSay7 := Nil
+	Local cSay7 := "Data Criação Perfil"
+	Local oSay8 := Nil
+	Local cSay8 := "Hora Criação Perfil"
+
+	Local oTGet1 := Nil
+	Local cTGet1 := ""
+	Local oTGet2 := Nil
+	Local cTGet2 := ""
+	Local oTGet3 := Nil
+	Local cTGet3 := ""
+	Local oTGet4 := Nil
+	Local cTGet4 := ""
+	Local oTGet5 := Nil
+	Local cTGet5 := ""
+	Local oTGet6 := Nil
+	Local cTGet6 := ""
+	Local oTGet7 := Nil
+	Local cTGet7 := ""
+
+	Local oTButton1 := Nil
+	Local bProcPend := {|| ReprocPendVindi(oPainelFin:contrato, bRefreshData) }
+
+	Local oPanelPerfll := Nil
+	Local oPanelRecorrencia := Nil
+	Local nWidthPnlPerfil	:= 0
+	Local nHeightPnlPerfil	:= 0
+
+	Local oFont10N := TFont():New('Courier new',, -10, .T., .T.)
+	Local oFont15 := TFont():New('Courier new',, -15, .T., .F.)
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default oTempTable := Nil
+	Default cAliasTrb := ""
+	Default nFinWidth := 0
+	Default nFinHeight := 0
+	Default oPainelFin := Nil
+
+	//-- Carrega dados do perfil de pagamento do cliente na Vindi
+	oJsonPerfilPagto := oPainelFin:BuscarPerfilPagto()
+	If oJsonPerfilPagto <> Nil
+		cTGet1 := oJsonPerfilPagto["ultdigit"]
+		cTGet2 := oJsonPerfilPagto["bandeira"]
+		cTGet3 := oJsonPerfilPagto["titular"]
+		cTGet4 := oJsonPerfilPagto["cliente_vindi"]
+		cTGet5 := oJsonPerfilPagto["codigo_perfil"]
+		cTGet6 := oJsonPerfilPagto["data"]
+		cTGet7 := oJsonPerfilPagto["hora"]
+	EndIf
+
+	oPanelPerfll := TPanel():New(0,0,"",oDialog,/*oFont*/,.T.,,CLR_BLACK,CLR_WHITE,(oDialog:nClientWidth/2)-2,((oDialog:nClientHeight/2)-2)*0.55)
+
+	nWidthPnlPerfil	:= oPanelPerfll:nClientWidth / 2
+	nHeightPnlPerfil := oPanelPerfll:nClientHeight / 2
+
+	oSay1 := TSay():New(05, 10, {|| cSay1 }, oPanelPerfll,, oFont15,,,, .T., CLR_BLUE, CLR_WHITE, 390, 20)
+
+	oSay2 := TSay():New(22, 10, {|| cSay2 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet1 := TGet():New(32, 10, {|| cTGet1 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet1,,,,)
+
+	oSay3 := TSay():New(22, 150, {|| cSay3 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet2 := TGet():New(32, 150, {|| cTGet2 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet2,,,,)
+
+	oSay4 := TSay():New(22, 270, {|| cSay4 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet3 := TGet():New(32, 270, {|| cTGet3 }, oPanelPerfll, 120, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet3,,,,)
+
+	oSay5 := TSay():New(52, 10, {|| cSay5 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet4 := TGet():New(62, 10, {|| cTGet4 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet4,,,,)
+
+	oSay6 := TSay():New(52, 150, {|| cSay6 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet5 := TGet():New(62, 150, {|| cTGet5 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet5,,,,)
+
+	oSay7 := TSay():New(82, 10, {|| cSay7 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet6 := TGet():New(92, 10, {|| cTGet6 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet6,,,,)
+
+	oSay8 := TSay():New(82, 150, {|| cSay8 }, oPanelPerfll,, oFont10N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTGet7 := TGet():New(92, 150, {|| cTGet7 }, oPanelPerfll, 70, 007, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet7,,,,)
+
+	oTButton1 := TButton():New(nHeightPnlPerfil - 20, nWidthPnlPerfil - 85 /*270*/, "Processar Pendências", oPanelPerfll, bProcPend, 80, 14,,,.F.,.T.,.F.,,.F.,,,.F.)
+
+	oPanelRecorrencia := TPanel():New(((oDialog:nClientHeight/2)-2)*0.55,0,"",oDialog,/*oFont*/,.T.,,CLR_BLACK,CLR_WHITE,(oDialog:nClientWidth/2)-2,((oDialog:nClientHeight/2)-2)*0.55)
+
+	CriarBrowseRecorrencia(oPanelRecorrencia, @oBrowse, @oTempTable, cAliasTrb)
+
+Return
+
+/*/{Protheus.doc} CriarTotalizadores
+Criar painel de totalizadores
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 12/17/2021
+@param oPanelTotalizers, object, oPanelTotalizers
+@param oSayTotal, object, oSayTotal
+@param lCheckTotal, logical, lCheckTotal
+@param oTotalizers, object, oTotalizers
+@param bRefreshTotal, codeblock, bRefreshTotal
+/*/
+Static Function CriarTotalizadores(oPanel, oSayTotal, lCheckTotal, oTotalizers, bRefreshTotal)
+	Local cCheck1		 	:= "Considera juros/multas"
+	Local oCheck1 			:= Nil
+
+	Local oFont14N := TFont():New('Courier new',, -14, .T., .T.)
+
+	Default oPanel := Nil
+	Default oSayTotal := Nil
+	Default lCheckTotal := .F.
+	Default oTotalizers := JsonObject():New()
+	Default bRefreshTotal := {|| }
+
+	oTotalizers["quantidade"] := 0
+	oTotalizers["valor"] := 0
+	oTotalizers["msg"] := "Registros selecionados: "+ cValToChar(oTotalizers["quantidade"]) +"  |  Total: R$ "+ AllTrim( Transform(oTotalizers["valor"], "@E 999,999,999.99") )
+
+	If ExistBlock("PELTOTU46")
+		cMsgCustom := ExecBlock( "PELTOTU46", .F. ,.F., { oTotalizers, lCheckTotal } )
+		If !Empty(cMsgCustom)
+			oTotalizers["msg"] := oTotalizers["msg"] + " | " + cMsgCustom
+		EndIf
+	EndIf
+
+	@ 10, 05 CHECKBOX oCheck1 VAR lCheckTotal PROMPT cCheck1 SIZE 120, 210 FONT oFont14N PIXEL OF oPanel COLORS CLR_BLUE, CLR_WHITE PIXEL
+	oCheck1:bChange := bRefreshTotal
+
+	oSayTotal := TSay():New(25, 05, {|| oTotalizers["msg"] }, oPanel,, oFont14N,,,, .T., CLR_BLUE, CLR_WHITE, 300, 20)
+
+Return
+
+/*/{Protheus.doc} CarregarDadosContrato
+Consulta dados do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param cAliasTrb3, character, cAliasTrb3
+@param cAliasTrb4, character, cAliasTrb4
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+@param oBrowse3, object, oBrowse3
+@param oBrowse4, object, oBrowse4
+@param oPaintDash, object, oPaintDash
+@param nDashWidth, numeric, nDashWidth
+@param nDashHeight, numeric, nDashHeight
+/*/
+Static Function CarregarDadosContrato(oPainelFin, cAliasTrb1, cAliasTrb2, cAliasTrb3, cAliasTrb4,;
+		oBrowse1, oBrowse2, oBrowse3, oBrowse4, oPaintDash, nDashWidth, nDashHeight)
+
+	// Limpa atributos da classe para atualizar os dados
+	oPainelFin:titulos := {}
+	oPainelFin:titulos_abertos := {}
+	oPainelFin:titulos_baixados := {}
+	oPainelFin:reajustes := {}
+	oPainelFin:recorrencia := {}
+
+	ConsultarDadosFin(@oPainelFin, cAliasTrb1, cAliasTrb2, @oBrowse1, @oBrowse2, @oPaintDash, nDashWidth, nDashHeight)
+
+	ConsultarDadosReaj(@oPainelFin, cAliasTrb3, @oBrowse3)
+
+	ConsultarDadosRecorrencia(@oPainelFin, cAliasTrb4, @oBrowse4)
+
+Return
+
+/*/{Protheus.doc} ConsultarDadosFin
+Consulta dados financeiros do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 10/09/2021
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb1, character, cAliasTrb1
+@param cAliasTrb2, character, cAliasTrb2
+@param oBrowse1, object, oBrowse1
+@param oBrowse2, object, oBrowse2
+@param oPaintDash, object, oPaintDash
+@param nDashWidth, numeric, nDashWidth
+@param nDashHeight, numeric, nDashHeight
+/*/
+Static Function ConsultarDadosFin(oPainelFin, cAliasTrb1, cAliasTrb2, oBrowse1, oBrowse2, oPaintDash, nDashWidth, nDashHeight)
+	Local oTotal := JsonObject():New()
+	Local nX := 0
+
+	// Busca todos os títulos do contrato
+	oPainelFin:BuscarTitulos()
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( __dbZap() )
+	EndIf
+	If Select(cAliasTrb2) > 0
+		(cAliasTrb2)->( __dbZap() )
+	EndIf
+
+	// Totalizadores
+	oTotal["titAbertosVlr"] := 0
+	oTotal["titAbertosQtd"] := 0
+	oTotal["titVencidosVlr"] := 0
+	oTotal["titVencidosQtd"] := 0
+	oTotal["titBaixadosVlr"] := 0
+	oTotal["titBaixadosQtd"] := 0
+	oTotal["carenciaVlr"] := 0
+	oTotal["carenciaQtd"] := 0
+
+	// Carrega títulos em aberto
+	For nX := 1 To Len(oPainelFin:titulos_abertos)
+
+		oTotal["titAbertosVlr"] += oPainelFin:titulos_abertos[nX]:valor_jur_mlt
+		oTotal["titAbertosQtd"] += 1
+
+		If oPainelFin:titulos_abertos[nX]:vencto_real < dDatabase
+			oTotal["titVencidosVlr"] += oPainelFin:titulos_abertos[nX]:valor_jur_mlt
+			oTotal["titVencidosQtd"] += 1
+		EndIf
+
+		RecLock(cAliasTrb1, .T.)
+		(cAliasTrb1)->TB1_FILIAL := oPainelFin:titulos_abertos[nX]:filial
+		(cAliasTrb1)->TB1_STATUS := IIF(oPainelFin:titulos_abertos[nX]:vencto_real < dDatabase, "V", "A")
+		(cAliasTrb1)->TB1_MARK := .F.
+		(cAliasTrb1)->TB1_VLORG := oPainelFin:titulos_abertos[nX]:valor_original
+		(cAliasTrb1)->TB1_VLJRM := oPainelFin:titulos_abertos[nX]:valor_jur_mlt
+		(cAliasTrb1)->TB1_PREFIX := oPainelFin:titulos_abertos[nX]:prefixo
+		(cAliasTrb1)->TB1_NUM := oPainelFin:titulos_abertos[nX]:numero
+		(cAliasTrb1)->TB1_PARCEL := oPainelFin:titulos_abertos[nX]:parcela
+		(cAliasTrb1)->TB1_TIPO := oPainelFin:titulos_abertos[nX]:tipo
+		(cAliasTrb1)->TB1_PARCDE := oPainelFin:titulos_abertos[nX]:parcela_de
+		(cAliasTrb1)->TB1_VENCOR := oPainelFin:titulos_abertos[nX]:vencto_original
+		(cAliasTrb1)->TB1_VENCRE := oPainelFin:titulos_abertos[nX]:vencto_real
+		(cAliasTrb1)->TB1_NATURZ := oPainelFin:titulos_abertos[nX]:natureza
+		(cAliasTrb1)->TB1_BANCO := oPainelFin:titulos_abertos[nX]:banco
+		(cAliasTrb1)->TB1_AGENC := oPainelFin:titulos_abertos[nX]:agencia
+		(cAliasTrb1)->TB1_CONTA := oPainelFin:titulos_abertos[nX]:conta
+		(cAliasTrb1)->TB1_CLI := oPainelFin:titulos_abertos[nX]:cliente
+		(cAliasTrb1)->TB1_LOJA := oPainelFin:titulos_abertos[nX]:loja
+		(cAliasTrb1)->TB1_NOME := oPainelFin:titulos_abertos[nX]:cli_nome
+		(cAliasTrb1)->TB1_EMIS := oPainelFin:titulos_abertos[nX]:emissao
+
+		If Len(oPainelFin:titulos_abertos[nX]:campos_custom) > 0 .And. ExistBlock("PECMPA46")
+			ExecBlock( "PECMPA46", .F. ,.F., { oPainelFin:titulos_abertos[nX]:campos_custom, cAliasTrb1, "A" } )
+		EndIf
+
+		(cAliasTrb1)->( MsUnlock() )
+
+	Next nX
+
+	// Carrega títulos em aberto
+	For nX := 1 To Len(oPainelFin:titulos_baixados)
+
+		oTotal["titBaixadosVlr"] += oPainelFin:titulos_baixados[nX]:valor_jur_mlt
+		oTotal["titBaixadosQtd"] += 1
+
+		RecLock(cAliasTrb2, .T.)
+		(cAliasTrb2)->TB2_FILIAL := oPainelFin:titulos_baixados[nX]:filial
+		(cAliasTrb2)->TB2_VLORG := oPainelFin:titulos_baixados[nX]:valor_original
+		(cAliasTrb2)->TB2_VLJRM := oPainelFin:titulos_baixados[nX]:valor_jur_mlt
+		(cAliasTrb2)->TB2_PREFIX := oPainelFin:titulos_baixados[nX]:prefixo
+		(cAliasTrb2)->TB2_NUM := oPainelFin:titulos_baixados[nX]:numero
+		(cAliasTrb2)->TB2_PARCEL := oPainelFin:titulos_baixados[nX]:parcela
+		(cAliasTrb2)->TB2_TIPO := oPainelFin:titulos_baixados[nX]:tipo
+		(cAliasTrb2)->TB2_PARCDE := oPainelFin:titulos_baixados[nX]:parcela_de
+		(cAliasTrb2)->TB2_VENCOR := oPainelFin:titulos_baixados[nX]:vencto_original
+		(cAliasTrb2)->TB2_VENCRE := oPainelFin:titulos_baixados[nX]:vencto_real
+		(cAliasTrb2)->TB2_NATURZ := oPainelFin:titulos_baixados[nX]:natureza
+		(cAliasTrb2)->TB2_BANCO := oPainelFin:titulos_baixados[nX]:banco
+		(cAliasTrb2)->TB2_AGENC := oPainelFin:titulos_baixados[nX]:agencia
+		(cAliasTrb2)->TB2_CONTA := oPainelFin:titulos_baixados[nX]:conta
+		(cAliasTrb2)->TB2_CLI := oPainelFin:titulos_baixados[nX]:cliente
+		(cAliasTrb2)->TB2_LOJA := oPainelFin:titulos_baixados[nX]:loja
+		(cAliasTrb2)->TB2_NOME := oPainelFin:titulos_baixados[nX]:cli_nome
+		(cAliasTrb2)->TB2_EMIS := oPainelFin:titulos_baixados[nX]:emissao
+
+		If Len(oPainelFin:titulos_baixados[nX]:campos_custom) > 0 .And. ExistBlock("PECMPA46")
+			ExecBlock( "PECMPA46", .F. ,.F., { oPainelFin:titulos_baixados[nX]:campos_custom, cAliasTrb2, "B" } )
+		EndIf
+
+		(cAliasTrb2)->( MsUnlock() )
+
+	Next nX
+
+	oTotal["carenciaQtd"] := oPainelFin:CalcDiasCarencia()
+	oTotal["carenciaVlr"] := oPainelFin:CalcValorCarencia()
+
+	//-- Browse Refresh
+	AddDashShapes(@oPaintDash, nDashWidth, nDashHeight, oTotal)
+
+	If ValType(oBrowse1) == "O"
+		oBrowse1:Refresh(.T.)
+	EndIf
+
+	If ValType(oBrowse2) == "O"
+		oBrowse2:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ConsultarDadosReaj
+Consulta dados de reajustes do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb3, character, cAliasTrb3
+@param oBrowse3, object, oBrowse3.
+/*/
+Static Function ConsultarDadosReaj(oPainelFin, cAliasTrb3, oBrowse3)
+	Local nX := 0
+
+	// Busca todos reajustes do contrato
+	oPainelFin:BuscarReajustes()
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb3) > 0
+		(cAliasTrb3)->( __dbZap() )
+	EndIf
+
+	// Carrega resjutes do contrato
+	For nX := 1 To Len(oPainelFin:reajustes)
+
+		RecLock(cAliasTrb3, .T.)
+		(cAliasTrb3)->TB3_FILIAL := oPainelFin:reajustes[nX]:filial
+		(cAliasTrb3)->TB3_CODIGO := oPainelFin:reajustes[nX]:codigo
+		(cAliasTrb3)->TB3_DATA := oPainelFin:reajustes[nX]:data
+		(cAliasTrb3)->TB3_PROREA := oPainelFin:reajustes[nX]:proximo_reajuste
+		(cAliasTrb3)->TB3_MOD2 := oPainelFin:reajustes[nX]:modelo2
+		(cAliasTrb3)->TB3_INDICE := oPainelFin:reajustes[nX]:indice
+		(cAliasTrb3)->TB3_VLADIC := oPainelFin:reajustes[nX]:valor_adicional
+		(cAliasTrb3)->TB3_VLRANT := oPainelFin:reajustes[nX]:valor_anterior
+		(cAliasTrb3)->TB3_VLRNOV := oPainelFin:reajustes[nX]:valor_novo
+		(cAliasTrb3)->TB3_VLRDIF := oPainelFin:reajustes[nX]:valor_diferenca
+		(cAliasTrb3)->TB3_HISALT := oPainelFin:reajustes[nX]:codigo_hist_alt
+		(cAliasTrb3)->( MsUnlock() )
+
+	Next nX
+
+	If ValType(oBrowse3) == "O"
+		oBrowse3:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} ConsultarDadosRecorrencia
+Consulta dados de recorrencia do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 16/11/2021
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb4, character, cAliasTrb4
+@param oBrowse4, object, oBrowse4
+/*/
+Static Function ConsultarDadosRecorrencia(oPainelFin, cAliasTrb4, oBrowse4)
+	Local nX := 0
+
+	// Busca recorrencia do contrato
+	oPainelFin:BuscarRecorrencia()
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb4) > 0
+		(cAliasTrb4)->( __dbZap() )
+	EndIf
+
+	// Carrega recorrencia do contrato
+	For nX := 1 To Len(oPainelFin:recorrencia)
+
+		RecLock(cAliasTrb4, .T.)
+		(cAliasTrb4)->TB4_FILIAL := oPainelFin:recorrencia[nX]:filial
+		(cAliasTrb4)->TB4_STATUS := oPainelFin:recorrencia[nX]:status
+		(cAliasTrb4)->TB4_FATURA := oPainelFin:recorrencia[nX]:fatura
+		(cAliasTrb4)->TB4_ENVIO := oPainelFin:recorrencia[nX]:dthr_envio
+		(cAliasTrb4)->TB4_RETORN := oPainelFin:recorrencia[nX]:dthr_retorno
+		(cAliasTrb4)->TB4_PROCES := oPainelFin:recorrencia[nX]:dthr_processamento
+		(cAliasTrb4)->TB4_VALOR := oPainelFin:recorrencia[nX]:valor
+		(cAliasTrb4)->TB4_CHAVE := oPainelFin:recorrencia[nX]:chave
+		(cAliasTrb4)->TB4_NOMCL := oPainelFin:recorrencia[nX]:nome_cliente
+		(cAliasTrb4)->TB4_EMISS := oPainelFin:recorrencia[nX]:emissao
+		(cAliasTrb4)->TB4_VENCOR := oPainelFin:recorrencia[nX]:vencto_original
+		(cAliasTrb4)->TB4_VENCRE := oPainelFin:recorrencia[nX]:vencto_real
+		(cAliasTrb4)->( MsUnlock() )
+
+	Next nX
+
+	If ValType(oBrowse4) == "O"
+		oBrowse4:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} RefreshTotal
+Atualiza totalizadores do painel
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 21/12/2021
+@param cAliasTrb, character, cAliasTrb
+@param oSayTotal, object, oSayTotal
+@param oTotalizers, object, oTotalizers
+@param lCheckTotal, logical, lCheckTotal
+/*/
+Static Function RefreshTotal(cAliasTrb, oSayTotal, oTotalizers, lCheckTotal)
+	Local aAreaTrb 		:= (cAliasTrb)->( GetArea() )
+	Local aCustom		:= {}
+	Local cMsgCustom	:= ""
+	Local nRecnoTrb		:= (cAliasTrb)->(Recno())
+	Local nQtd 			:= 0
+	Local nValor 		:= 0
+
+	Default cAliasTrb := "TBR1"
+	Default oSayTotal := Nil
+	Default oTotalizers := JsonObject():New()
+	Default lCheckTotal := .F.
+
+	(cAliasTrb)->( DbGoTop() )
+	While (cAliasTrb)->( !EOF() )
+
+		If (cAliasTrb)->TB1_MARK
+			nQtd++
+			nValor += IIF(lCheckTotal, (cAliasTrb)->TB1_VLJRM, (cAliasTrb)->TB1_VLORG)
+		EndIf
+
+		(cAliasTrb)->( DbSkip() )
+	EndDo
+
+	If ExistBlock("PEATOTU46")
+
+		aCustom := ExecBlock( "PEATOTU46", .F. ,.F., { cAliasTrb, oTotalizers, lCheckTotal, nValor, nQtd } )
+
+		If Len(aCustom) > 0
+			nValor	:= aCustom[1]
+		EndIf
+
+		If Len(aCustom) > 1
+			nQtd	:= aCustom[2]
+		EndIf
+
+	EndIf
+
+	oTotalizers["quantidade"] := nQtd
+	oTotalizers["valor"] := nValor
+	oTotalizers["msg"] := "Registros selecionados: "+ cValToChar(oTotalizers["quantidade"]) +"  |  Total: R$ "+ AllTrim( Transform(oTotalizers["valor"], "@E 999,999,999.99") )
+
+	If ExistBlock("PELTOTU46")
+		cMsgCustom := ExecBlock( "PELTOTU46", .F. ,.F., { oTotalizers, lCheckTotal } )
+		If !Empty(cMsgCustom)
+			oTotalizers["msg"] := oTotalizers["msg"] + " | " + cMsgCustom
+		EndIf
+	EndIf
+
+	oSayTotal:Refresh(.T.)
+
+	RestArea(aAreaTrb)
+
+	(cAliasTrb)->(DbGoto(nRecnoTrb))
+
+Return
+
+/*/{Protheus.doc} LDblClick
+Browse Left Double Click
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 13/09/2021
+@param oBrowse, object, oBrowse
+@param cAliasTrb, character, cAliasTrb\
+@param lRefresh, logical, lRefresh
+@param bRefreshTotal, codeblock, bRefreshTotal
+/*/
+Static Function LDblClick(oBrowse, cAliasTrb, lRefresh, bRefreshTotal)
+	Default oBrowse := Nil
+	Default cAliasTrb := ""
+	Default lRefresh := .T.
+	Default bRefreshTotal := {|| }
+
+	If !Empty(cAliasTrb)
+		If (cAliasTrb)->( RecLock(cAliasTrb, .F.) )
+			(cAliasTrb)->TB1_MARK := IIF((cAliasTrb)->TB1_MARK, .F., .T.)
+			(cAliasTrb)->( MsUnLock() )
+		EndIf
+	EndIf
+
+	If lRefresh
+		// Atualiza totalizadores
+		Eval(bRefreshTotal)
+
+		//oBrowse:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} HeaderClick
+Browse Header Click
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 13/09/2021
+@param oBrowse, object, oBrowse
+@param cAliasTrb, character, cAliasTrb
+@param bRefreshTotal, codeblock, bRefreshTotal
+/*/
+Static Function HeaderClick(oBrowse, cAliasTrb, bRefreshTotal)
+	Default oBrowse := Nil
+	Default cAliasTrb := ""
+	Default bRefreshTotal := {|| }
+
+	If !Empty(cAliasTrb)
+		(cAliasTrb)->( DbGoTop() )
+		While (cAliasTrb)->( !EOF() )
+			LDblClick(@oBrowse, cAliasTrb, .F.)
+			(cAliasTrb)->( DbSkip() )
+		EndDo
+	EndIf
+
+	// Atualiza totalizadores
+	Eval(bRefreshTotal)
+
+	oBrowse:Refresh(.T.)
+
+Return
+
+/*/{Protheus.doc} DashClicked
+Manipular cliques no dash financeiro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 13/09/2021
+@param nShapeAtu, numeric, nShapeAtu
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb1, character, cAliasTrb1
+@param oBrowse1, object, oBrowse1
+@param oTFolderAbas, object, oTFolderAbas
+/*/
+Static Function DashClicked(nShapeAtu, oPainelFin, cAliasTrb1, oBrowse1, oTFolderAbas)
+	Default nShapeAtu := 0
+	Default oPainelFin := Nil
+	Default cAliasTrb1 := ""
+	Default oBrowse1 := Nil
+	Default oTFolderAbas := Nil
+
+	If nShapeAtu == 1 // Títulos Abertos
+		oTFolderAbas:SetOption(1)
+		FWMsgRun(, {|| FiltrarTitulos(@oPainelFin, cAliasTrb1, @oBrowse1, .F.) }, 'Aguarde...', 'Filtrando dados...')
+	ElseIf nShapeAtu == 2 // Títulos Vencidos
+		oTFolderAbas:SetOption(1)
+		FWMsgRun(, {|| FiltrarTitulos(@oPainelFin, cAliasTrb1, @oBrowse1, .T.) }, 'Aguarde...', 'Filtrando dados...')
+	ElseIf nShapeAtu == 3 // Títulos Baixados
+		oTFolderAbas:SetOption(2)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} FiltrarTitulos
+Filtra títulos abertos e vencidos
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 13/09/2021
+@param oPainelFin, object, oPainelFin
+@param cAliasTrb1, character, cAliasTrb1
+@param oBrowse1, object, oBrowse1
+@param lVencidos, logical, lVencidos
+/*/
+Static Function FiltrarTitulos(oPainelFin, cAliasTrb1, oBrowse1, lVencidos)
+	Local nX := 0
+
+	//-- Limpa tabela temporaria
+	If Select(cAliasTrb1) > 0
+		(cAliasTrb1)->( __dbZap() )
+	EndIf
+
+	// Carrega títulos em aberto
+	For nX := 1 To Len(oPainelFin:titulos_abertos)
+
+		// Filtra apenas títulos vencidos
+		If lVencidos .And. oPainelFin:titulos_abertos[nX]:vencto_real >= dDatabase
+			Loop
+		EndIf
+
+		RecLock(cAliasTrb1, .T.)
+		(cAliasTrb1)->TB1_FILIAL := oPainelFin:titulos_abertos[nX]:filial
+		(cAliasTrb1)->TB1_STATUS := IIF(oPainelFin:titulos_abertos[nX]:vencto_real < dDatabase, "V", "A")
+		(cAliasTrb1)->TB1_MARK := .F.
+		(cAliasTrb1)->TB1_VLORG := oPainelFin:titulos_abertos[nX]:valor_original
+		(cAliasTrb1)->TB1_VLJRM := oPainelFin:titulos_abertos[nX]:valor_jur_mlt
+		(cAliasTrb1)->TB1_PREFIX := oPainelFin:titulos_abertos[nX]:prefixo
+		(cAliasTrb1)->TB1_NUM := oPainelFin:titulos_abertos[nX]:numero
+		(cAliasTrb1)->TB1_PARCEL := oPainelFin:titulos_abertos[nX]:parcela
+		(cAliasTrb1)->TB1_TIPO := oPainelFin:titulos_abertos[nX]:tipo
+		(cAliasTrb1)->TB1_VENCOR := oPainelFin:titulos_abertos[nX]:vencto_original
+		(cAliasTrb1)->TB1_VENCRE := oPainelFin:titulos_abertos[nX]:vencto_real
+		(cAliasTrb1)->TB1_NATURZ := oPainelFin:titulos_abertos[nX]:natureza
+		(cAliasTrb1)->TB1_BANCO := oPainelFin:titulos_abertos[nX]:banco
+		(cAliasTrb1)->TB1_AGENC := oPainelFin:titulos_abertos[nX]:agencia
+		(cAliasTrb1)->TB1_CONTA := oPainelFin:titulos_abertos[nX]:conta
+		(cAliasTrb1)->TB1_CLI := oPainelFin:titulos_abertos[nX]:cliente
+		(cAliasTrb1)->TB1_LOJA := oPainelFin:titulos_abertos[nX]:loja
+		(cAliasTrb1)->TB1_NOME := oPainelFin:titulos_abertos[nX]:cli_nome
+		(cAliasTrb1)->TB1_EMIS := oPainelFin:titulos_abertos[nX]:emissao
+		(cAliasTrb1)->TB1_PARCDE := oPainelFin:titulos_abertos[nX]:parcela_de
+		(cAliasTrb1)->( MsUnlock() )
+
+	Next nX
+
+	If ValType(oBrowse1) == "O"
+		oBrowse1:Refresh(.T.)
+	EndIf
+
+Return
+
+/*/{Protheus.doc} DetalhesBaixa
+Browse de detalhes da baixa
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 16/09/2021
+@param cAliasTrb, character, cAliasTrb
+@param oPainelFin, object, oPainelFin
+/*/
+Static Function DetalhesBaixa(cAliasTrb, oPainelFin)
+	Local cTitle := "Detalhes da Baixa"
+
+	Local oFont16 := TFont():New('Courier new',, -16, .T., .F.)
+	Local oFont14N := TFont():New('Courier new',, -14, .T., .T.)
+	Local oFont12N := TFont():New('Courier new',, -12, .T., .T.)
+
+	Local oSay1 := Nil
+	Local oSay2 := Nil
+	Local oTGet1 := Nil
+	Local oPanel := Nil
+	Local oBrowse := Nil
+	Local oTButton := Nil
+	Local cTGet1 := ""
+	Local aDados := {}
+
+	Default cAliasTrb := ""
+	Default oPainelFin := Nil
+
+	Static oDialog := Nil
+
+	cTGet1 := "Prefixo: "+ AllTrim((cAliasTrb)->TB2_PREFIX);
+		+"   Número: "+ AllTrim((cAliasTrb)->TB2_NUM);
+		+"   Parcela: "+ AllTrim((cAliasTrb)->TB2_PARCEL);
+		+"   Tipo: "+ AllTrim((cAliasTrb)->TB2_TIPO)
+
+	aDados := oPainelFin:BuscarBaixasTitulo((cAliasTrb)->TB2_PREFIX, (cAliasTrb)->TB2_NUM, (cAliasTrb)->TB2_PARCEL, (cAliasTrb)->TB2_TIPO, (cAliasTrb)->TB2_CLI, (cAliasTrb)->TB2_LOJA)
+
+	DEFINE MSDIALOG oDialog TITLE cTitle STYLE DS_MODALFRAME FROM 0, 0 TO 400, 800 COLORS 0, 16777215 PIXEL
+
+	oSay1 := TSay():New(10, 10, {||'Chave do Título:'}, oDialog,, oFont14N,,,, .T., CLR_BLUE, CLR_WHITE, 200, 20)
+	oTGet1 := TGet():New(20, 10, {|| cTGet1 }, oDialog, 250, 012,"@!",,CLR_BLUE,CLR_WHITE,oFont12N,.F.,,.T.,,.F.,{|| .F. },.F.,.F.,,.T.,.F.,,cTGet1,,,,)
+	oSay2 := TSay():New(40, 10, {||'Detalhes:'}, oDialog,, oFont16,,,, .T., CLR_BLUE, CLR_WHITE, 200, 20)
+
+	oPanel := TPanel():New(50, 10,, oDialog,, .T.,,,,385, 120)
+
+	CriarBrowseDetalhesBaixa(@oPanel, @oBrowse, aDados)
+
+	oTButton := TButton():New(180, 335, "Sair", oDialog, {|| oDialog:End() }, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+
+	ACTIVATE MSDIALOG oDialog CENTERED
+
+Return
+
+/*/{Protheus.doc} CriarBrowseDetalhesBaixa
+Cria browse de detalhes da baixa
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 15/09/2021
+@param oDialog, object, oDialog
+@param oBrowse, object, oBrowse
+@param aDados, array, aDados
+/*/
+Static Function CriarBrowseDetalhesBaixa(oDialog, oBrowse, aDados)
+	Local aHeadAux := {}
+	Local aColunas := {}
+	Local oColumn := Nil
+	Local nX := 0
+
+	Default oDialog := Nil
+	Default oBrowse := Nil
+	Default aDados := {}
+
+	//------------------------------//
+	//-- Cria colunas para browse --//
+	//------------------------------//
+	//[1] - Campo do array
+	//[2] - Titulo
+	//[3] - Tipo
+	//[4] - Tamanho
+	//[5] - Decimais
+	//[6] - Máscara
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 1] }, "Data", TamSX3("E5_DATA")[3], TamSX3("E5_DATA")[1], TamSX3("E5_DATA")[2], PesqPict("SE5","E5_DATA") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 2] }, "Forma Pagto", TamSX3("E5_FORMAPG")[3], TamSX3("E5_FORMAPG")[1], TamSX3("E5_FORMAPG")[2], PesqPict("SE5","E5_FORMAPG") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 3] }, "Caixa", TamSX3("A6_NOME")[3], TamSX3("A6_NOME")[1], TamSX3("A6_NOME")[2], PesqPict("SA6","A6_NOME") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 4] }, "Valor", TamSX3("E5_VALOR")[3], TamSX3("E5_VALOR")[1], TamSX3("E5_VALOR")[2], PesqPict("SE5","E5_VALOR") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 5] }, "Juros", TamSX3("E5_VLJUROS")[3], TamSX3("E5_VLJUROS")[1], TamSX3("E5_VLJUROS")[2], PesqPict("SE5","E5_VLJUROS") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 6] }, "Multa", TamSX3("E5_VLMULTA")[3], TamSX3("E5_VLMULTA")[1], TamSX3("E5_VLMULTA")[2], PesqPict("SE5","E5_VLMULTA") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 7] }, "Desconto", TamSX3("E5_VLDESCO")[3], TamSX3("E5_VLDESCO")[1], TamSX3("E5_VLDESCO")[2], PesqPict("SE5","E5_VLDESCO") })
+	AADD(aHeadAux, { {|| aDados[oBrowse:nAt, 8] }, "Usuário", "C", 30, 0, "" })
+
+	For nX := 1 To Len(aHeadAux)
+		oColumn := FWBrwColumn():New()
+		oColumn:SetData(aHeadAux[nX][1])
+		oColumn:SetTitle(aHeadAux[nX][2])
+		oColumn:SetType(aHeadAux[nX][3])
+		oColumn:SetSize(aHeadAux[nX][4])
+		oColumn:SetDecimal(aHeadAux[nX][5])
+		oColumn:SetPicture(aHeadAux[nX][6])
+		AADD(aColunas, oColumn)
+	Next nX
+
+	//-------------------------//
+	//-- Cria e ativa browse --//
+	//-------------------------//
+	oBrowse := FWBrowse():New()
+	oBrowse:DisableFilter()
+	oBrowse:DisableConfig()
+	oBrowse:DisableReport()
+	oBrowse:DisableSeek()
+	oBrowse:DisableSaveConfig()
+	oBrowse:SetDataArray()
+	oBrowse:SetInsert(.F.)
+	oBrowse:SetDelete(.F., {|| .F. })
+	oBrowse:lHeaderClick := .F.
+	oBrowse:SetColumns(aColunas)
+	oBrowse:SetArray(aDados)
+	oBrowse:SetOwner(oDialog)
+	oBrowse:Activate()
+
+Return
+
+/*/{Protheus.doc} VisualizarReajuste
+Abre o browse de visualização do reajuste
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 04/11/2021
+@param cAliasTrb, character, cAliasTrb
+/*/
+Static Function VisualizarReajuste(cAliasTrb)
+	Local lFuneraria := SuperGetMV("MV_XFUNE", .F., .F.)
+	Local aArea := GetArea()
+	Local aAreaUF7 := {}
+	Local aAreaU20 := {}
+
+	Default cAliasTrb := "TBR3"
+
+	If lFuneraria
+		aAreaUF7 := UF7->( GetArea() )
+		UF7->( DbSetOrder(1) )
+		If UF7->( MsSeek( (cAliasTrb)->TB3_FILIAL + (cAliasTrb)->TB3_CODIGO ) )
+			FWExecView("VISUALIZAR","RFUNA011",1,,{|| .T. })
+		EndIf
+		RestArea(aAreaUF7)
+	Else
+		aAreaU20 := U20->( GetArea() )
+		U20->( DbSetOrder(1) )
+		If U20->( MsSeek( (cAliasTrb)->TB3_FILIAL + (cAliasTrb)->TB3_CODIGO ) )
+			FWExecView("VISUALIZAR","RCPGA013",1,,{|| .T. })
+		EndIf
+		RestArea(aAreaU20)
+	EndIf
+
+	RestArea(aArea)
+
+Return
+
+/*/{Protheus.doc} ExecutarOperacao
+Executa operações disponíveis no painel financeiro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 17/09/2021
+@param cAliasTrb, character, cAliasTrb
+@param nOpc, numeric, nOpc
+@param oPainelFin, object, oPainelFin
+@param oTFolderAbas, object, oTFolderAbas
+@param bRefreshData, codeblock, bRefreshData
+/*/
+Static Function ExecutarOperacao(cAliasTrb, nOpc, oPainelFin, oTFolderAbas, bRefreshData)
+
+	Local aTitMarcados 			:= IIF(cAliasTrb == "TBR1", TitMarcados(cAliasTrb), {})
+	Local aVldOpc1 				:= { 15 }
+	Local aVldOpc2 				:= { 1, 7, 8, 10, 12, 13 }
+	Local aVldOpc3 				:= { 2, 3, 4, 6, 11, 14, 16 }
+	Local lContinua 			:= .T.
+	Local oVirtusGestaoAcessos 	:= Nil
+
+	Default cAliasTrb := ""
+	Default nOpc := 0
+	Default oPainelFin := Nil
+	Default oTFolderAbas := Nil
+	Default bRefreshData := {|| }
+
+	If oTFolderAbas:nOption == 1 // Parcelas Em Aberto
+
+		// Ignora operações da aba de parcelas baixadas
+		If AScan(aVldOpc1, nOpc) > 0
+			lContinua := .F.
+		EndIf
+
+		If lContinua
+
+			oVirtusGestaoAcessos := VirtusGestaoAcessos():New()
+			oVirtusGestaoAcessos:AcessosUsuario() // Busca acessos para usuário conectado
+			If .Not. oVirtusGestaoAcessos:ValidaAcessos(nOpc)
+				MsgAlert("Usuário conectado não tem acesso a realizar esta operação.")
+				lContinua := .F.
+			EndIf
+
+			// Verifica se operação selecionada precisa de título selecionados
+			If lContinua .And. Len(aTitMarcados) <= 0 .And. AScan(aVldOpc2, nOpc) <= 0
+				MsgAlert("Nenhum título selecionado. Por favor, realize a seleção corretamente.", "ExecutarOperacao")
+				lContinua := .F.
+			EndIf
+
+			// Verifica se operação selecionada pode ter apenas 1 títulos selecionado por vez
+			If lContinua .And. Len(aTitMarcados) > 1 .And. AScan(aVldOpc3, nOpc) > 0
+				MsgAlert("Selecione apenas um título para esta operação.", "ExecutarOperacao")
+				lContinua := .F.
+			EndIf
+
+			If lContinua
+
+				Do Case
+				Case nOpc == 1
+					oPainelFin:GerarLiquidacao()
+				Case nOpc == 2
+					oPainelFin:CancelarLiquidacao(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 3
+					oPainelFin:DetalharLiquidacao(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 4
+					oPainelFin:Reliquidar(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 5
+					oPainelFin:GerarBoleto(aTitMarcados)
+				Case nOpc == 6
+					oPainelFin:TransferirBoleto(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 7
+					oPainelFin:AnteciparFinanciamento()
+				Case nOpc == 8
+					oPainelFin:AlterarVenctos()
+				Case nOpc == 9
+					oPainelFin:RemoverRecorrencia(aTitMarcados)
+				Case nOpc == 10
+					oPainelFin:AlterarFormaPagto()
+				Case nOpc == 11
+					oPainelFin:AlterarTitulo(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 12
+					oPainelFin:PosicaoCliente()
+				Case nOpc == 13
+					oPainelFin:IncluirNovoTitulo()
+				Case nOpc == 14
+					oPainelFin:BaixarTitulo(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5])
+				Case nOpc == 16
+					oPainelFin:GerarLinkPagamento(aTitMarcados[1,2], aTitMarcados[1,3], aTitMarcados[1,4], aTitMarcados[1,5],aTitMarcados[1,11])
+				EndCase
+
+			EndIf
+
+			// Atualiza dados dos títulos e dashboard
+			Eval(bRefreshData)
+
+		ElseIf oTFolderAbas:nOption == 2 // Parcelas Baixadas
+
+			Do Case
+			Case nOpc == 15
+				DetalhesBaixa(cAliasTrb, @oPainelFin)
+			EndCase
+
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} TitMarcados
+Retorna títulos marcados
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 20/09/2021
+@param cAliasTrb, character, cAliasTrb
+@return array, aTitMarcados
+/*/
+Static Function TitMarcados(cAliasTrb)
+	Local aAreaTB1 := (cAliasTrb)->( GetArea() )
+	Local aTitMarcados := {}
+
+	Default cAliasTrb := ""
+
+	(cAliasTrb)->( DbGoTop() )
+	While (cAliasTrb)->( !EOF() )
+
+		If (cAliasTrb)->TB1_MARK
+			AADD(aTitMarcados, {;
+				(cAliasTrb)->TB1_MARK,;
+				(cAliasTrb)->TB1_PREFIX,;
+				(cAliasTrb)->TB1_NUM,;
+				(cAliasTrb)->TB1_PARCEL,;
+				(cAliasTrb)->TB1_TIPO,;
+				(cAliasTrb)->TB1_CLI,;
+				(cAliasTrb)->TB1_LOJA,;
+				(cAliasTrb)->TB1_BANCO,;
+				(cAliasTrb)->TB1_AGENC,;
+				(cAliasTrb)->TB1_CONTA,;
+				(cAliasTrb)->TB1_VENCRE;
+				})
+		EndIf
+
+		(cAliasTrb)->( DbSkip() )
+	EndDo
+
+	RestArea(aAreaTB1)
+
+Return aTitMarcados
+
+/*/{Protheus.doc} ReprocPendVindi
+Reprocessa pendencias da vindi e atualiza dados do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 10/11/2021
+@param cContrato, character, cContrato
+@param bRefreshData, codeblock, bRefreshData
+/*/
+Static Function ReprocPendVindi(cContrato, bRefreshData)
+
+	Default cContrato := ""
+
+	If MsgYesNo("Deseja continuar com reprocessamento das operações na VINDI para este contrato?", "Reprocessar Vindi")
+		U_REPRVIND(cContrato)
+		Eval(bRefreshData)
+	EndIf
+
+Return

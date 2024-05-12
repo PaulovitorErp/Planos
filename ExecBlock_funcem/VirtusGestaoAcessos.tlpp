@@ -1,0 +1,189 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} VirtusGestaoAcessos
+Gestao de Acessos de Usuario
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/04/2024
+/*/
+USer Function VirtusGestaoAcessos()
+Return(Nil)
+
+/*/{Protheus.doc} VirtusGestaoAcessos
+Classe de Gestão de Acessos de Usuario 
+nos Módulos Gestão de Cemiterios e Planos Funerarios
+@type class
+@version 1.0
+@author g.sampaio
+@since 04/04/2024
+/*/
+	Class VirtusGestaoAcessos
+
+		Public Data aListaOps   As Array
+		Public Data aGrupos     As Array
+		Public Data cRotina     As Character
+		Public Data cUsuario    As Character
+		Public Data cGrupos     As Character
+
+		Public Method New()
+		Public Method Rotinas()
+		Public Method AcessosUsuario()
+		Public Method ValidaRotina()
+		Public Method ValidaAcessos()
+
+	EndClass
+
+/*/{Protheus.doc} VirtusGestaoAcessos::New
+Método New de Gestao de Acessos de Usuario
+@type method
+@version 1.0
+@author g.sampaio
+@since 04/04/2024
+/*/
+Method New() Class VirtusGestaoAcessos
+
+	Local nX    As Numeric
+
+	Self:aListaOps  := {}
+	Self:cUsuario   := __cUserID
+	Self:aGrupos    := UsrRetGrp(, Self:cUsuario)
+	Self:cRotina    := Self:ValidaRotina()
+
+	For nX := 1 To Len(Self:aGrupos)
+		Self:cGrupos += Self:aGrupos[nX] + IIF(nX < Len(Self:aGrupos), ";", "")
+	Next nX
+
+Return(Nil)
+
+Method Rotinas() Class VirtusGestaoAcessos
+
+	Local lRetorno	  As Logical
+
+	lRetorno := .F.
+
+	If FWIsInCallStack("U_RUTILE46")
+		lRetorno := .T. // painel financeiro
+	ElseIf FWIsInCallStack("U_RUTIL50A") .Or. FWIsInCallStack("U_RUTIL50B") .Or. FWIsInCallStack("U_RUTIL050")
+		lRetorno := .T. // gestao de documentos
+	ElseIf FWIsInCallStack("U_RCPGA001")	
+		lRetorno := .T. // contrato de cemiterios
+	ElseIf FWIsInCallStack("U_RFUNA002")
+		lRetorno := .T. // contrato de planos funerarios
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusGestaoAcessos::ValidaRotina
+Método para validar as rotinas homologadas
+@type method
+@version 1.0
+@author g.sampaio
+@since 04/04/2024
+@return character, retorna a rotina homologada
+/*/
+Method ValidaRotina() Class VirtusGestaoAcessos
+
+	Local cRetorno          As Character
+	Local lAnexaDoc         As Logical
+
+	//================================================================================
+	// Deixar sempre as rotinas de contratos como ultimas condicoes do ElseIf
+	//================================================================================
+
+	lAnexaDoc := SuperGetMV("MV_XANXDOC", .F.,.F.)
+
+	If FWIsInCallStack("U_RUTILE46")
+		cRetorno    := "1" // painel financeiro
+	ElseIf lAnexaDoc .And. (FWIsInCallStack("U_RUTIL50A") .Or. FWIsInCallStack("U_RUTIL50B") .Or. FWIsInCallStack("U_RUTIL050") )
+		cRetorno    := "4" // gestao de documentos
+	ElseIf !lAnexaDoc .And. FWIsInCallStack("MSDOCUMENT")
+		cRetorno    := "4" // gestao de documento
+	ElseIf FWIsInCallStack("U_RCPGA001")
+		cRetorno    := "2"  // contrato de cemiterios
+	ElseIf FWIsInCallStack("U_RFUNA002")
+		cRetorno    := "3"  // contrato de planos funerarios
+	EndIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} PainelFin::AcessosUsuario
+Avalia acessos do usuário conectado ao sistema
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 19/11/2021
+@return array, aListaOps
+/*/
+Method AcessosUsuario() Class VirtusGestaoAcessos
+
+	Local cQuery 		:= ""
+
+	// limpo os arrays
+	Self:aListaOps := {}
+
+	cQuery := " SELECT DISTINCT UZ9.UZ9_ACESSO ACESSO, "
+	cQuery += "	UZ9.UZ9_ITEM OPERACAO "
+	cQuery += " FROM "+ RetSqlName("UZ7") +" UZ7 "
+	cQuery += " INNER JOIN "+ RetSqlName("UZ8") +" UZ8 "
+	cQuery += "	ON UZ8.D_E_L_E_T_ = ' ' "
+	cQuery += "	AND UZ8.UZ8_FILIAL = '"+ xFilial("UZ8") +"' "
+	cQuery += "	AND UZ8.UZ8_CODIGO = UZ7.UZ7_CODIGO "
+	cQuery += " INNER JOIN "+ RetSqlName("UZ9") +" UZ9 "
+	cQuery += "	ON UZ9.D_E_L_E_T_ = ' ' "
+	cQuery += "	AND UZ9.UZ9_FILIAL = '"+ xFilial("UZ9") +"' "
+	cQuery += "	AND UZ9.UZ9_CODIGO = UZ8.UZ8_CODIGO "
+	cQuery += "	AND UZ9.UZ9_ITMGRP = UZ8.UZ8_ITEM "
+	cQuery += " WHERE UZ7.D_E_L_E_T_ = ' ' "
+	cQuery += "	AND UZ7.UZ7_FILIAL = '"+ xFilial("UZ7") +"' "
+	cQuery += "	AND UZ7.UZ7_ROTINA = '" + Self:cRotina + "' " // Painel Financeiro
+	cQuery += "	AND UZ9.UZ9_ACESSO = 'L' " // Liberado
+	cQuery += "	AND (UZ8.UZ8_USER = '"+ Self:cUsuario +"' OR UZ8.UZ8_GRUPO IN "+ FormatIn( AllTrim(Self:cGrupos), ";") +") "
+
+	cQuery := ChangeQuery(cQuery)
+
+	If Select("QRYUZ9") > 0
+		QRYUZ9->( DbCloseArea() )
+	EndIf
+
+	MpSysOpenQuery( cQuery, "QRYUZ9" )
+
+	While QRYUZ9->(!Eof())
+
+		Aadd(Self:aListaOps, Val(QRYUZ9->OPERACAO))
+
+		QRYUZ9->( DbSkip() )
+	EndDo
+
+	If Select("QRYUZ9") > 0
+		QRYUZ9->( DbCloseArea() )
+	EndIf
+
+Return(Self:aListaOps)
+
+/*/{Protheus.doc} VirtusGestaoAcessos::ValidaAcessos
+Valida acessos do usuário conectado ao sistema
+@type method
+@version 1.0
+@author g.sampaio
+@since 04/04/2024
+@param nAcesso, numeric, acesso solicitado a rotina
+@return logical, retorno se o usuario tem acesso
+/*/
+Method ValidaAcessos(nAcesso) Class VirtusGestaoAcessos
+
+	Local lRetorno      As Logical
+	Local nPermissao    As Numeric
+
+	Default nAcesso := 0
+
+	// inicializa variavel de retorno
+	lRetorno := .F.
+
+	nPermissao := AScan(Self:aListaOps, nAcesso)
+
+	If nPermissao > 0
+		lRetorno := .T.
+	EndIf
+
+Return(lRetorno)

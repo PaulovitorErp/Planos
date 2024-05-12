@@ -1,0 +1,3279 @@
+#INCLUDE "TOTVS.CH"
+#INCLUDE "TOPCONN.CH"
+
+/*/{Protheus.doc} RUTILE51
+Classe Novo Painel Financeiro
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 08/09/2021
+/*/
+User Function RUTILE51
+Return Nil
+
+/*/{Protheus.doc} PainelFinTabela
+Classe Tabela Painel Financeiro
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+/*/
+	Class PainelFinTabela
+
+		Public Data campos_custom As Array
+		Public Data filial as character
+		Public Data forma_pagto as character
+		Public Data valor_original as numeric
+		Public Data valor_jur_mlt as numeric
+		Public Data prefixo as character
+		Public Data numero as character
+		Public Data parcela as character
+		Public Data tipo as character
+		Public Data vencto as date
+		Public Data vencto_original as date
+		Public Data vencto_real as date
+		Public Data parcela_de as character
+		Public Data natureza as character
+		Public Data banco as character
+		Public Data bco_nome as character
+		Public Data agencia as character
+		Public Data conta as character
+		Public Data cliente as character
+		Public Data loja as character
+		Public Data cli_nome as character
+		Public Data emissao as date
+		Public Data saldo as numeric
+		Public Data recno as numeric
+		Public Data acrescimo as numeric
+		Public Data decrescimo as numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+/*/{Protheus.doc} PainelFinTabela::New
+PainelFinTabela Constructor
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+@return object, self
+/*/
+Method New() Class PainelFinTabela
+
+	::campos_custom := {}
+	::filial := ""
+	::forma_pagto := ""
+	::valor_original := 0
+	::prefixo := ""
+	::numero := ""
+	::parcela := ""
+	::tipo := ""
+	::vencto := STOD(SPACE(8))
+	::vencto_original := STOD(SPACE(8))
+	::vencto_real := STOD(SPACE(8))
+	::parcela_de := ""
+	::natureza := ""
+	::banco := ""
+	::bco_nome := ""
+	::agencia := ""
+	::conta := ""
+	::cliente := ""
+	::loja := ""
+	::cli_nome := ""
+	::emissao := STOD(SPACE(8))
+	::saldo := 0
+	::recno := 0
+	::acrescimo := 0
+	::decrescimo := 0
+
+Return(Self)
+
+/*/{Protheus.doc} PainelFinTabela::toJsonObject
+object to jsonObject
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+@return object, oJson
+/*/
+Method toJsonObject() Class PainelFinTabela
+
+	Local nX	:= 0
+	Local oJson := JsonObject():New()
+
+	oJson["filial"] := ::filial
+	oJson["forma_pagto"] := ::forma_pagto
+	oJson["valor_original"] := ::valor_original
+	oJson["prefixo"] := ::prefixo
+	oJson["numero"] := ::numero
+	oJson["parcela"] := ::parcela
+	oJson["tipo"] := ::tipo
+	oJson["vencto"] := ::vencto
+	oJson["vencto_original"] := ::vencto_original
+	oJson["vencto_real"] := ::vencto_real
+	oJson["parcela_de"] := ::parcela_de
+	oJson["natureza"] := ::natureza
+	oJson["banco"] := ::banco
+	oJson["bco_nome"] := ::bco_nome
+	oJson["agencia"] := ::agencia
+	oJson["conta"] := ::conta
+	oJson["cliente"] := ::cliente
+	oJson["loja"] := ::loja
+	oJson["cli_nome"] := ::cli_nome
+	oJson["emissao"] := ::emissao
+	oJson["saldo"] := ::saldo
+	oJson["recno"] := ::recno
+	oJson["acrescimo"] := ::acrescimo
+	oJson["decrescimo"] := ::decrescimo
+
+	If Len(::campos_custom) > 0
+		For nX := 1 To Len(::campos_custom)
+			oJson[::campos_custom[nX][1]] := ::campos_custom[nX][2]
+		Next nX
+	EndIf
+
+Return(oJson)
+
+/*/{Protheus.doc} PainelReajTabela
+Classe Tabela Painel Reajuste
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+/*/
+	Class PainelReajTabela
+
+		Public Data filial as character
+		Public Data codigo as character
+		Public Data data as date
+		Public Data proximo_reajuste as character
+		Public Data modelo2 as character
+		Public Data indice as character
+		Public Data valor_adicional as numeric
+		Public Data valor_anterior as numeric
+		Public Data valor_novo as numeric
+		Public Data valor_diferenca as numeric
+		Public Data codigo_hist_alt as character
+		Public Data recno as numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+/*/{Protheus.doc} PainelReajTabela::New
+PainelReajTabela Constructor
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+@return object, self
+/*/
+Method New() Class PainelReajTabela
+
+	::filial := ""
+	::codigo := ""
+	::data := STOD(SPACE(8))
+	::proximo_reajuste := ""
+	::modelo2 := ""
+	::indice := ""
+	::valor_adicional := 0
+	::valor_anterior := 0
+	::valor_novo := 0
+	::valor_diferenca := 0
+	::codigo_hist_alt := ""
+	::recno := 0
+
+Return Self
+
+/*/{Protheus.doc} PainelReajTabela::toJsonObject
+object to jsonObject
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+@return object, oJson
+/*/
+Method toJsonObject() Class PainelReajTabela
+
+	Local oJson := JsonObject():New()
+
+	oJson["filial"] := ::filial
+	oJson["codigo"] := ::codigo
+	oJson["data"] := ::data
+	oJson["proximo_reajuste"] := ::proximo_reajuste
+	oJson["modelo2"] := ::modelo2
+	oJson["indice"] := ::indice
+	oJson["valor_adicional"] := ::valor_adicional
+	oJson["valor_anterior"] := ::valor_anterior
+	oJson["valor_novo"] := ::valor_novo
+	oJson["valor_diferenca"] := ::valor_diferenca
+	oJson["codigo_hist_alt"] := ::codigo_hist_alt
+	oJson["recno"] := ::recno
+
+Return oJson
+
+/*/{Protheus.doc} PainelRecorrTabela
+Classe Tabela Painel Recorrencia
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 15/11/2021
+/*/
+	Class PainelRecorrTabela
+
+		Public Data filial as character
+		Public Data status as character
+		Public Data fatura as character
+		Public Data dthr_envio as character
+		Public Data dthr_retorno as character
+		Public Data dthr_processamento as character
+		Public Data valor as numeric
+		Public Data chave as character
+		Public Data nome_cliente as character
+		Public Data emissao as date
+		Public Data vencto_original as date
+		Public Data vencto_real as date
+		Public Data se1_recno as numeric
+		Public Data u65_recno as numeric
+		Public Data u63_recno as numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+/*/{Protheus.doc} PainelRecorrTabela::New
+PainelRecorrTabela Constructor
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 15/11/2021
+@return object, self
+/*/
+Method New() Class PainelRecorrTabela
+
+	::filial := ""
+	::status := ""
+	::fatura := ""
+	::dthr_envio := ""
+	::dthr_retorno := ""
+	::dthr_processamento := ""
+	::valor := 0
+	::chave := ""
+	::nome_cliente := ""
+	::emissao := STOD(SPACE(8))
+	::vencto_original := STOD(SPACE(8))
+	::vencto_real := STOD(SPACE(8))
+	::se1_recno := 0
+	::u65_recno := 0
+	::u63_recno := 0
+
+Return Self
+
+/*/{Protheus.doc} PainelRecorrTabela::toJsonObject
+object to jsonObject
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 15/11/2021
+@return object, oJson
+/*/
+Method toJsonObject() Class PainelRecorrTabela
+
+	Local oJson := JsonObject():New()
+
+	oJson["filial"] := ::filial
+	oJson["status"] := ::status
+	oJson["fatura"] := ::fatura
+	oJson["dthr_envio"] := ::dthr_envio
+	oJson["dthr_retorno"] := ::dthr_retorno
+	oJson["dthr_processamento"] := ::dthr_processamento
+	oJson["valor"] := ::valor
+	oJson["chave"] := ::chave
+	oJson["nome_cliente"] := ::nome_cliente
+	oJson["emissao"] := ::emissao
+	oJson["vencto_original"] := ::vencto_original
+	oJson["vencto_real"] := ::vencto_real
+	oJson["se1_recno"] := ::se1_recno
+	oJson["u65_recno"] := ::u65_recno
+	oJson["u63_recno"] := ::u63_recno
+
+Return oJson
+
+/*/{Protheus.doc} PainelFin
+Classe Novo Painel Financeiro
+@type class
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+/*/
+	Class PainelFin
+
+		Public Data virtusFin as object
+		Public Data modulo as character
+		Public Data contrato as character
+		Public Data titulos as array
+		Public Data titulos_abertos as array
+		Public Data titulos_baixados as array
+		Public Data vencto_carencia as character
+		Public Data reajustes as array
+		Public Data recorrencia as array
+
+		Public Method New() Constructor
+		Public Method BuscarTitulos()
+		Public Method BuscarBaixasTitulo()
+		Public Method BuscarReajustes()
+		Public Method BuscarPerfilPagto()
+		Public Method BuscarRecorrencia()
+		Public Method GerarLiquidacao()
+		Public Method CancelarLiquidacao()
+		Public Method DetalharLiquidacao()
+		Public Method Reliquidar()
+		Public Method GerarBoleto()
+		Public Method TransferirBoleto()
+		Public Method RemoverRecorrencia()
+		Public Method AlterarFormaPagto()
+		Public Method AlterarTitulo()
+		Public Method PosicaoCliente()
+		Public Method IncluirNovoTitulo()
+		Public Method BaixarTitulo()
+		Public Method AlterarVenctos()
+		Public Method CalcDiasCarencia()
+		Public Method CalcValorCarencia()
+		Public Method AnteciparFinanciamento()
+		Public Method GerarLinkPagamento()
+
+	EndClass
+
+/*/{Protheus.doc} PainelFin::New
+PainelFin Constructor
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+@param cCodModulo, character, cCodModulo
+@param cContrato, character, cContrato
+@return object, self
+/*/
+Method New(cCodModulo, cContrato) Class PainelFin
+
+	::virtusFin := VirtusFin():New()
+	::modulo := cCodModulo
+	::contrato := cContrato
+	::titulos := {}
+	::titulos_abertos := {}
+	::titulos_baixados := {}
+	::vencto_carencia := ""
+	::reajustes := {}
+	::recorrencia := {}
+
+Return Self
+
+/*/{Protheus.doc} PainelFin::BuscarTitulos
+Busca titulos para contrato
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 09/09/2021
+@return array, ::titulos
+/*/
+Method BuscarTitulos() Class PainelFin
+
+	Local aArea 			:= GetArea()
+	Local aAreaSE1 			:= SE1->( GetArea() )
+	Local aDadosBaixa 		:= {}
+	Local cQry 				:= ""
+	Local lConsVlrCheio		:= SuperGetMV("MV_XCONVLR", .F., .T.)
+	Local nX 				:= 0
+	Local nValorBaixado 	:= 0
+	Local oPainelFinTabela 	:= Nil
+
+	cQry := "SELECT SE1.E1_FILIAL FILIAL, "
+	cQry += "    SE1.E1_XFORPG FORPG, "
+
+	If lConsVlrCheio
+		cQry += "    (SE1.E1_VALOR + SE1.E1_ACRESC - SE1.E1_DECRESC) VLRORIG, "
+	Else
+		cQry += "    SE1.E1_VALOR VLRORIG, "
+		cQry += "    SE1.E1_ACRESC ACRESC, "
+		cQry += "    SE1.E1_DECRESC DECRESC, "
+	EndIf
+
+	cQry += "    SE1.E1_PREFIXO PREFIXO, "
+	cQry += "    SE1.E1_NUM NUM, "
+	cQry += "    SE1.E1_PARCELA PARCELA, "
+	cQry += "    SE1.E1_TIPO TIPO, "
+	cQry += "    SE1.E1_VENCTO VENCTO, "
+	cQry += "    SE1.E1_VENCORI VENCORI, "
+	cQry += "    SE1.E1_VENCREA VENCREA, "
+	cQry += "    SE1.E1_XPARCON PARCDE, "
+	cQry += "    SED.ED_DESCRIC NATUREZA, "
+	cQry += "    SE1.E1_PORTADO BANCO, "
+	cQry += "    SA6.A6_NOME BCO_NOME, "
+	cQry += "    SE1.E1_AGEDEP AGENCIA, "
+	cQry += "    SE1.E1_CONTA CONTA, "
+	cQry += "    SE1.E1_CLIENTE CLIENTE, "
+	cQry += "    SE1.E1_LOJA LOJA, "
+	cQry += "    SA1.A1_NOME CLI_NOME, "
+	cQry += "    SE1.E1_EMISSAO EMISSAO, "
+	cQry += "    SE1.E1_SALDO SALDO, "
+	cQry += "    SE1.R_E_C_N_O_ AS RECNO "
+
+	// Busca campos customizados
+	If ExistBlock("PECMPQ51")
+		cQry += "," + ExecBlock("PECMPQ51", .F., .F., {cQry}) + ""
+	EndIf
+
+	cQry += "FROM "+ RetSqlName("SE1") +" SE1 "
+	cQry += "INNER JOIN "+ RetSqlName("SED") +" SED "
+	cQry += "    ON SED.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SED.ED_FILIAL = '"+ xFilial("SED") +"' "
+	cQry += "    AND SED.ED_CODIGO = SE1.E1_NATUREZ "
+	cQry += "INNER JOIN "+ RetSqlName("SA1") +" SA1 "
+	cQry += "    ON SA1.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SA1.A1_COD = SE1.E1_CLIENTE "
+	cQry += "    AND SA1.A1_LOJA = SE1.E1_LOJA "
+	cQry += "	 AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+	cQry += "LEFT JOIN "+ RetSqlName("SA6") +" SA6 "
+	cQry += "    ON SA6.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SA6.A6_FILIAL = '"+ xFilial("SA6") +"' "
+	cQry += "    AND SA6.A6_COD = SE1.E1_PORTADO "
+	cQry += "    AND SA6.A6_AGENCIA = SE1.E1_AGEDEP "
+	cQry += "    AND SA6.A6_NUMCON = SE1.E1_CONTA "
+	cQry += "WHERE  SE1.D_E_L_E_T_ <> '*' "
+	cQry += "    AND SE1.E1_FILIAL = '"+ xFilial("SE1") +"' "
+
+	If ::modulo == "FUN" // Funerária
+		cQry += "    AND SE1.E1_XCTRFUN = '"+ ::contrato +"' "
+	else
+		cQry += "    AND SE1.E1_XCONTRA = '"+ ::contrato +"' "
+	EndIf
+	cQry += "ORDER  BY SE1.E1_VENCTO,SE1.E1_TIPO,SE1.E1_PREFIXO, SE1.E1_NUM, SE1.E1_PARCELA"
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRYSE1") > 0
+		QRYSE1->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "QRYSE1")
+
+	If QRYSE1->( !EOF() )
+		While QRYSE1->( !EOF() )
+
+			oPainelFinTabela := PainelFinTabela():New()
+			oPainelFinTabela:filial := QRYSE1->FILIAL
+			oPainelFinTabela:forma_pagto := QRYSE1->FORPG
+			oPainelFinTabela:valor_original := QRYSE1->VLRORIG
+			oPainelFinTabela:valor_jur_mlt := QRYSE1->VLRORIG
+
+			If !lConsVlrCheio
+				oPainelFinTabela:acrescimo := QRYSE1->ACRESC
+				oPainelFinTabela:decrescimo := QRYSE1->DECRESC
+			EndIf
+
+			oPainelFinTabela:prefixo := QRYSE1->PREFIXO
+			oPainelFinTabela:numero := QRYSE1->NUM
+			oPainelFinTabela:parcela := QRYSE1->PARCELA
+			oPainelFinTabela:tipo := QRYSE1->TIPO
+			oPainelFinTabela:vencto := STOD(QRYSE1->VENCTO)
+			oPainelFinTabela:vencto_original := STOD(QRYSE1->VENCORI)
+			oPainelFinTabela:vencto_real := STOD(QRYSE1->VENCREA)
+			oPainelFinTabela:parcela_de := QRYSE1->PARCDE
+			oPainelFinTabela:natureza := QRYSE1->NATUREZA
+			oPainelFinTabela:banco := QRYSE1->BANCO
+			oPainelFinTabela:bco_nome := QRYSE1->BCO_NOME
+			oPainelFinTabela:agencia := QRYSE1->AGENCIA
+			oPainelFinTabela:conta := QRYSE1->CONTA
+			oPainelFinTabela:cliente := QRYSE1->CLIENTE
+			oPainelFinTabela:loja := QRYSE1->LOJA
+			oPainelFinTabela:cli_nome := QRYSE1->CLI_NOME
+			oPainelFinTabela:emissao := STOD(QRYSE1->EMISSAO)
+			oPainelFinTabela:saldo := QRYSE1->SALDO
+			oPainelFinTabela:recno := QRYSE1->RECNO
+			oPainelFinTabela:campos_custom := Iif(ExistBlock("PECMPC51"),ExecBlock("PECMPC51", .F., .F.,{"QRYSE1"}),{})
+
+			AADD(::titulos, oPainelFinTabela)
+
+			// Segrega títulos abertos e baixados
+			If QRYSE1->SALDO > 0
+				DbSelectArea("SE1")
+				SE1->( DbGoTo(QRYSE1->RECNO) )
+
+				oPainelFinTabela:valor_jur_mlt := ::virtusFin:RetSaldoTitulo()
+
+				AADD(::titulos_abertos, oPainelFinTabela)
+			Else
+				aDadosBaixa := {}
+				nValorBaixado := 0
+				aDadosBaixa := aClone(::BuscarBaixasTitulo(QRYSE1->PREFIXO, QRYSE1->NUM, QRYSE1->PARCELA, QRYSE1->TIPO, QRYSE1->CLIENTE, QRYSE1->LOJA))
+				If Len(aDadosBaixa) > 0
+					For nX := 1 To Len(aDadosBaixa)
+						nValorBaixado += aDadosBaixa[nX][4]
+					Next nX
+					oPainelFinTabela:valor_jur_mlt := nValorBaixado
+
+					AADD(::titulos_baixados, oPainelFinTabela)
+
+				EndIf
+
+
+			EndIf
+
+			oPainelFinTabela := Nil
+
+			QRYSE1->( DbSkip() )
+
+		EndDo
+	EndIf
+
+	If Select("QRYSE1") > 0
+		QRYSE1->( DbCloseArea() )
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return(::titulos)
+
+/*/{Protheus.doc} PainelFin::BuscarBaixasTitulo
+Busca movimentos financeiros do título
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 16/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+@param cCodCli, character, cCodCli
+@param cLoja, character, cLoja
+/*/
+Method BuscarBaixasTitulo(cPrefixo, cNum, cParcela, cTipo, cCodCli, cLoja) Class PainelFin
+
+	Local cQry := ""
+	Local aArea := GetArea()
+	Local aAreaSE5 := SE5->( GetArea() )
+	Local aDadosBx := {}
+
+	cQry := "SELECT SE5.E5_DATA DATA, "
+	cQry += "	SE5.E5_FORMAPG FORMAPG, "
+	cQry += "	SA6.A6_NOME CAIXA, "
+	cQry += "	SE5.E5_VALOR VALOR, "
+	cQry += "	SE5.E5_VLJUROS VLJUROS, "
+	cQry += "	SE5.E5_VLMULTA VLMULTA, "
+	cQry += "	SE5.E5_VLDESCO VLDESCO, "
+	cQry += "	SE5.R_E_C_N_O_ RECNO, "
+	cQry += "	SE5.E5_MOTBX MOTBAIXA "
+	cQry += "FROM "+ RetSqlName("SE5") +" SE5 "
+	cQry += "LEFT JOIN "+ RetSqlName("SA6") +" SA6 "
+	cQry += "	ON SA6.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SA6.A6_FILIAL = SE5.E5_FILIAL "
+	cQry += " 	AND RTRIM(LTRIM(SA6.A6_COD)) = RTRIM(LTRIM(SE5.E5_BANCO)) "
+	cQry += " 	AND RTRIM(LTRIM(SA6.A6_AGENCIA)) = RTRIM(LTRIM(SE5.E5_AGENCIA)) "
+	cQry += " 	AND RTRIM(LTRIM(SA6.A6_NUMCON)) = RTRIM(LTRIM(SE5.E5_CONTA)) "
+	cQry += " WHERE SE5.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE5.E5_FILIAL = '"+ xFilial("SE5") +"' "
+	cQry += "	AND SE5.E5_RECPAG = 'R' "
+	cQry += "	AND SE5.E5_SITUACA <> 'C' "
+	cQry += " 	AND SE5.E5_FATURA = ' ' "
+	cQry += "   AND ( (SE5.E5_TIPODOC IN ('VL','CP') AND SE5.E5_MOTBX IN ('NOR','CMP') AND SE5.E5_ORIGEM <> 'LOJXREC' ) OR (SE5.E5_TIPODOC = 'BA' AND SE5.E5_MOTBX <> 'LIQ') ) "
+	cQry += "	AND SE5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') "
+	cQry += "	AND SE5.E5_PREFIXO = '"+ cPrefixo +"' "
+	cQry += "	AND SE5.E5_NUMERO = '"+ cNum +"' "
+	cQry += "	AND SE5.E5_PARCELA = '"+ cParcela +"' "
+	cQry += "	AND SE5.E5_TIPO = '"+ cTipo +"' "
+	cQry += "	AND SE5.E5_CLIFOR = '"+ cCodCli +"' "
+	cQry += "	AND SE5.E5_LOJA = '"+ cLoja +"' "
+	cQry += "	AND NOT EXISTS ( "
+	cQry += "					SELECT E5_NUMERO  "
+	cQry += "					FROM " + RetSQLName("SE5") + " E5B "
+	cQry += " 					WHERE E5B.D_E_L_E_T_ = '' "
+	cQry += " 					AND E5B.E5_FILIAL = '" + xFilial("SE5") + "' "
+	cQry += " 					AND E5B.E5_PREFIXO = SE5.E5_PREFIXO "
+	cQry += " 					AND E5B.E5_NUMERO = SE5.E5_NUMERO "
+	cQry += " 					AND E5B.E5_PARCELA = SE5.E5_PARCELA "
+	cQry += " 					AND E5B.E5_TIPO = SE5.E5_TIPO "
+	cQry += " 					AND E5B.E5_SEQ = SE5.E5_SEQ "
+	cQry += " 					AND E5B.E5_TIPODOC = 'ES' "
+	cQry += "				) "
+	cQry += "ORDER BY SE5.E5_DATA"
+
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRYSE5") > 0
+		QRYSE5X->( DbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "QRYSE5X")
+
+	If QRYSE5X->( !EOF() )
+		While QRYSE5X->( !EOF() )
+			// Usado para pegar usuário de inclusão
+			SE5->( DbGoTo(QRYSE5X->RECNO) )
+
+			AADD(aDadosBx, { STOD(QRYSE5X->DATA), QRYSE5X->FORMAPG, QRYSE5X->CAIXA,;
+				QRYSE5X->VALOR, QRYSE5X->VLJUROS, QRYSE5X->VLMULTA, QRYSE5X->VLDESCO, AllTrim( FWLeUserlg("E5_USERLGI", 1)), QRYSE5X->MOTBAIXA })
+
+			QRYSE5X->( DbSkip() )
+		EndDo
+	EndIf
+
+	If Select("QRYSE5") > 0
+		QRYSE5X->( DbCloseArea() )
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaSE5)
+
+Return(aDadosBx)
+
+/*/{Protheus.doc} PainelFin::BuscarReajustes
+Busca reajustes do contrato
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 03/11/2021
+@return array, ::reajustes
+/*/
+Method BuscarReajustes() Class PainelFin
+	Local cQry := ""
+	Local oPainelReajTabela := Nil
+
+	If ::modulo == "FUN"
+
+		cQry := "SELECT UF7_FILIAL, "
+		cQry += "	UF7_CODIGO, "
+		cQry += "	UF7_DATA, "
+		cQry += "	UF7_PROREA, "
+		cQry += "	UF7_MOD2, "
+		cQry += "	UF7_INDICE, "
+		cQry += "	UF7_VLADIC, "
+		cQry += "	UF7_VLRANT, "
+		cQry += "	UF7_VLRNOV, "
+		cQry += "	(UF7_VLRNOV - UF7_VLRANT) UF7_VLRDIF, "
+		cQry += "	UF7_HISALT, "
+		cQry += "	R_E_C_N_O_ RECNO "
+		cQry += "FROM " + RetSqlName("UF7")
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "AND UF7_FILIAL = '"+ xFilial("UF7") +"' "
+		cQry += "AND UF7_CONTRA = '"+ ::contrato +"' "
+
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYUF7") > 0
+			QRYUF7->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYUF7"
+
+		If QRYUF7->( !EOF() )
+			While QRYUF7->( !EOF() )
+
+				oPainelReajTabela := PainelReajTabela():New()
+				oPainelReajTabela:filial := QRYUF7->UF7_FILIAL
+				oPainelReajTabela:codigo := QRYUF7->UF7_CODIGO
+				oPainelReajTabela:data := STOD(QRYUF7->UF7_DATA)
+				oPainelReajTabela:proximo_reajuste := QRYUF7->UF7_PROREA
+				oPainelReajTabela:modelo2 := IIF(QRYUF7->UF7_MOD2 == "S", "SIM", "NAO")
+				oPainelReajTabela:indice := QRYUF7->UF7_INDICE
+				oPainelReajTabela:valor_adicional := QRYUF7->UF7_VLADIC
+				oPainelReajTabela:valor_anterior := QRYUF7->UF7_VLRANT
+				oPainelReajTabela:valor_novo := QRYUF7->UF7_VLRNOV
+				oPainelReajTabela:valor_diferenca := QRYUF7->UF7_VLRDIF
+				oPainelReajTabela:codigo_hist_alt := QRYUF7->UF7_HISALT
+				oPainelReajTabela:recno := QRYUF7->RECNO
+
+				AADD(::reajustes, oPainelReajTabela)
+
+				oPainelReajTabela := Nil
+
+				QRYUF7->( DbSkip() )
+
+			EndDo
+		EndIf
+
+		QRYUF7->( DbCloseArea() )
+
+	ElseIf ::modulo == "CEM"
+
+		cQry := "SELECT DISTINCT U20.U20_FILIAL, "
+		cQry += "	U20.U20_CODIGO, "
+		cQry += "	U20.U20_DATA, "
+		cQry += "	U20.U20_REFFIM, "
+		cQry += "	U20.U20_INDICE, "
+		cQry += "	SUM(U21.U21_VLADIC) U21_VLADIC, "
+		cQry += "	U20.R_E_C_N_O_ RECNO "
+		cQry += "FROM "+ RetSqlName("U20") +" U20 "
+		cQry += "INNER JOIN "+ RetSqlName("U21") +" U21 "
+		cQry += "	ON U21.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U21.U21_FILIAL = U20.U20_FILIAL "
+		cQry += "	AND U21.U21_CODIGO = U20.U20_CODIGO "
+		cQry += "WHERE U20.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U20.U20_FILIAL = '"+ xFilial("U20") +"' "
+		cQry += "	AND U20.U20_CONTRA = '"+ ::contrato +"' "
+		cQry += "	GROUP BY U20.U20_FILIAL, "
+		cQry += "	U20.U20_CODIGO, "
+		cQry += "	U20.U20_DATA, "
+		cQry += "	U20.U20_REFFIM, "
+		cQry += "	U20.U20_INDICE, "
+		cQry += "	U20.R_E_C_N_O_ "
+
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYU20") > 0
+			QRYU20->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYU20"
+
+		If QRYU20->( !EOF() )
+			While QRYU20->( !EOF() )
+
+				oPainelReajTabela := PainelReajTabela():New()
+				oPainelReajTabela:filial := QRYU20->U20_FILIAL
+				oPainelReajTabela:codigo := QRYU20->U20_CODIGO
+				oPainelReajTabela:data := STOD(QRYU20->U20_DATA)
+				oPainelReajTabela:proximo_reajuste := QRYU20->U20_REFFIM
+				oPainelReajTabela:modelo2 := "NAO"
+				oPainelReajTabela:indice := QRYU20->U20_INDICE
+				oPainelReajTabela:valor_adicional := QRYU20->U21_VLADIC
+				oPainelReajTabela:valor_anterior := 0
+				oPainelReajTabela:valor_novo := 0
+				oPainelReajTabela:valor_diferenca := 0
+				oPainelReajTabela:codigo_hist_alt := ""
+				oPainelReajTabela:recno := QRYU20->RECNO
+
+				AADD(::reajustes, oPainelReajTabela)
+
+				oPainelReajTabela := Nil
+
+				QRYU20->( DbSkip() )
+
+			EndDo
+		EndIf
+
+		QRYU20->( DbCloseArea() )
+
+	EndIf
+
+Return(::reajustes)
+
+/*/{Protheus.doc} PainelFin::BuscarPerfilPagto
+Busca Perfil de Pagamento na Vindi
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 17/11/2021
+@return object, oJsonPerfilPagto
+/*/
+Method BuscarPerfilPagto() Class PainelFin
+	Local oJsonPerfilPagto := Nil
+	Local lProcessar := .F.
+	Local cQry := ""
+	Local cCodCli := ""
+	Local cLoja := ""
+
+	If ::modulo == "FUN"
+		cCodCli := UF2->UF2_CLIENT
+		cLoja := UF2->UF2_LOJA
+		lProcessar := IIF(AllTrim(UF2->UF2_FORPG) $ 'CC/CD', .T., .F.)
+	ElseIf ::modulo == "CEM"
+		cCodCli := U00->U00_CLIENT
+		cLoja := U00->U00_LOJA
+		lProcessar := IIF(AllTrim(U00->U00_FORPG) $ 'CC/CD', .T., .F.)
+	EndIf
+
+	If lProcessar
+
+		oJsonPerfilPagto := JsonObject():New()
+
+		cQry := "SELECT U61.U61_MSFIL FILIAL, "
+		cQry += "	U64.U64_DIGCAR ULTDIGIT, "
+		cQry += "	U67.U67_DESC BANDEIRA, "
+		cQry += "	U64.U64_NOMCAR TITULAR, "
+		cQry += "	U61.U61_CODIGO CLI_VINDI, "
+		cQry += "	U64.U64_CODVIN COD_PERFIL, "
+		cQry += "	U64.U64_DATA DATA, "
+		cQry += "	U64.U64_HORA HORA "
+		cQry += "FROM "+ RetSqlName("U61") +" U61 "
+		cQry += "INNER JOIN "+ RetSqlName("U64") +" U64 "
+		cQry += "	ON U64.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U64.U64_FILIAL = U61.U61_FILIAL "
+		cQry += "	AND U64.U64_CLIENT = U61.U61_CLIENT "
+		cQry += "	AND U64.U64_LOJA = U61.U61_LOJA "
+		cQry += "	AND U64.U64_STATUS = 'A' "
+		cQry += "LEFT JOIN "+ RetSqlName("U67") +" U67 "
+		cQry += "	ON U67.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U67.U67_FILIAL = U64.U64_FILIAL "
+		cQry += "	AND U67.U67_CODIGO = U64.U64_BANDEI "
+		cQry += "WHERE U61.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U61.U61_FILIAL = '"+ xFilial("U61") +"' "
+		cQry += "	AND U61.U61_STATUS = 'A' "
+		cQry += "	AND U61.U61_CLIENT = '"+ cCodCli +"' "
+		cQry += "	AND U61.U61_LOJA = '"+ cLoja +"' "
+
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYU64") > 0
+			QRYU64->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYU64"
+
+		If QRYU64->( !EOF() )
+			oJsonPerfilPagto["ultdigit"] := QRYU64->ULTDIGIT
+			oJsonPerfilPagto["bandeira"] := QRYU64->BANDEIRA
+			oJsonPerfilPagto["titular"] := QRYU64->TITULAR
+			oJsonPerfilPagto["cliente_vindi"] := QRYU64->CLI_VINDI
+			oJsonPerfilPagto["codigo_perfil"] := QRYU64->COD_PERFIL
+			oJsonPerfilPagto["data"] := DTOC(STOD(QRYU64->DATA))
+			oJsonPerfilPagto["hora"] := QRYU64->HORA
+		Else
+			oJsonPerfilPagto["ultdigit"] := ""
+			oJsonPerfilPagto["bandeira"] := ""
+			oJsonPerfilPagto["titular"] := ""
+			oJsonPerfilPagto["cliente_vindi"] := ""
+			oJsonPerfilPagto["codigo_perfil"] := ""
+			oJsonPerfilPagto["data"] := ""
+			oJsonPerfilPagto["hora"] := ""
+		EndIf
+
+		QRYU64->( DbCloseArea() )
+
+	EndIf
+
+Return oJsonPerfilPagto
+
+/*/{Protheus.doc} PainelFin::BuscarRecorrencia
+Busca recorrencia do contrato
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 15/11/2021
+@return array, ::recorrencia
+/*/
+Method BuscarRecorrencia() Class PainelFin
+	Local cQry := ""
+	Local oPainelRecorrTabela := Nil
+	Local lProcessar := .F.
+
+	If ::modulo == "FUN"
+		lProcessar := IIF(AllTrim(UF2->UF2_FORPG) $ 'CC/CD', .T., .F.)
+	ElseIf ::modulo == "CEM"
+		lProcessar := IIF(AllTrim(U00->U00_FORPG) $ 'CC/CD', .T., .F.)
+	EndIf
+
+	If lProcessar
+
+		cQry := "SELECT SE1.E1_FILIAL FILIAL, "
+		cQry += "	U65.U65_CODVIN IDVINDI, "
+		cQry += "	U65.U65_DATA DT_ENVIO, "
+		cQry += "	U65.U65_HORA HR_ENVIO, "
+		cQry += "	U63.U63_DTINC DT_RETORNO, "
+		cQry += "	U63.U63_HRINC HR_RETORNO, "
+		cQry += "	U63.U63_DTPROC DT_PROC, "
+		cQry += "	U63.U63_HRPROC HR_PROC, "
+		cQry += "	SE1.E1_SALDO VALOR, "
+		cQry += "	(SE1.E1_FILIAL+SE1.E1_PREFIXO+SE1.E1_NUM+SE1.E1_PARCELA+SE1.E1_TIPO) CHAVE, "
+		cQry += "	SE1.E1_NOMCLI NOMECLI, "
+		cQry += "	SE1.E1_EMISSAO EMISSAO, "
+		cQry += "	SE1.E1_VENCORI VENCORI, "
+		cQry += "	SE1.E1_VENCREA VENCREA, "
+		cQry += "	SE1.E1_BAIXA BAIXA, "
+		cQry += "	CASE WHEN U65.U65_CODIGO IS NULL THEN 0 ELSE 1 END INTEGR_ENVIO, "
+		cQry += "	CASE WHEN U63.U63_CODIGO IS NULL THEN 0 ELSE 1 END INTEGR_RECEBIMENTO, "
+		cQry += "	SE1.R_E_C_N_O_ SE1_RECNO, "
+		cQry += "	U65.R_E_C_N_O_ U65_RECNO, "
+		cQry += "	U63.R_E_C_N_O_ U63_RECNO "
+		cQry += "FROM "+ RetSqlName("SE1") +" SE1 "
+		cQry += "LEFT JOIN "+ RetSqlName("U65") +" U65 "
+		cQry += "	ON U65.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U65.U65_FILIAL = SE1.E1_FILIAL "
+		cQry += "	AND U65.U65_PREFIX = SE1.E1_PREFIXO "
+		cQry += "	AND U65.U65_NUM = SE1.E1_NUM "
+		cQry += "	AND U65.U65_PARCEL = SE1.E1_PARCELA "
+		cQry += "	AND U65.U65_TIPO = SE1.E1_TIPO "
+		cQry += "	AND U65.U65_STATUS = 'A' "
+		cQry += "LEFT JOIN "+ RetSqlName("U63") +" U63 "
+		cQry += "	ON U63.D_E_L_E_T_ <> '*' "
+		cQry += "	AND U63.U63_FILIAL = U65.U65_FILIAL "
+		cQry += "	AND U63.U63_IDVIND = U65.U65_CODVIN "
+		cQry += "WHERE SE1.D_E_L_E_T_ <> '*' "
+		cQry += "	AND SE1.E1_FILIAL = '"+ xFilial("SE1") +"' "
+		cQry += "	AND SE1.E1_XFORPG = 'CC' "
+		cQry += "	AND SE1.E1_PARCELA > '001' "
+		If ::modulo == "FUN"
+			cQry += "	AND SE1.E1_XCTRFUN = '"+ ::contrato +"' "
+		Else
+			cQry += "	AND SE1.E1_XCONTRA = '"+ ::contrato +"' "
+		EndIf
+
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYSE1A") > 0
+			QRYSE1A->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYSE1A"
+
+		While QRYSE1A->( !EOF() )
+
+			oPainelRecorrTabela := PainelRecorrTabela():New()
+			oPainelRecorrTabela:filial := QRYSE1A->FILIAL
+			oPainelRecorrTabela:status := AvalStatusRecorr(QRYSE1A->BAIXA, QRYSE1A->INTEGR_ENVIO, QRYSE1A->INTEGR_RECEBIMENTO)
+			oPainelRecorrTabela:fatura := QRYSE1A->IDVINDI
+			oPainelRecorrTabela:dthr_envio := DTOC(STOD(QRYSE1A->DT_ENVIO)) + " " + QRYSE1A->HR_ENVIO
+			oPainelRecorrTabela:dthr_retorno := DTOC(STOD(QRYSE1A->DT_RETORNO)) + " " + QRYSE1A->HR_RETORNO
+			oPainelRecorrTabela:dthr_processamento := DTOC(STOD(QRYSE1A->DT_PROC)) + " " + QRYSE1A->HR_PROC
+			oPainelRecorrTabela:valor := QRYSE1A->VALOR
+			oPainelRecorrTabela:chave := QRYSE1A->CHAVE
+			oPainelRecorrTabela:nome_cliente := QRYSE1A->NOMECLI
+			oPainelRecorrTabela:emissao := STOD(QRYSE1A->EMISSAO)
+			oPainelRecorrTabela:vencto_original := STOD(QRYSE1A->VENCORI)
+			oPainelRecorrTabela:vencto_real := STOD(QRYSE1A->VENCREA)
+			oPainelRecorrTabela:se1_recno := QRYSE1A->SE1_RECNO
+			oPainelRecorrTabela:u65_recno := QRYSE1A->U65_RECNO
+			oPainelRecorrTabela:u63_recno := QRYSE1A->U63_RECNO
+
+			AADD(::recorrencia, oPainelRecorrTabela)
+
+			oPainelRecorrTabela := Nil
+
+			QRYSE1A->( DbSkip() )
+
+		EndDo
+
+		QRYSE1A->( DbCloseArea() )
+
+	EndIf
+
+Return ::recorrencia
+
+/*/{Protheus.doc} PainelFin::GerarLiquidacao
+Gera liquidação para contrato
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 17/09/2021
+/*/
+Method GerarLiquidacao() Class PainelFin
+	::virtusFin:ExecLiquidacao(1, SubStr(::modulo,1,1), ::contrato)
+Return
+
+/*/{Protheus.doc} PainelFin::CancelarLiquidacao
+Cancela liquidação do título
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 17/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+/*/
+Method CancelarLiquidacao(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	::virtusFin:ExecLiquidacao(3, SubStr(::modulo,1,1), ::contrato, cPrefixo, cNum, cParcela, cTipo)
+Return
+
+/*/{Protheus.doc} PainelFin::DetalharLiquidacao
+Detalha/Visualiza liquidação do título
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 17/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+/*/
+Method DetalharLiquidacao(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	::virtusFin:ExecLiquidacao(2, SubStr(::modulo,1,1), ::contrato, cPrefixo, cNum, cParcela, cTipo)
+Return
+
+/*/{Protheus.doc} PainelFin::Reliquidar
+Reliquidação de título
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 17/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+/*/
+Method Reliquidar(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	::virtusFin:ExecLiquidacao(4, SubStr(::modulo,1,1), ::contrato, cPrefixo, cNum, cParcela, cTipo)
+Return
+
+/*/{Protheus.doc} PainelFin::GerarBoleto
+Gera/Imprime boleto para títulos selecionados
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 20/09/2021
+@param aTitulos, array, aTitulos
+/*/
+Method GerarBoleto(aTitulos) Class PainelFin
+	Default aTitulos := {}
+
+	U_RCPGA24A(::contrato, aTitulos)
+Return
+
+/*/{Protheus.doc} PainelFin::TransferirBoleto
+Realiza transferência do título/boleto
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 20/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+/*/
+Method TransferirBoleto(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	Local aArea := GetArea()
+	Local aAreaSE1 := SE1->( GetArea() )
+
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	// Verifica se data do movimento não é menor
+	// que data limite de movimentacao no financeiro
+	If !DtMovFin()
+		Return
+	EndIf
+
+	If !MsgYesNo("Haverá a transferência do título selecionado, deseja continuar?", "TransferirBoleto")
+		Return
+	Else
+		SE1->(DbSetOrder(1))
+		If SE1->( MsSeek( xFilial("SE1") + cPrefixo + cNum + cParcela + cTipo ) )
+			FINA060(2) //Função padrão
+		Else
+			MsgAlet("Título financeiro não encontrado. Por favor, verificar registros.", "TransferirBoleto")
+		EndIf
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return
+
+/*/{Protheus.doc} PainelFin::RemoverRecorrencia
+Remove títulos selecionados da recorrência
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 20/09/2021
+@param aTitulos, array, aTitulos
+/*/
+Method RemoverRecorrencia(aTitulos) Class PainelFin
+	Local cFormaPgto := ""
+	Local nTamanho := 0
+
+	Default aTitulos := {}
+
+	nTamanho := Len(aTitulos)
+
+	If DlgRmRec(@cFormaPgto)
+		//-- Realiza processamento --//
+		Processa(ProcRmRec(aTitulos, cFormaPgto, nTamanho), "Removendo título da recorrência. Aguarde...")
+	EndIf
+
+Return
+
+/*/{Protheus.doc} PainelFin::AlterarFormaPagto
+Altera forma de pagamento do contrato
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 21/09/2021
+/*/
+Method AlterarFormaPagto() Class PainelFin
+	U_UVIND12(SubStr(::modulo,1,1))
+Return
+
+/*/{Protheus.doc} PainelFin::AlterarTitulo
+Altera título selecionado
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 21/09/2021
+/*/
+Method AlterarTitulo(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	
+	Local aArea := GetArea()
+	Local aAreaSE1 := SE1->( GetArea() )
+
+	Private aRotina := {}
+	Private lIntegracao := .F.
+	Private LF040AUTO := .F.
+	Private cCadastro := "Contas a Receber - Alterar"
+	Private INCLUI := .F.
+	Private ALTERA := .T.
+	Private nMoeda := Int(Val(GetMv("MV_MCUSTO")))
+
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	AADD(aRotina, {"Pesquisar", "AxPesqui" , 0 , 1,,.F. })
+	AADD(aRotina, {"Visualizar" ,"FA280Visua", 0 , 2})
+	AADD(aRotina, {"Incluir" ,"FA040Inclu", 0 , 3})
+	AADD(aRotina, {"Alterar" ,"FA040Alter", 0 , 4})
+	AADD(aRotina, {"Excluir" ,"FA040Delet", 0 , 5})
+	AADD(aRotina, {"Substituir" ,"FA040Subst", 0 , 6})
+	AADD(aRotina, {"Conhecimento" ,"MSDOCUMENT" , 0 , 4})
+	AADD(aRotina, {"Tracker Contábil" ,"CTBC662" , 0 , 7})
+	AADD(aRotina, {"Legenda" ,"FA040Legenda", 0 , 6, ,.F.})
+	AADD(aRotina, {"Histórico do Título" ,"FinaCsLog", 0 , 8})
+
+	SE1->(DbSetOrder(1))
+	If SE1->( MsSeek( xFilial("SE1") + cPrefixo + cNum + cParcela + cTipo ) )
+		FA040Alter("SE1", SE1->(Recno()), 4)
+	Else
+		MsgAlert("Título não encontrato. Por favor verificar o registros.", "AlterarTitulo")
+	EndIf
+
+	RestArea(aAreaSE1)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} PainelFin::PosicaoCliente
+Consulta posição do cliente
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 21/09/2021
+/*/
+Method PosicaoCliente() Class PainelFin
+	Local aArea := GetArea()
+	Local aAreaSA1 := SA1->( GetArea() )
+	Local cCodCli := ""
+	Local cLoja := ""
+
+	Private cCadastro := "Consulta Posição Cliente"
+	Private	aRotina	:= { { "Pesquisar", "AxPesqui" , 0 , 1},; //"Pesquisar"
+	{ "Visualizar", "AxVisual", 0 , 2},;   //"Visualizar"
+	{ "Consultar" , "FC010CON" , 0 , 2},;  //"Consultar"
+	{ "Impressao" , "FC010IMP" , 0 , 4}}   //"Impressao"
+
+	If ::modulo == "FUN"
+		cCodCli := UF2->UF2_CLIENT
+		cLoja := UF2->UF2_LOJA
+	Else
+		cCodCli := U00->U00_CLIENT
+		cLoja := U00->U00_LOJA
+	EndIf
+
+	SA1->( DbSetOrder(1) )
+	If SA1->( MsSeek( xFilial("SA1") + cCodCli + cLoja ) )
+		If Pergunte("FIC010", .T.)
+			Fc010Con("SA1", SA1->(Recno()), 2)
+			lRet := .T.
+		EndIf
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaSA1)
+
+Return
+
+/*/{Protheus.doc} PainelFin::IncluirNovoTitulo
+Inclui novo título financeiro
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 21/09/2021
+/*/
+Method IncluirNovoTitulo() Class PainelFin
+	IncTitulo(::modulo)
+Return
+
+/*/{Protheus.doc} PainelFin::BaixarTitulo
+Baixa/Liquida título financeiro
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 21/09/2021
+@param cPrefixo, character, cPrefixo
+@param cNum, character, cNum
+@param cParcela, character, cParcela
+@param cTipo, character, cTipo
+/*/
+Method BaixarTitulo(cPrefixo, cNum, cParcela, cTipo) Class PainelFin
+	Local lRet := .T.
+
+	Private INCLUI := .F.
+	Private ALTERA := .T.
+
+	Default cPrefixo := ""
+	Default cNum := ""
+	Default cParcela := ""
+	Default cTipo := ""
+
+	// Verifica se data do movimento não é menor
+	// que data limite de movimentacao no financeiro
+	If !DtMovFin()
+		Return
+	EndIf
+
+	If !MsgYesNo("Haverá a liquidação do registro selecionado, deseja continuar?")
+		Return
+	Else
+		SE1->( DbSetOrder(1) )
+		If SE1->( MsSeek( xFilial("SE1") + cPrefixo + cNum + cParcela + cTipo ) )
+			lRet := FINA070(, 3, .T.)
+		Else
+			MsgAlert("Título não encontrato. Por favor verificar o registros.", "Atenção")
+		EndIf
+
+		If !lRet
+			MsgAlert("Erro ao liquidar título!", "Atenção")
+		EndIf
+	EndIf
+
+Return
+
+/*/{Protheus.doc} PainelFin::AlterarVenctos
+Altera vencimentos dos título em lote
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 22/09/2021
+/*/
+Method AlterarVenctos() Class PainelFin
+	Local cTitle := "Alteração do Dia de Vencimento das Parcelas"
+	Local cSay1 := "A alteração do dia de vencimento modificará o vencimento de todas as parcelas a vencer do contrato."
+	Local cSay2 := "Observar sobre os boletos já impressos e registros bancários."
+	Local cSay3 := "Dia de Vencimento Atual:"
+	Local cSay4 := "Novo Dia de Vencimento:"
+
+	Local oFont16N := TFont():New('Courier new',, -16, .T., .T.)
+	Local oFont14 := TFont():New('Courier new',, -14, .T., .F.)
+
+	Local oTButton1 := Nil
+	Local oTButton2 := Nil
+	Local oSay1 := Nil
+	Local oSay2 := Nil
+	Local oSay3 := Nil
+	Local oSay4 := Nil
+	Local oTGet1 := Nil
+	Local cTGet1 := ""
+	Local oSpinBox := Nil
+	Local nSpinBox := 1
+	Local bAltVenctos := {|| MsgRun("Alterando Título(s)...","Aguarde",{|| oDialog:End(), CfrmAltVenctos(::modulo, ::contrato, nSpinBox) }) }
+
+	Static oDialog := Nil
+
+	If ::modulo == "FUN"
+		cTGet1 := cValToChar( Day(UF2->UF2_PRIMVE) )
+	Else
+		cTGet1 := cValToChar( Day(U00->U00_PRIMVE) )
+	EndIf
+
+	DEFINE MSDIALOG oDialog TITLE cTitle STYLE DS_MODALFRAME FROM 0, 0 TO 230, 600 COLORS 0, 16777215 PIXEL
+
+	oSay1 := TSay():New(10, 10, {|| cSay1 }, oDialog,, oFont14,,,, .T., CLR_BLACK, CLR_WHITE, 280, 20)
+	oSay2 := TSay():New(30, 10, {|| cSay2 }, oDialog,, oFont14,,,, .T., CLR_BLACK, CLR_WHITE, 280, 20)
+	oSay3 := TSay():New(50, 10, {|| cSay3 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oSay4 := TSay():New(65, 10, {|| cSay4 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oTGet1 := TGet():New(50, 140, {|| cTGet1 }, oDialog, 24, 009, "@!",,0,,,.F.,,.T.,,.F.,,.F.,.F.,,.T.,.F.,, cTGet1,,,,)
+
+	oSpinBox := TSpinBox():New(65, 140, oDialog, {|x| nSpinBox := x }, 23, 13)
+	oSpinBox:setRange(1, 31)
+	oSpinBox:setStep(1)
+	oSpinBox:setValue(nSpinBox)
+
+	oTButton1 := TButton():New(90, 160, "Alterar Parcelas", oDialog, bAltVenctos, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+	oTButton1:SetCss( CSSBlueButton() )
+	oTButton2 := TButton():New(90, 230, "Sair", oDialog, {|| oDialog:End() }, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+	oTButton2:SetCss( CSSBlackButton() )
+
+	ACTIVATE MSDIALOG oDialog CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} PainelFin::CalcDiasCarencia
+Calcula dias restante para cumprir a carência
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 29/09/2021
+@return numeric, nDiasCarencia
+/*/
+Method CalcDiasCarencia() Class PainelFin
+	Local cQry := ""
+	Local nDiasCarencia := 0
+
+	If ::modulo == "FUN"
+		cQry := "SELECT MAX(UF4_CAREN) CARENCIA "
+		cQry += "FROM " + RetSqlName("UF4")
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "AND UF4_FILIAL = '"+ xFilial("UF4") +"' "
+		cQry += "AND UF4_CODIGO = '"+ ::contrato +"' "
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYCAREN") > 0
+			QRYCAREN->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYCAREN"
+
+		If QRYCAREN->( !EOF() )
+			::vencto_carencia := QRYCAREN->CARENCIA
+			nDiasCarencia := DateDiffDay(dDatabase, STOD(QRYCAREN->CARENCIA))
+
+			If nDiasCarencia < 0
+				nDiasCarencia := 0
+			EndIf
+		EndIf
+
+		QRYCAREN->( DbCloseArea() )
+
+	Else
+
+		// Se possui regra de negociacao
+		If !Empty(U00->U00_REGNEG) .And. !Empty(U00->U00_ITEREG)
+			nDiasCarencia := U00->U00_CARDIA
+		EndIf
+
+		If nDiasCarencia < 0
+			nDiasCarencia := 0
+		EndIf
+
+	EndIf
+
+Return nDiasCarencia
+
+/*/{Protheus.doc} PainelFin::CalcValorCarencia
+Calcula valor restante para cumprir a carência
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 29/09/2021
+@return numeric, nValorCarencia
+/*/
+Method CalcValorCarencia() Class PainelFin
+	Local cQry := ""
+	Local nX := 0
+	Local nValorRecebido := 0
+	Local nValorCarencia := 0
+
+	If ::modulo == "FUN"
+		cQry := "SELECT SUM(E1_SALDO) VLR_CARENCIA "
+		cQry += "FROM " + RetSqlName("SE1")
+		cQry += "WHERE D_E_L_E_T_ <> '*' "
+		cQry += "AND E1_FILIAL = '"+ xFilial("SE1") +"' "
+		cQry += "AND E1_SALDO > 0 "
+		cQry += "AND E1_VENCREA <= '"+ ::vencto_carencia +"' "
+		cQry += "AND E1_XCTRFUN = '"+ ::contrato +"' "
+		cQry := ChangeQuery(cQry)
+
+		If Select("QRYVLRCRN") > 0
+			QRYVLRCRN->( DbCloseArea() )
+		EndIf
+
+		TcQuery cQry New Alias "QRYVLRCRN"
+
+		If QRYVLRCRN->( !EOF() )
+			nValorCarencia := QRYVLRCRN->VLR_CARENCIA
+		EndIf
+
+		QRYVLRCRN->( DbCloseArea() )
+
+	Else
+
+		// Se possui regra de negociacao
+		If !Empty(U00->U00_REGNEG) .And. !Empty(U00->U00_ITEREG)
+			nValorCarencia := U00->U00_CARFIN
+		Else
+
+			For nX := 1 To Len(::titulos_baixados)
+				nValorRecebido := ::titulos_baixados[nX]:valor_original
+			Next nX
+
+			nValorCarencia := (U00->U00_VALOR * (U00->U00_CARENC / 100)) - nValorRecebido
+
+		EndIf
+
+	EndIf
+
+	if nValorCarencia < 0
+		nValorCarencia := 0
+	endif
+
+Return nValorCarencia
+
+/*/{Protheus.doc} PainelFin::AnteciparFinanciamento
+Calcula valor para antecipação de parcelas e realiza liquidação da parcelas
+@type method
+@version 12.1.27
+@author nata.queiroz
+@since 08/10/2021
+/*/
+Method AnteciparFinanciamento() Class PainelFin
+	Local cTitle := "Antecipação de Financiamento"
+
+	Local oSay1 := Nil
+	Local cSay1 := "A rotina de antecipação possibilita a quitação ou antecipação de parcelas, trazendo o valor do financiamento a valores presente."
+	Local oSay2 := Nil
+	Local cSay2 := "Para prosseguir, defina o vencimento do título que será gerado para liquidação e a quantidade de parcelas que serão antecipadas."
+	Local oSay3 := Nil
+	Local cSay3 := "Vencimento da parcela de liquidação:"
+	Local oSay4 := Nil
+	Local cSay4 := "Quantidade de parcelas:"
+
+	Local oFont14 := TFont():New('Courier new',, -14, .T., .F.)
+	Local oFont16N := TFont():New('Courier new',, -16, .T., .T.)
+	Local oFont20 := TFont():New('Courier new',, -20, .T., .F.)
+	Local oFont22N := TFont():New('Courier new',, -22, .T., .T.)
+
+	Local oTButton1 := Nil
+	Local oTButton2 := Nil
+	Local oTButton3 := Nil
+	Local oSpinBox := Nil
+	Local nQtdParcelas := 0
+	Local oTGet1 := Nil
+	Local dVenctoLiq := dDataBase
+	Local nMaxQtdParc := Len(::titulos_abertos)
+	Local oJsonTotal := JsonObject():New()
+	Local aTitOri := {}
+	Local nValorLiq := 0
+	Local nDescontoLiq := 0
+
+	Local bCalc := {|| FWMsgRun(, {|| CalcularAntecipacao(@oDialog, @oJsonTotal, @aTitOri, @nValorLiq, @nDescontoLiq, ::contrato, nQtdParcelas) }, 'Aguarde...', 'Calculando...') }
+	Local bConfirm := {|| ValidarAntecipacao(@oDialog, aTitOri, nValorLiq, nDescontoLiq, dVenctoLiq) }
+
+	Local cPanelStyle := "QFrame{ background-color:#e2e2e2; border-radius: 5px; }"
+	Local oPanel1 := Nil
+	Local oPanel2 := Nil
+	Local oPanel3 := Nil
+	Local oPanel4 := Nil
+
+	Local oSay5 := Nil
+	Local cSay5 := "R$ Em Aberto"
+	Local oSay6 := Nil
+	Local cSay6 := "R$ Restante"
+	Local oSay7 := Nil
+	Local cSay7 := "À Receber"
+	Local oSay8 := Nil
+	Local cSay8 := "Desconto"
+
+	Local oVlrAberto := Nil
+	Local oTitAberto := Nil
+	Local oVlrRestante := Nil
+	Local oTitRestante := Nil
+	Local oVlrAReceber := Nil
+	Local oVlrDesconto := Nil
+	Local oPercDesconto := Nil
+
+	Static oDialog := Nil
+
+	oJsonTotal["cVlrAberto"] := "R$ 0,00"
+	oJsonTotal["cTitAberto"] := "0 Títulos"
+	oJsonTotal["cVlrRestante"] := "R$ 0,00"
+	oJsonTotal["cTitRestante"] := "0 Títulos"
+	oJsonTotal["cVlrAReceber"] := "R$ 0,00"
+	oJsonTotal["cVlrDesconto"] := "R$ 0,00"
+	oJsonTotal["cPercDesconto"] := "0,0%"
+
+	DEFINE MSDIALOG oDialog TITLE cTitle STYLE DS_MODALFRAME FROM 0, 0 TO 400, 810 COLORS 0, 16777215 PIXEL
+
+	oSay1 := TSay():New(10, 10, {|| cSay1 }, oDialog,, oFont14,,,, .T., CLR_BLACK, CLR_WHITE, 390, 20)
+	oSay2 := TSay():New(30, 10, {|| cSay2 }, oDialog,, oFont14,,,, .T., CLR_BLACK, CLR_WHITE, 390, 20)
+	oSay3 := TSay():New(55, 10, {|| cSay3 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oSay4 := TSay():New(80, 10, {|| cSay4 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oTGet1 := TGet():New(55, 150, {|u| If( PCount() == 0, dVenctoLiq, dVenctoLiq := u ) }, oDialog, 060, 009, "@D",, 0, 16777215,,.F.,,.T.,,.F.,,.F.,.F.,,.F.,.F.,, "dVenctoLiq",,,, .T.)
+
+	oSpinBox := TSpinBox():New(78, 150, oDialog, {|x| nQtdParcelas := x }, 23, 13)
+	oSpinBox:setRange(1, nMaxQtdParc)
+	oSpinBox:setStep(1)
+	oSpinBox:setValue(nQtdParcelas)
+
+	oTButton1 := TButton():New(76, 190, "Calcular", oDialog, bCalc, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+	oTButton1:SetCss( CSSBlueButton() )
+
+	oPanel1 := TPanelCss():New(100, 10, "Panel 01", oDialog, /*oTFont*/,.T.,,CLR_BLUE,CLR_HGRAY,90,70)
+	oPanel1:setCSS(cPanelStyle)
+	oSay5 := TSay():New(110, 25, {|| cSay5 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oVlrAberto := TSay():New(130, 15, {|| oJsonTotal["cVlrAberto"] }, oDialog,, oFont22N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTitAberto := TSay():New(150, 25, {|| oJsonTotal["cTitAberto"] }, oDialog,, oFont20,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oPanel2 := TPanelCss():New(100, 110, "Panel 02", oDialog, /*oTFont*/,.T.,,CLR_BLUE,CLR_HGRAY,90,70)
+	oPanel2:setCSS(cPanelStyle)
+	oSay6 := TSay():New(110, 130, {|| cSay6 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oVlrRestante := TSay():New(130, 115, {|| oJsonTotal["cVlrRestante"] }, oDialog,, oFont22N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oTitRestante := TSay():New(150, 130, {|| oJsonTotal["cTitRestante"] }, oDialog,, oFont20,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oPanel3 := TPanelCss():New(100, 210, "Panel 03", oDialog, /*oTFont*/,.T.,,CLR_BLUE,CLR_HGRAY,90,70)
+	oPanel3:setCSS(cPanelStyle)
+	oSay7 := TSay():New(110, 230, {|| cSay7 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oVlrAReceber := TSay():New(130, 215, {|| oJsonTotal["cVlrAReceber"] }, oDialog,, oFont22N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oPanel4 := TPanelCss():New(100, 310, "Panel 04", oDialog, /*oTFont*/,.T.,,CLR_BLUE,CLR_HGRAY,90,70)
+	oPanel4:setCSS(cPanelStyle)
+	oSay8 := TSay():New(110, 335, {|| cSay8 }, oDialog,, oFont16N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oVlrDesconto := TSay():New(130, 315, {|| oJsonTotal["cVlrDesconto"] }, oDialog,, oFont22N,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+	oPercDesconto := TSay():New(150, 342, {|| oJsonTotal["cPercDesconto"] }, oDialog,, oFont20,,,, .T., CLR_BLUE, CLR_WHITE, 140, 20)
+
+	oTButton2 := TButton():New(180, 270, "Confirmar", oDialog, bConfirm, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+	oTButton2:SetCss( CSSBlueButton() )
+	oTButton3 := TButton():New(180, 340, "Sair", oDialog, {|| oDialog:End() }, 60, 16,,,.F.,.T.,.F.,,.F.,,,.F.)
+	oTButton3:SetCss( CSSBlackButton() )
+
+	ACTIVATE MSDIALOG oDialog CENTERED
+
+Return
+
+/*/{Protheus.doc} ProcRmRec
+Realiza processamento dos titulos
+@type function
+@version 1.0
+@author nata.queiroz
+@since 16/04/2020
+@param aTitulos, array, aTitulos
+@param cFormaPgto, character, cFormaPgto
+@param nTamanho, numeric, nTamanho
+/*/
+Static Function ProcRmRec(aTitulos, cFormaPgto, nTamanho)
+	Local lRet := .T.
+	Local nX := 0
+
+	Local cFilCtr := ""
+	Local cPrefix := ""
+	Local cNum := ""
+	Local cParcela := ""
+	Local cTipo := ""
+
+	ProcRegua(nTamanho)
+
+	For nX := 1 To Len(aTitulos)
+		cFilCtr  := cFilAnt
+		cPrefix   := aTitulos[nX, 2]
+		cNum     := aTitulos[nX, 3]
+		cParcela := aTitulos[nX, 4]
+		cTipo    := aTitulos[nX, 5]
+
+		lRet := U_UVIND19(cFilCtr, cPrefix, cNum, cParcela, cTipo, cFormaPgto)
+
+		IncProc()
+
+		If !lRet
+			Exit
+		EndIf
+	Next nX
+
+Return
+
+/*/{Protheus.doc} DlgRmRec
+Tela para informar forma de pagamento
+@type function
+@version 1.0
+@author nata.queiroz
+@since 16/04/2020
+@param cFormaPgto, character, cFormaPgto
+@return logical, lRet
+/*/
+Static Function DlgRmRec(cFormaPgto)
+	Local lRet := .F.
+	Local cTitle := "Remover da Recorrência"
+	Local oCancel
+	Local oConfirm
+	Local oGet1
+	Local cGet1 := Space( TamSx3("UF2_FORPG")[1] )
+	Local oGroup1
+	Local oSay1
+	Local cSay1 := "Para remover o(s) título(s) da recorrência informe a nova forma de pagamento."
+	Local oSay2
+	Local cSay2 := "Forma de Pagamento"
+
+	Static oDlg
+
+	Default cFormaPgto := ""
+
+	DEFINE MSDIALOG oDlg TITLE cTitle FROM 000, 000  TO 160, 500  COLORS 0, 16777215 PIXEL STYLE 128
+
+	@ 005, 015 GROUP oGroup1 TO 040, 235 PROMPT "Info" OF oDlg COLOR 0, 16777215 PIXEL
+	@ 019, 025 SAY oSay1 PROMPT cSay1 SIZE 200, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 045, 015 SAY oSay2 PROMPT cSay2 SIZE 053, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 055, 015 MSGET oGet1 VAR cGet1 PICTURE "@!" SIZE 045, 010 OF oDlg COLORS 0, 16777215 F3 "24" PIXEL HASBUTTON
+	@ 062, 197 BUTTON oCancel PROMPT "Cancelar" SIZE 037, 012 OF oDlg ACTION {|| oDlg:End() } PIXEL
+	@ 062, 155 BUTTON oConfirm PROMPT "Confirmar" SIZE 037, 012 OF oDlg;
+		ACTION {|| lRet := .T., lRet := VldRmRec(lRet, cGet1, @cFormaPgto) } PIXEL
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+Return lRet
+
+/*/{Protheus.doc} VldRmRec
+Valida input do usuário
+@type function
+@version 1.0
+@author nata.queiroz
+@since 16/04/2020
+@param lRet, logical, lRet
+@param cGet1, character, cGet1
+@param cFormaPgto, character, cFormaPgto
+@return logical, lRet
+/*/
+Static Function VldRmRec(lRet, cGet1, cFormaPgto)
+	Default cFormaPgto := ""
+
+	If lRet
+		If !Empty(cGet1)
+			oDlg:End()
+
+			//-- Forma de pagamento selecionada
+			cFormaPgto := cGet1
+
+			If ValForPg(cFormaPgto)
+				lRet := .F.
+				MsgAlert("Forma de pagamento selecionada é inválida. ";
+					+ "Informe uma forma de pagamento diferente da recorrência.", "Atenção")
+			EndIf
+		Else
+			lRet := .F.
+			MsgInfo("Forma de pagamento não selecionada.", "Atenção")
+		EndIf
+	EndIf
+
+Return lRet
+
+/*/{Protheus.doc} ValForPg
+Valida forma de pagamento recorrência
+@type function
+@version 1.0
+@author nata.queiroz
+@since 16/04/2020
+@param cFormaPgto, character, cFormaPgto
+@return logical, lRet
+/*/
+Static Function ValForPg(cFormaPgto)
+	Local lRet := .F.
+	Local aAreaU60 := U60->( GetArea() )
+
+	Default cFormaPgto := ""
+
+	U60->(DbSetOrder(2)) //-- U60_FILIAL + U60_FORPG
+	if U60->( MsSeek(xFilial("U60") + cFormaPgto) )
+		lRet := .T.
+	endif
+
+	RestArea(aAreaU60)
+
+Return lRet
+
+/*/{Protheus.doc} IncTitulo
+funcao para incluir o titulo avulso
+vinculado ao contrato pelo painel
+@type function
+@version 1.0 
+@author g.sampaio
+@since 26/01/2021
+/*/
+Static Function IncTitulo(cCodModulo)
+	Local cCond			:= SPACE(3)
+	Local cHist			:= SPACE(25)
+	Local cPref 		:= PADR(SuperGetMv("MV_XPREFAV",.F.,"AVS"), TamSx3("E1_PREFIXO")[1])
+	Local cTipo			:= PADR(SuperGetMv("MV_XTIPOAV",.F.,"AV"), TamSx3("E1_TIPO")[1])
+	Local cNat			:= PADR(SuperGetMv("MV_XNATUAV",.F.,"10101"), TamSx3("E1_NATUREZ")[1])
+	Local cFormPag		:= ""
+	Local cDescNatureza	:= ""
+	Local dPrimVencto	:= STOD("")
+	Local nQtdPar		:= 0
+	Local nVlr 			:= 0
+	Local cContrato		:= ""
+	Local cCodCli		:= ""
+	Local cLoja			:= ""
+
+	Local oSay1 		:= Nil
+	Local oSay2			:= Nil
+	Local oSay3 		:= Nil
+	Local oSay4			:= Nil
+	Local oSay5 		:= Nil
+	Local oSay6			:= Nil
+	Local oSay7			:= Nil
+	Local oSay8			:= Nil
+	Local oSay9			:= Nil
+	Local oSay10		:= Nil
+	Local oSay11		:= Nil
+	Local oVlr			:= Nil
+	Local oCond			:= Nil
+	Local oPref			:= Nil
+	Local oTipo			:= Nil
+	Local oHist			:= Nil
+	Local oForPg		:= Nil
+	Local oQtdPar		:= Nil
+	Local oPrimVencto	:= Nil
+	Local oButton1		:= Nil
+	Local oButton2		:= Nil
+	Local oNatureza		:= Nil
+	Local oDlgIncTit	:= Nil
+
+	If cCodModulo == "FUN"
+		cContrato := UF2->UF2_CODIGO
+		cCodCli := UF2->UF2_CLIENT
+		cLoja := UF2->UF2_LOJA
+		cFormPag := PADR(UF2->UF2_FORPG, TamSx3("UF2_FORPG")[1])
+	Else
+		cContrato := U00->U00_CODIGO
+		cCodCli := U00->U00_CLIENT
+		cLoja := U00->U00_LOJA
+		cFormPag := PADR(U00->U00_FORPG, TamSx3("U00_FORPG")[1])
+	EndIf
+
+	VldNatureza(cNat, @cDescNatureza)
+
+	DEFINE MSDIALOG oDlgIncTit TITLE "Inclusão de Título" From 000,000 TO 255,430 PIXEL
+
+	@ 005, 005 SAY oSay1 PROMPT "Valor:" SIZE 040, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 004, 045 MSGET oVlr VAR nVlr SIZE 060, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@E 9,999,999,999,999.99" HASBUTTON
+	@ 005, 115 SAY oSay2 PROMPT "Cond.Pagto.:" SIZE 40, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 004, 160 MSGET oCond VAR cCond SIZE 020, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Valid(VldCond(cCond)) F3 "SE4" Picture "@!" HASBUTTON
+
+	@ 025, 005 SAY oSay8 PROMPT "Prim.Vencto:" SIZE 040, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 024, 045 MSGET oPrimVencto VAR dPrimVencto SIZE 060, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@D" HASBUTTON
+	@ 025, 115 SAY oSay9 PROMPT "Qtd.Par.:" SIZE 40, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 024, 160 MSGET oQtdPar VAR nQtdPar SIZE 020, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@E 999" HASBUTTON
+
+	@ 045, 005 SAY oSay10 PROMPT "Natureza:" SIZE 040, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 044, 045 MSGET oNatureza VAR cNat SIZE 060, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@!" Valid(VldNatureza(cNat, @cDescNatureza, @oSay11, @oDlgIncTit)) F3 "SED" HASBUTTON
+	@ 045, 115 SAY oSay11 PROMPT cDescNatureza SIZE 060, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+
+	@ 065, 005 SAY oSay5 PROMPT "Prefixo:" SIZE 040, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 064, 045 MSGET oPref VAR cPref SIZE 020, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@!" HASBUTTON
+	@ 065, 070 SAY oSay6 PROMPT "Tipo.:" SIZE 40, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 064, 090 MSGET oTipo VAR cTipo SIZE 020, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Valid(VldTipo(cTipo)) F3 "05" Picture "@!" HASBUTTON
+	@ 065, 125 SAY oSay7 PROMPT "Forma Pag.:" SIZE 40, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 064, 170 MSGET oForPg VAR cFormPag SIZE 020, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Valid(VldForma(cFormPag)) F3 "24" Picture "@!" HASBUTTON
+
+	@ 085, 005 SAY oSay3 PROMPT "Histórico:" SIZE 040, 007 OF oDlgIncTit COLORS CLR_BLUE, 16777215 PIXEL
+	@ 084, 045 MSGET oHist VAR cHist SIZE 150, 010 OF oDlgIncTit COLORS 0, 16777215 PIXEL Picture "@!"
+
+	//Linha horizontal
+	@ 100, 005 SAY oSay4 PROMPT Repl("_",190) SIZE 190, 007 OF oDlgIncTit COLORS CLR_GRAY, 16777215 PIXEL
+
+	@ 115, 065 BUTTON oButton2 PROMPT "Parcelas" SIZE 040, 010 OF oDlgIncTit ACTION MostraParcelas(cCodModulo, cContrato, nVlr, cCond, dPrimVencto, nQtdPar, cPref, cTipo) PIXEL
+	@ 115, 110 BUTTON oButton1 PROMPT "Confirmar" SIZE 040, 010 OF oDlgIncTit ACTION ConfInc(oDlgIncTit, cCodModulo, cContrato, cCodCli, cLoja, nVlr, cCond, cHist, cPref, cTipo, cFormPag, dPrimVencto, nQtdPar, cNat) PIXEL
+	@ 115, 155 BUTTON oButton2 PROMPT "Fechar" SIZE 040, 010 OF oDlgIncTit ACTION oDlgIncTit:End() PIXEL
+
+	ACTIVATE MSDIALOG oDlgIncTit CENTERED
+
+Return
+
+/*/{Protheus.doc} VldNatureza
+funcao para validar a natureza preenchida
+@type function
+@version 1.0  
+@author g.sampaio
+@since 06/03/2021
+@param cNatureza, character, codigo da natureza
+@param cDescNatureza, character, descricao da natureza
+@return logical, retorna se a natureza existe
+/*/
+Static Function VldNatureza(cNatureza, cDescNatureza, oSayNatureza, oDlgIncTit)
+
+	Local aArea		:= GetArea()
+	Local aAreaSED	:= SED->(GetArea())
+	Local lRetorno	:= .T.
+
+	Default cNatureza		:= ""
+	Default cDescNatureza	:= ""
+	Default oSayNatureza	:= Nil
+	Default oDlgIncTit		:= Nil
+
+	// verifico se a natureza existe
+	SED->(DbSetOrder(1))
+	if SED->(MsSeek( xFilial("SED")+cNatureza ))
+		cDescNatureza := SED->ED_DESCRIC
+	else // se não existir
+		lRetorno := .F.
+	endIf
+
+	//===============================
+	// valido e atualizo os objetos
+	//===============================
+
+	if ValType( oSayNatureza ) == "O"
+		oSayNatureza:Refresh()
+	endIf
+
+	if ValType( oDlgIncTit ) == "O"
+		oDlgIncTit:Refresh()
+	endIf
+
+	RestArea(aAreaSED)
+	RestArea(aArea)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VldCond
+funcao para validar a condicao de pagamento
+@type function
+@version 1.0  
+@author g.sampaio
+@since 26/01/2021
+@param cCond, character, condicao de pagamento
+@return logical, retorno sobre o uso da condicao de pagamento
+/*/
+Static Function VldCond(cCond)
+
+	Local lRet := .T.
+
+	DbSelectArea("SE4")
+	SE4->(DbSetOrder(1)) //E4_FILIAL+E4_CODIGO
+
+	If !Empty(cCond)
+
+		If !SE4->(DbSeek(xFilial("SE4")+cCond))
+			MsgInfo("Condição de Pagamento inválida.","Atenção")
+			lRet := .F.
+		Endif
+	Endif
+
+Return(lRet)
+
+/*/{Protheus.doc} VldTipo
+funcao para validar o tipo de titulo
+@type function
+@version 1.0  
+@author g.sampaio
+@since 26/01/2021
+@param cTipo, character, tipo do titulo
+@return logical, retorno lógico sobre o uso do tipo de titulo
+/*/
+Static Function VldTipo(cTipo)
+
+	Local lRetorno := .T.
+
+	lRetorno := ExistCpo("SX5", "05" + cTipo)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VldForma
+funcao para validar a forma de pagamento
+@type function
+@version 1.0
+@author g.sampaio
+@since 26/01/2021
+@param cFormaPag, character, forma de pagamento
+@return logical, retorno sobre o uso da forma de pagamento
+/*/
+Static Function VldForma(cFormaPag)
+
+	Local lRetorno := .T.
+
+	lRetorno := ExistCpo("SX5", "24" + cFormaPag)
+
+Return(lRetorno)
+
+/*/{Protheus.doc} MostraParcelas
+funcao para mostrar as parcelas avulsas no painel
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/03/2021
+@param cCodModulo, character, codigo do modulo
+@param cContrato, character, codigo do contrato
+@param nVlr, numeric, valor total 
+@param cCond, character, condicao de pagamento
+@param dPrimVencto, date, data do primeiro vencimento
+@param nQtdPar, numeric, quantidade de parcelas
+@param cPref, character, prefixo do titulo
+@param cTipo, character, tipo do titulo
+/*/
+Static Function MostraParcelas(cCodModulo, cContrato, nVlr, cCond, dPrimVencto, nQtdPar, cPref, cTipo)
+	Local oButton1		:= Nil
+	Local oGroup1		:= Nil
+	Local oSay1			:= Nil
+	Local oSay2			:= Nil
+	Local oSay3			:= Nil
+	Local oSay4			:= Nil
+	Local oDlgPar		:= Nil
+	Local oFont1 		:= TFont():New("MS Sans Serif",,016,,.T.,,,,,.F.,.F.)
+
+	Default cCodModulo	:= "CEM"
+	Default cContrato	:= ""
+	Default nVlr		:= 0
+	Default cCond		:= ""
+	Default dPrimVencto	:= Stod("")
+	Default nQtdPar		:= 0
+	Default cPref		:= PADR(SuperGetMv("MV_XPREFAV",.F.,"AVS"), TamSx3("E1_PREFIXO")[1])
+	Default cTipo		:= PADR(SuperGetMv("MV_XTIPOAV",.F.,"AV"), TamSx3("E1_TIPO")[1])
+
+	if nQtdPar == 0
+		nQtdPar := 1
+	endIf
+
+	DEFINE MSDIALOG oDlgPar TITLE "Parcelas" FROM 000, 000  TO 400, 500 COLORS 0, 16777215 PIXEL
+
+	@ 001, 002 GROUP oGroup1 TO 194, 247 PROMPT "Parcelas" OF oDlgPar COLOR 0, 16777215 PIXEL
+
+	@ 015, 010 SAY oSay1 PROMPT "Valor Total" SIZE 031, 007 OF oDlgPar COLORS 0, 16777215 PIXEL
+	@ 015, 035 SAY oSay3 PROMPT Transform(nVlr,"@E 999,999,999.99") SIZE 100, 007 OF oDlgPar FONT oFont1 COLORS 0, 16777215 PIXEL
+
+	@ 015, 110 SAY oSay2 PROMPT "Quantidade de Parcelas" SIZE 068, 007 OF oDlgPar COLORS 0, 16777215 PIXEL
+	@ 015, 180 SAY oSay4 PROMPT Transform(nQtdPar,"@E 999") SIZE 070, 007 OF oDlgPar FONT oFont1 COLORS 0, 16777215 PIXEL
+
+	BrwParcelas(oDlgPar, cCodModulo, cContrato, nVlr, cCond, dPrimVencto, @nQtdPar, cPref, cTipo, @oDlgPar, @oSay4)
+
+	@ 176, 201 BUTTON oButton1 PROMPT "Fechar" SIZE 037, 012 OF oDlgPar PIXEL Action(oDlgPar:End())
+
+	ACTIVATE MSDIALOG oDlgPar CENTERED
+
+Return(Nil)
+
+/*/{Protheus.doc} BrwParcelas
+Browse de parcelas
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/03/2021
+@param oDlgPar, object, janela para exibir as parcelas
+@param cCodModulo, character, codigo do modulo
+@param cContrato, character, codigo do contrato
+@param nVlr, numeric, valor total
+@param cCond, character, condição de pagamento
+@param dPrimVencto, date, data do primeiro vencimento
+@param nQtdPar, numeric, quantidade de parcelas
+@param cPref, character, prefixo do titulo avulso
+@param cTipo, character, tipo do titulo avulso
+/*/
+Static Function BrwParcelas(oDlgPar, cCodModulo, cContrato, nVlr, cCond, dPrimVencto, nQtdPar, cPref, cTipo, oDlgPar, oSay4)
+	Local aBrwParcelas 	:= {}
+	Local aParcelas		:= {}
+	Local nI			:= 0
+	Local oBrwParcelas	:= Nil
+
+	Default oDlgPar		:= Nil
+	Default cCodModulo	:= "CEM"
+	Default cContrato	:= ""
+	Default nVlr		:= 0
+	Default cCond		:= ""
+	Default dPrimVencto	:= Stod("")
+	Default nQtdPar		:= 0
+	Default cPref 		:= PADR(SuperGetMv("MV_XPREFAV",.F.,"AVS"), TamSx3("E1_PREFIXO")[1])
+	Default cTipo		:= PADR(SuperGetMv("MV_XTIPOAV",.F.,"AV"), TamSx3("E1_TIPO")[1])
+
+	aParcelas := MontaParcelas(nVlr, cCond, dPrimVencto, nQtdPar)
+
+	if nQtdPar == 0
+		nQtdPar := Len(aParcelas)
+	endIf
+
+	cParcela := UltimaParcela(cCodModulo, cContrato, cPref, cTipo)
+
+	For nI := 1 To Len(aParcelas)
+
+		cParcela	:= Soma1(cParcela)
+
+		aAdd(aBrwParcelas,{cParcela,Dtoc(aParcelas[nI,1]), Transform(aParcelas[nI,2], "@E 999,999,999.99")})
+
+	Next nI
+
+	if Len(aBrwParcelas) == 0
+		aAdd(aBrwParcelas,{"001",Dtoc(Stod("")), Transform(0, "@E 999,999,999.99")})
+	EndIf
+
+	@ 029, 008 LISTBOX oBrwParcelas Fields HEADER "Parcela","Data de Vencimento","Valor Parcela" SIZE 231, 142 OF oDlgPar PIXEL ColSizes 50,50
+	oBrwParcelas:SetArray(aBrwParcelas)
+	oBrwParcelas:bLine := {|| {;
+		aBrwParcelas[oBrwParcelas:nAt,1],;
+		aBrwParcelas[oBrwParcelas:nAt,2],;
+		aBrwParcelas[oBrwParcelas:nAt,3];
+		}}
+
+	//===============================
+	// valido e atualizo os objetos
+	//===============================
+
+	if ValType(oSay4) == "O"
+		oSay4:Refresh()
+	endIf
+
+	if ValType(oDlgPar) == "O"
+		oDlgPar:Refresh()
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} MontaParcelas
+funcao para montar o parcelamento
+@type function
+@version 1.0 
+@author g.sampaio
+@since 06/03/2021
+@param nVlr, numeric, valor total
+@param cCond, character, condicao de pagamento
+@param dPrimVencto, date, data do primeiro vencimento
+@param nQtdPar, numeric, quantidade de parcelas
+@return array, parcelamento avulso
+/*/
+Static Function MontaParcelas(nVlr, cCond, dPrimVencto, nQtdPar)
+	Local aRetorno	:= {}
+	Local dDataRef	:= Stod("")
+	Local nI		:= 0
+
+	Default nVlr		:= 0
+	Default cCond		:= ""
+	Default dPrimVencto	:= Stod("")
+	Default nQtdPar		:= 0
+
+	// verifico se primeiro vencimento preenchido
+	if !Empty(dPrimVencto)
+		dDataRef := dPrimVencto
+	else
+		dDataRef := dDatabase
+	endIf
+
+	// verifico se a quantidade de parcelas informada
+	if nQtdPar > 0
+
+		nValPar := Round(nVlr / nQtdPar,2)
+
+		For nI := 1 To nQtdPar
+			// monto o array de parcelas
+			aAdd(aRetorno,{dDataRef,nValPar})
+
+			// adciono um mes no vencimento
+			dDataRef := MonthSum(dDataRef,1)
+		Next nI
+
+	elseIf !Empty(cCond) // para caso tenha a condição de pagamento preenchida
+		aRetorno := Condicao(nVlr,cCond,0.00,dDataRef,0.00,{},,0)
+	endIf
+
+Return(aRetorno)
+
+/*/{Protheus.doc} UltimaParcela
+funcao para buscar a ultima parcela
+@type function
+@version 1.0
+@author g.sampaio
+@since 06/03/2021
+@param cCodModulo, character, codigo do modulo
+@param cContrato, character, codigo do contrato
+@param cPref, character, prefixo do titulo
+@param cTipo, character, tipo do titulo
+@return character, ultima
+/*/
+Static Function UltimaParcela(cCodModulo, cContrato, cPref, cTipo)
+	Local cQuery		:= ""
+
+	Default cCodModulo	:= "CEM"
+	Default cContrato	:= ""
+	Default cPref 		:= PADR(SuperGetMv("MV_XPREFAV",.F.,"AVS"), TamSx3("E1_PREFIXO")[1])
+	Default cTipo		:= PADR(SuperGetMv("MV_XTIPOAV",.F.,"AV"), TamSx3("E1_TIPO")[1])
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	Endif
+
+	cQuery := "SELECT MAX(E1_PARCELA) AS NROPARC"
+	cQuery += " FROM "+RetSqlName("SE1")+""
+	cQuery += " WHERE D_E_L_E_T_ 	<> '*'"
+	cQuery += " AND E1_FILIAL 	= '"+xFilial("SE1")+"'"
+	If cCodModulo == "CEM"
+		cQuery += " AND E1_NUM = '" + AllTrim(cContrato) + "' "
+	Else
+		cQuery += " AND E1_XCTRFUN 	= '"+cContrato+"'"
+	EndIf
+	cQuery += " AND E1_PREFIXO 	= '"+cPref+"'"
+	cQuery += " AND E1_TIPO 	= '"+cTipo+"'"
+
+	TcQuery cQuery NEW Alias "QRYSE1"
+
+	If QRYSE1->(!EOF())
+		cRetorno := QRYSE1->NROPARC
+	Else
+		cRetorno := "000"
+	Endif
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	Endif
+
+Return(cRetorno)
+
+/*/{Protheus.doc} ConfInc
+funcao para validar os dados para inclusao
+do titulo avulso
+@type function
+@version 1.0
+@author totvs
+@since 26/01/2021
+@param oDlgIncTit, object, objeto da tela
+@param cCodModulo, character, codigo do modulo
+@param cContrato, character, codigo do contrato
+@param cCodCli, character, codigo do cliente
+@param cLoja, character, codigo da loja
+@param nVlr, numeric, valor do titulo
+@param cCond, character, condicao de pagamento
+@param cHist, character, historico do titulo
+@param cPref, character, prefixo do titulo
+@param cTipo, character, tipo do titulo
+@param cFormPag, character, forma de pagamento
+/*/
+Static Function ConfInc(oDlgIncTit, cCodModulo, cContrato, cCodCli, cLoja, nVlr, cCond, cHist, cPref, cTipo, cFormPag, dPrimVencto, nQtdPar, cNat)
+	Local lRet 			:= .T.
+	Local lContinua		:= .T.
+	Local lRecorrencia	:= SuperGetMv("MV_XATVREC",.F.,.F.)
+
+	Default cCodModulo	:= "CEM"
+	Default cContrato	:= ""
+	Default cCodCli		:= ""
+	Default cLoja		:= ""
+	Default nVlr		:= 0
+	Default cCond		:= ""
+	Default cHist		:= ""
+	Default cPref 		:= SuperGetMv("MV_XPREFAV",.F.,"AVS")
+	Default cTipo		:= SuperGetMv("MV_XTIPOAV",.F.,"AV")
+	Default cNat		:= SuperGetMv("MV_XNATUAV",.F.,"10101")
+	Default cFormPag	:= IIF(cCodModulo == "CEM", U00->U00_FORPG, UF2->UF2_FORPG)
+	Default dPrimVencto	:= Stod("")
+	Default nQtdPar		:= 0
+
+	If Empty(nVlr)
+		MsgInfo("Campo valor obrigatório.","Atenção")
+		lContinua := .F.
+	Endif
+
+	If lContinua .And. Empty(cCond) .And. nQtdPar <= 0
+		MsgInfo("Campo Cond.Pagto. ou Qtd.Par. é obrigatório.","Atenção")
+		lContinua := .F.
+	Endif
+
+	If lContinua .And. Empty(cHist)
+		MsgInfo("Campo Histórico obrigatório.","Atenção")
+		lContinua := .F.
+	Endif
+
+	If lContinua .And. Empty(dPrimVencto)
+		MsgInfo("Campo Prim.Vencto. obrigatório.","Atenção")
+		lContinua := .F.
+	Endif
+
+	If lContinua .And. Empty(cNat)
+		MsgInfo("Campo Natureza obrigatório.","Atenção")
+		lContinua := .F.
+	endIf
+
+	if lContinua .And. !Empty(cNat)
+		SED->(DbSetorder(1))
+		if !SED->( MsSeek( xFilial("SED")+cNat) )
+			MsgInfo("Natureza informada não existe!","Atenção")
+			lContinua := .F.
+		endif
+	endIf
+
+	//------------------------------------------------------------
+	//Cadastro o novo perfil de pagamento
+	//------------------------------------------------------------
+
+	U60->(DbSetOrder(2)) // U60_FILIAL + U60_FORPG
+	If lRecorrencia .And. U60->(MsSeek(xFilial("U60") + cFormPag))
+
+		// tela para preenchimento do perfil de pagamento
+		FWMsgRun(,{|oSay| lContinua := U_UIncPerfil()},'Aguarde...','Abrindo Perfil de Pagamento...')
+
+		// crio objeto da intergacao com a Vindi
+		oVindi := IntegraVindi():New()
+
+		If !lContinua
+
+			Help(NIL, NIL, "Atenção!", NIL, "Não foi possível realizar a Inclusao do perfil de pagamento na Vindi!", 1, 0, NIL, NIL, NIL, NIL, NIL)
+
+			DisarmTransaction()
+			BREAK
+
+		Endif
+
+	Endif
+
+	If lContinua
+
+		If MsgYesNo("Confirma a inclusão do(s) título(s)?")
+
+			MsgRun("Gerando Título(s)...","Aguarde",{|| lRet := GeraTit(cCodModulo,cContrato,cCodCli,cLoja,nVlr,cCond,cHist,cPref,cTipo,cFormPag,dPrimVencto,nQtdPar,cNat)})
+
+			If lRet
+				MsgInfo("Título(s) gerado(s) com sucesso.")
+				oDlgIncTit:End()
+			Endif
+		Endif
+	Endif
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraTit
+funcao para gerar o titulo no contas a receber
+@type function
+@version 1.0
+@author g.sampaio
+@since 26/01/2021
+@param cCodModulo, character, codigo do modulo
+@param cContrato, character, codigo do contrato
+@param cCli, character, codigo do cliente
+@param cLojaCli, character, loja do cliente
+@param nVlr, numeric, valor do titulo
+@param cCond, character, condicao de pagamento
+@param cHist, character, historico do titulo
+@param cPref, character, prefixo do titulo
+@param cTipo, character, tipo do titulo
+@param cFormPag, character, forma de pagamento
+@return logical, retorna se gerou o titulo corretamente
+/*/
+Static Function GeraTit(cCodModulo,cContrato,cCli,cLojaCli,nVlr,cCond,cHist,cPref,cTipo,cFormPag,dPrimVencto,nQtdPar,cNat)
+	Local aFin040 		:= {}
+	Local aParcelas		:= {}
+	Local cParc			:= ""
+	Local lRet 			:= .T.
+	Local nI			:= 0
+
+	Private lMsErroAuto := .F.
+	Private lMsHelpAuto := .T.
+
+	Default cCodModulo	:= "CEM"
+	Default cContrato	:= ""
+	Default cCli		:= ""
+	Default cLojaCli	:= ""
+	Default nVlr		:= 0
+	Default cCond		:= ""
+	Default cHist		:= ""
+	Default cPref 		:= SuperGetMv("MV_XPREFAV",.F.,"AVS")
+	Default cTipo		:= SuperGetMv("MV_XTIPOAV",.F.,"AV")
+	Default cFormPag	:= ""
+	Default dPrimVencto	:= Stod("")
+	Default nQtdPar		:= 0
+	Default cNat 		:= SuperGetMv("MV_XNATUAV",.F.,"10101")
+
+	aParcelas := MontaParcelas(nVlr, cCond, dPrimVencto, nQtdPar)
+
+	cParc	:= UltimaParcela(cCodModulo,cContrato, cPref, cTipo)
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	Endif
+
+	For nI := 1 To Len(aParcelas)
+
+		cParc := Soma1(cParc)
+
+		aFin040 := {}
+
+		AAdd(aFin040, {"E1_FILIAL"	, xFilial("SE1")											   					,Nil } )
+		AAdd(aFin040, {"E1_PREFIXO"	, cPref          						   					   					,Nil } )
+		AAdd(aFin040, {"E1_NUM"		, cContrato		 	   															,Nil } )
+		AAdd(aFin040, {"E1_PARCELA"	, cParc									   					   					,Nil } )
+		AAdd(aFin040, {"E1_TIPO"	, cTipo		 							   										,Nil } )
+		AAdd(aFin040, {"E1_NATUREZ"	, cNat														   					,Nil } )
+		AAdd(aFin040, {"E1_CLIENTE"	, cCli									   					   					,Nil } )
+		AAdd(aFin040, {"E1_LOJA"	, cLojaCli								   										,Nil } )
+		AAdd(aFin040, {"E1_EMISSAO"	, dDataBase								   										,Nil } )
+		AAdd(aFin040, {"E1_VENCTO"	, IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1])						,Nil } )
+		AAdd(aFin040, {"E1_VENCREA"	, DataValida(IIF(Empty(aParcelas[nI][1]),dDataBase,aParcelas[nI][1]))			,Nil } )
+		AAdd(aFin040, {"E1_VALOR"	, aParcelas[nI][2]						   										,Nil } )
+		AAdd(aFin040, {"E1_HIST"	, cHist									   										,Nil } )
+		AAdd(aFin040, {"E1_XFORPG"	, cFormPag																		,Nil } )
+		If cCodModulo == "CEM"
+			AAdd(aFin040, {"E1_XCONTRA"	, cContrato								   									,Nil } )
+		Else
+			AAdd(aFin040, {"E1_XCTRFUN"	, cContrato								   									,Nil } )
+		EndIf
+
+		MSExecAuto({|x,y| FINA040(x,y)},aFin040,3)
+
+		If lMsErroAuto
+			MostraErro()
+			DisarmTransaction()
+			lRet := .F.
+			Exit
+		EndIf
+	Next nI
+
+Return(lRet)
+
+/*/{Protheus.doc} CfrmAltVenctos
+Confirmar alteração de vencimentos do contrato
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 23/09/2021
+@param cCodModulo, character, cCodModulo
+@param cContrato, character, cContrato.
+@param nNovoDia, numeric, nNovoDia
+/*/
+Static Function CfrmAltVenctos(cCodModulo, cContrato, nNovoDia)
+
+	Local aArea 			:= GetArea()
+	Local aAreaSE1 			:= SE1->( GetArea() )
+	Local aFin040 			:= {}
+	Local cQry 				:= ""
+	Local cNovoVencto 		:= ""
+	Local cNovoCtrVencto	:= ""
+	Local dOldPrimve		:= StoD("")
+	Local dPrimVencto		:= Stod("")
+	Local lRetorno			:= .T.
+
+	Private lMsErroAuto := .F.
+	Private lMsHelpAuto := .T.
+
+	Default cCodModulo 	:= ""
+	Default cContrato 	:= ""
+	Default nNovoDia 	:= 0
+
+	If cCodModulo == "FUN"
+		dPrimVencto	:= UF2->UF2_PRIMVE
+	Else
+		dPrimVencto := U00->U00_PRIMVE
+	EndIf
+
+	cNovoCtrVencto := SubStr(DTOS(dPrimVencto), 1, 6) + StrZero(nNovoDia, 2)
+	If Empty(StoD(cNovoCtrVencto))
+
+		While Empty(StoD(cNovoCtrVencto))
+			cNovoCtrVencto := StrZero(Year(dPrimVencto),4) + StrZero(Month(MonthSum(dPrimVencto,1)),2) + StrZero(nNovoDia, 2)
+		EndDo
+
+		MsgAlert("O novo dia de vencimento informado " + cValToChar(nNovoDia) + " não é válido no mês do primeiro vencimento do contrato.";
+			+ "O sistema ajustou para o próximo mês válido " + DtoC(StoD(cNovoCtrVencto)) + ", isso não impacta a alteração do vencimento.","Atenção")
+
+	EndIf
+
+	cQry := "SELECT R_E_C_N_O_ RECNO "
+	cQry += "FROM "+ RetSqlName("SE1") +" SE1 "
+	cQry += "WHERE SE1.D_E_L_E_T_ <> '*' "
+	cQry += "	AND SE1.E1_FILIAL = '"+ xFilial("SE1") +"' "
+	cQry += "	AND SE1.E1_SALDO > 0 "
+	cQry += "	AND SE1.E1_VENCTO >= '"+ DTOS(dDatabase) +"' "
+
+	If cCodModulo == "FUN"
+		cQry += "	AND SE1.E1_XCTRFUN = '"+ cContrato +"' "
+	Else
+		cQry += "	AND SE1.E1_XCONTRA = '"+ cContrato +"' "
+	EndIf
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	EndIf
+
+	cQry := ChangeQuery(cQry)
+	MPSysOpenQuery(cQry, "QRYSE1")
+
+	If QRYSE1->( !Eof() )
+
+		If MsgYesNo("Confirma a alteração de vencimento dos títulos?")
+
+			BEGIN TRANSACTION
+
+				SE1->( DbSetOrder(1) )
+				While QRYSE1->( !Eof() )
+
+					SE1->( DbGoTo(QRYSE1->RECNO) )
+
+					If Last_Day(SE1->E1_VENCTO) < nNovoDia
+						cNovoVencto := SubStr(DTOS(SE1->E1_VENCTO), 1, 6) + StrZero(Last_Day(SE1->E1_VENCTO),2)
+					Else
+						cNovoVencto := SubStr(DTOS(SE1->E1_VENCTO), 1, 6) + StrZero(nNovoDia, 2)
+					EndIf
+
+					aFin040 := {}
+					AADD(aFin040, {"E1_FILIAL"	, xFilial("SE1")				,Nil } )
+					AADD(aFin040, {"E1_PREFIXO"	, SE1->E1_PREFIXO				,Nil } )
+					AADD(aFin040, {"E1_NUM"		, SE1->E1_NUM					,Nil } )
+					AADD(aFin040, {"E1_PARCELA"	, SE1->E1_PARCELA				,Nil } )
+					AADD(aFin040, {"E1_TIPO"	, SE1->E1_TIPO					,Nil } )
+					AADD(aFin040, {"E1_CLIENTE"	, SE1->E1_CLIENTE				,Nil } )
+					AADD(aFin040, {"E1_LOJA"	, SE1->E1_LOJA					,Nil } )
+					AADD(aFin040, {"E1_VENCTO"	, StoD(cNovoVencto)				,Nil } )
+					AADD(aFin040, {"E1_VENCREA"	, DataValida(StoD(cNovoVencto))	,Nil } )
+
+					If cCodModulo == "FUN"
+						AADD(aFin040, {"E1_XCTRFUN"	, cContrato					,Nil } )
+					Else
+						AADD(aFin040, {"E1_XCONTRA"	, cContrato					,Nil } )
+					EndIf
+
+					MSExecAuto({|x,y| FINA040(x,y)}, aFin040, 4)
+
+					If lMsErroAuto
+						lRetorno := .F.
+						MostraErro()
+						DisarmTransaction()
+						BREAK
+					EndIf
+
+					QRYSE1->( DbSkip() )
+				EndDo
+
+				// Atualiza primeiro vencimento do contrato
+				If lRetorno
+
+					If cCodModulo == "FUN"
+
+						dOldPrimve := UF2->UF2_PRIMVE
+
+						RecLock("UF2", .F.)
+						UF2->UF2_PRIMVE := StoD(cNovoCtrVencto)
+						UF2->( MsUnlock() )
+
+						//-- Histórico Campos UF2 - Primeiro vencimento
+						aCamposUF2 := {}
+						aCamposUF2 := RetAltCpo("UF2", UF2->UF2_CODIGO, "UF2_PRIMVE", dOldPrimve, UF2->UF2_PRIMVE)
+
+						// grava o historico de alteracoes
+						GravaHistorico(UF2->UF2_CODIGO, aCamposUF2)
+
+					Else
+						RecLock("U00", .F.)
+						U00->U00_PRIMVE := StoD(cNovoCtrVencto)
+						U00->( MsUnlock() )
+					EndIf
+
+				EndIf
+
+			END TRANSACTION
+
+			If lRetorno
+				MSgINfo("Data do vencimento do contrato e titulos em aberto, alterados com sucesso!")
+			EndIf
+
+		EndIf
+
+	EndIf
+
+	If Select("QRYSE1") > 0
+		QRYSE1->(DbCloseArea())
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return(Nil)
+
+/*/{Protheus.doc} CalcularAntecipacao
+Calcula valores da antecipação para o contrato selecionado
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 15/10/2021
+@param oDialog, object, oDialog
+@param oJsonTotal, object, oJsonTotal
+@param aTitOri, array, aTitOri
+@param nValorLiq, numeric, nValorLiq
+@param nDescontoLiq, numeric, nDescontoLiq
+@param cContrato, character, cContrato
+@param nQtdParcelas, numeric, nQtdParcelas
+/*/
+Static Function CalcularAntecipacao(oDialog, oJsonTotal, aTitOri, nValorLiq, nDescontoLiq, cContrato, nQtdParcelas)
+	Local cQry 				:= ""
+	Local cTpNaoConsidera 	:= AllTrim( SuperGetMv("MV_XTIPONA", .F., "FT;AVS") )
+	Local nCountParc 		:= 1
+	Local nValorPresente 	:= 0
+	Local nTaxaJuros 		:= U00->U00_JUROS / 100
+
+	Local nVlrAberto := 0
+	Local nTitAberto := 0
+	Local nVlrRestante := 0
+	Local nTitRestante := 0
+	Local nVlrAReceber := 0
+	Local nVlrDesconto := 0
+	Local nPercDesconto := 0
+	Local nVlrParcela	:= 0
+	Local oVirtusFinan	:= NIL
+
+	Default oDialog := Nil
+	Default oJsonTotal := JsonObject():New()
+	Default aTitOri := {}
+	Default nValorLiq := 0
+	Default nDescontoLiq := 0
+	Default cContrato := ""
+	Default nQtdParcelas := 0
+
+	cQry := "SELECT E1_FILIAL, "
+	cQry += "	E1_PREFIXO, "
+	cQry += "	E1_NUM, "
+	cQry += "	E1_PARCELA, "
+	cQry += "	E1_TIPO, "
+	cQry += "	E1_CLIENTE, "
+	cQry += "	E1_LOJA, "
+	cQry += "	(E1_SALDO + E1_ACRESC - E1_DECRESC) SALDO, "
+	cQry += " 	R_E_C_N_O_ RECNO "
+	cQry += "FROM " + RetSqlName("SE1")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "	AND E1_FILIAL = '"+ xFilial("SE1") +"' "
+	cQry += "	AND E1_SALDO > 0 "
+	cQry += "	AND E1_XCONTRA = '"+ cContrato +"' "
+	cQry += "	AND E1_TIPO NOT IN " + FormatIn( AllTrim(cTpNaoConsidera),";") "
+	cQry += "ORDER BY E1_PARCELA DESC "
+	cQry := ChangeQuery(cQry)
+
+	If Select("QRYSE1B") > 0
+		QRYSE1B->( DbCloseArea() )
+	EndIf
+
+	TcQuery cQry New Alias "QRYSE1B"
+
+	DbSelectArea("SE1")
+
+	oVirtusFinan := VirtusFin():New()
+
+	While QRYSE1B->( !EOF() )
+
+		If nCountParc <= nQtdParcelas
+
+			SE1->( DbGoTo(QRYSE1B->RECNO) )
+
+			nVlrParcela := oVirtusFinan:RetSaldoTitulo()
+			nVlrAberto	+= oVirtusFinan:RetSaldoTitulo()
+
+			Aadd(aTitOri, {;
+				QRYSE1B->E1_FILIAL,;  //E1_FILIAL
+			QRYSE1B->E1_PREFIXO,; //E1_PREFIXO
+			QRYSE1B->E1_NUM,;     //E1_NUM
+			QRYSE1B->E1_PARCELA,; //E1_PARCELA
+			QRYSE1B->E1_TIPO,;    //E1_TIPO
+			QRYSE1B->E1_CLIENTE,; //E1_CLIENTE
+			QRYSE1B->E1_LOJA;     //E1_LOJA
+			})
+
+			nTitAberto++
+		Else
+			nVlrRestante += QRYSE1B->SALDO
+			nTitRestante++
+		EndIf
+
+		nCountParc++
+
+		QRYSE1B->( DbSkip() )
+	EndDo
+
+	QRYSE1B->( DbCloseArea() )
+
+	// ? PV = FV/(1–i)^N
+	// PV = Valor Presente
+	// FV = Valor da Parcela
+	// I = Juros do Finaciamento
+	// N = Quantida de Parcelas do Financiamento
+	nValorPresente := nVlrParcela * (((1 + nTaxaJuros) ^ nTitAberto) - 1) / (((1 + nTaxaJuros) ^ nTitAberto) * nTaxaJuros)
+
+	If nValorPresente > 0
+		nVlrAReceber := nValorPresente
+		nVlrDesconto := nVlrAberto - nVlrAReceber
+		nPercDesconto := Round( (1 - (nVlrAReceber / nVlrAberto)) * 100, 1 )
+
+		// Valor para rotina de liquidação automática
+		nValorLiq := nVlrAberto
+		nDescontoLiq := nVlrDesconto
+	EndIf
+
+	oJsonTotal["cVlrAberto"] := "R$ " + AllTrim(Transform(nVlrAberto, "@E 999,999,999.99"))
+	oJsonTotal["cTitAberto"] := cValToChar(nTitAberto) + " Títulos"
+	oJsonTotal["cVlrRestante"] := "R$ " + AllTrim(Transform(nVlrRestante, "@E 999,999,999.99"))
+	oJsonTotal["cTitRestante"] := cValToChar(nTitRestante) + " Títulos"
+	oJsonTotal["cVlrAReceber"] := "R$ " + AllTrim(Transform(nVlrAReceber, "@E 999,999,999.99"))
+	oJsonTotal["cVlrDesconto"] := "R$ " + AllTrim(Transform(nVlrDesconto, "@E 999,999,999.99"))
+	oJsonTotal["cPercDesconto"] := AllTrim(Transform(nPercDesconto, "@E 99.9")) + "%"
+
+	oDialog:Refresh()
+
+	FreeObj(oVirtusFinan)
+
+Return
+
+/*/{Protheus.doc} ValidarAntecipacao
+Valida valores obrigatórios para processar antecipação
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 27/10/2021
+@param oDialog, object, oDialog
+@param aTitOri, array, aTitOri
+@param nValorLiq, numeric, nValorLiq
+@param nDescontoLiq, numeric, nDescontoLiq
+@param dVenctoLiq, date, dVenctoLiq
+/*/
+Static Function ValidarAntecipacao(oDialog, aTitOri, nValorLiq, nDescontoLiq, dVenctoLiq)
+	Default oDialog := Nil
+	Default aTitOri := {}
+	Default nValorLiq := 0
+	Default nDescontoLiq := 0
+	Default dVenctoLiq := Space(8)
+
+	If MsgYesNo("Deseja continuar com a antecipação do financiamento?", "Antecipação de Financiamento")
+		If Len(aTitOri) > 0
+			If nValorLiq > 0
+				If !Empty(dVenctoLiq)
+					FWMsgRun(, {|| CfrmAntecipacao(aTitOri, nValorLiq, nDescontoLiq, dVenctoLiq) }, 'Aguarde...', 'Realizando liquidação...')
+				Else
+					MsgAlert("Atenção! Vencimento da liquidação é obrigatório!")
+				EndIf
+			Else
+				MsgAlert("Atenção! Valor a receber da liquidação é inválido!")
+			EndIf
+		Else
+			MsgAlert("Atenção! Não há títulos selecionados para antecipação!")
+		EndIf
+	EndIf
+
+	oDialog:End()
+
+Return
+
+/*/{Protheus.doc} CfrmAntecipacao
+Processa liquidação da antecipação de financiamento
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 27/10/2021
+@param aTitOri, array, aTitOri
+@param nValorLiq, numeric, nValorLiq
+@param nDescontoLiq, numeric, nDescontoLiq
+@param dVenctoLiq, date, dVenctoLiq
+/*/
+Static Function CfrmAntecipacao(aTitOri, nValorLiq, nDescontoLiq, dVenctoLiq)
+	Local nX       := 0
+	Local aCab     := {}
+	Local aItens   := {}
+	Local cFiltro  := "" // Filtro quem conterá os títulos que serão liquidados gerado com base no array aTitOri
+	Local cCliLiq  := U00->U00_CLIENT
+	Local cLojaLiq := U00->U00_LOJA
+	Local cNaturez := U00->U00_NATURE
+	Local cPrefixo  := AllTrim( SuperGetMv("MV_XPREFAN", .F., "CEM") )
+	Local cTipoLiq := AllTrim( SuperGetMv("MV_XTIPOAN", .F., "FT ") )
+	Local nMoeda   := 1
+	Local cCond    := ""
+	Local cNumTit  := ""
+
+	Private lMsErroAuto    := .F.
+	Private lAutoErrNoFile := .T.
+
+	Default aTitOri := {}
+	Default nValorLiq := 0
+	Default nDescontoLiq := 0
+	Default dVenctoLiq := dDataBase
+
+	cNumTit := GetSx8Num("SE1", "E1_NUM")
+
+	Aadd(aItens, {;
+		{"E1_PREFIXO" , cPrefixo },;
+		{'E1_NUM'     , cNumTit },;
+		{'E1_PARCELA' , 'A' },;
+		{'E1_VENCTO'  , dVenctoLiq },;
+		{'E1_VLCRUZ'  , nValorLiq },;
+		{'E1_DECRESC' , nDescontoLiq } })
+
+	//Filtro do Usuario
+	cFiltro := " ("
+	For nX := 1 To Len(aTitOri)
+		If nX > 1
+			cFiltro += " .Or. "
+		EndIf
+		cFiltro += " ("
+		cFiltro += " E1_FILIAL == '" + aTitOri[nX][1] + "' .And. "
+		cFiltro += " E1_PREFIXO == '" + aTitOri[nX][2] + "' .And. E1_NUM == '" + aTitOri[nX][3] + "' .And. "
+		cFiltro += " E1_PARCELA == '" + aTitOri[nX][4] + "' .And. E1_TIPO == '" + aTitOri[nX][5] + "' .And. "
+		cFiltro += " E1_CLIENTE == '" + aTitOri[nX][6] + "' .And. E1_LOJA == '" + aTitOri[nX][7] + "' )"
+	Next
+	cFiltro += ") .And. E1_SITUACA $ '0FG' .And. E1_SALDO > 0 .And. Empty(E1_NUMLIQ) "
+
+	//Array do processo automatico (aAutoCab)
+	aCab := {{"cCondicao" ,cCond },;
+		{"cNatureza"    ,cNaturez },;
+		{"E1_TIPO"      ,cTipoLiq },;
+		{"cCliente"     ,cCliLiq },;
+		{"nMoeda"       ,nMoeda },;
+		{"cLoja"        ,cLojaLiq }}
+
+	BEGIN TRANSACTION
+
+		FINA460(, aCab, aItens, 3, cFiltro)
+
+		If lMsErroAuto
+			MostraErro()
+			RollbackSx8()
+			DisarmTransaction()
+		Else
+			ConfirmSx8()
+		EndIf
+
+	END TRANSACTION
+
+Return
+
+/*/{Protheus.doc} AvalStatusRecorr
+Avalia status do título em recorrência
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 17/11/2021
+@param cBaixa, character, cBaixa
+@param nIntegraEnvio, numeric, nIntegraEnvio
+@param nIntegraRecebimento, numeric, nIntegraRecebimento
+@return character, cStatus
+/*/
+Static Function AvalStatusRecorr(cBaixa, nIntegraEnvio, nIntegraRecebimento)
+	Local cStatus := "1"
+
+	If !Empty(cBaixa)
+		cStatus := "4"
+	ElseIf nIntegraRecebimento == 1
+		cStatus := "3"
+	ElseIf nIntegraEnvio == 1
+		cStatus := "2"
+	Else
+		cStatus := "1"
+	EndIf
+
+Return cStatus
+
+/*/{Protheus.doc} CSSBlackButton
+CSS Black Button
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 03/09/2021
+@return character, cCSSTButton
+/*/
+Static Function CSSBlackButton()
+	Local cCSSTButton := ""
+
+	// implementacao do CSS
+	cCSSTButton := " QPushButton { background-color: #3b3b3b; "
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	cCSSTButton += " border-radius: 5px; }"
+	cCSSTButton += " QPushButton:hover { background-color: #333333;"
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	cCSSTButton += " border-radius: 5px; }"
+	cCSSTButton += " QPushButton:pressed { background-color: #262626;"
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	cCSSTButton += " border-radius: 5px; }"
+
+Return cCSSTButton
+
+/*/{Protheus.doc} CSSBlueButton
+CSS Blue Button
+@type function
+@version 12.1.27
+@author nata.queiroz
+@since 03/09/2021
+@return character, cCSSTButton
+/*/
+Static Function CSSBlueButton(lMarginRight)
+	Local cCSSTButton := ""
+
+	Default lMarginRight := .F.
+
+	// implementacao do CSS
+	cCSSTButton := " QPushButton { background-color: #003d75; "
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	If lMarginRight
+		cCSSTButton += " border-radius: 5px;"
+		cCSSTButton += " margin-right: 35px; }"
+	Else
+		cCSSTButton += " border-radius: 5px; }"
+	EndIf
+	cCSSTButton += " QPushButton:hover { background-color: #003566;"
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	If lMarginRight
+		cCSSTButton += " border-radius: 5px;"
+		cCSSTButton += " margin-right: 35px; }"
+	Else
+		cCSSTButton += " border-radius: 5px; }"
+	EndIf
+	cCSSTButton += " QPushButton:pressed { background-color: #00284d;"
+	cCSSTButton += " font-weight: bold; color: #FFFFFF;"
+	cCSSTButton += " border: 1px solid #9ea2a8;"
+	If lMarginRight
+		cCSSTButton += " border-radius: 5px;"
+		cCSSTButton += " margin-right: 35px; }"
+	Else
+		cCSSTButton += " border-radius: 5px; }"
+	EndIf
+
+Return cCSSTButton
+
+/*/{Protheus.doc} PainelFin::GerarLinkPagamento
+Metodo para gerar link de pagamento do titulo
+@type method
+@version 12.1.27
+@author Raphael Martins Garcia
+@since 27/04/2023
+/*/
+Method GerarLinkPagamento(cPrefixo, cNum, cParcela, cTipo,dVencto) Class PainelFin
+
+	Local oDlg				:= NIL
+	Local oGroup1			:= NIL
+	Local oSyForma			:= NIL
+	Local oFormaPg			:= NIL
+	Local oDescForma		:= NIL
+	Local oSyParcela		:= NIL
+	Local oParcelamento		:= NIL
+	Local oGerarFatura		:= NIL
+	Local oCancelar			:= NIL
+	Local oSyVencimento		:= NIL
+	Local oVencimento		:= NIL
+	Local cFormaPg			:= Space(TamSX3("U60_CODIGO")[1])
+	Local lFuneraria		:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio		:= SuperGetMV("MV_XCEMI",,.F.)
+	Local cDescForma		:= ""
+	Local cMetodoPag		:= ""
+	Local nParcelamento		:= 0
+
+	Default dVencto			:= CTOD("")
+
+	if lFuneraria
+		cMetodoPag	:= UF2->UF2_FORPG
+	elseif lCemiterio
+		cMetodoPag	:= U00->U00_FORPG
+	endif
+
+	U60->(DbSetOrder(2))
+
+	if !U60->(MsSeek(xFilial("U60") + Alltrim(cMetodoPag)))
+
+		DEFINE MSDIALOG oDlg TITLE "Gerar Link de Pagamento" FROM 000, 000  TO 150, 500 COLORS 0, 16777215 PIXEL
+
+		@ 002, 003 GROUP oGroup1 TO 051, 246 PROMPT "Geracao de Link de Pagamento" OF oDlg COLOR 0, 16777215 PIXEL
+
+		@ 019, 008 SAY oSyForma PROMPT "Forma de Pagamento:" SIZE 057, 007 OF oDlg COLORS 0, 16777215 PIXEL
+
+		@ 018, 065 MSGET oFormaPg VAR cFormaPg SIZE 038, 010 Picture "@!" F3 "U60" Valid(VldMetodoPg(cFormaPg,@cDescForma,oDescForma)) OF oDlg  COLORS 0, 16777215 PIXEL
+		@ 018, 117 MSGET oDescForma VAR cDescForma SIZE 122, 010 When .F. OF oDlg COLORS 0, 16777215 PIXEL
+
+		@ 035, 008 SAY oSyParcela PROMPT "Parcelamento:" SIZE 054, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 035, 065 MSGET oParcelamento VAR nParcelamento SIZE 038, 007 Picture "@E 9999" OF oDlg COLORS 0, 16777215 PIXEL
+
+		@ 035, 117 SAY oSyVencimento PROMPT "Vencimento:" SIZE 054, 007 OF oDlg COLORS 0, 16777215 PIXEL
+		@ 035, 154 MSGET oVencimento VAR dVencto SIZE 050, 007  When .F. OF oDlg COLORS 0, 16777215 PIXEL
+
+		@ 057, 166 BUTTON oGerarFatura PROMPT "Gerar Link" SIZE 037, 012 OF oDlg;
+			Action(GerarLink(cPrefixo, cNum, cParcela, cTipo,cFormaPg,nParcelamento,dVencto,oDlg)) PIXEL
+
+		@ 057, 207 BUTTON oCancelar PROMPT "Sair" SIZE 037, 012 OF oDlg Action(oDlg:End()) PIXEL
+
+		ACTIVATE MSDIALOG oDlg CENTERED
+	else
+		Help(NIL, NIL, "GeraLink", NIL,;
+			"Operacao não permitida",1, 0, NIL, NIL,;
+			NIL, NIL, NIL,{"Geração de link permitido apenas para contratos que não estão em recorrência"})
+	endif
+
+Return()
+
+/*/{Protheus.doc} VldMetodoPg
+Funcao para validar o metodo de pagamento digitado
+@type function
+@version  
+@author raphaelgarcia
+@since 5/5/2023
+@param cFormaPg, character, param_description
+@param cDescForma, character, param_description
+@param oDescForma, object, param_description
+@return variant, return_description
+/*/
+Static Function VldMetodoPg(cFormaPg,cDescForma,oDescForma)
+
+	Local aAreaU60 := U60->(GetArea())
+	Local lRet 		:= .F.
+
+	U60->(DbSetOrder(2))
+
+	if U60->(MsSeek(xFilial("U60") + Alltrim(cFormaPg)))
+
+		lRet := .T.
+		cDescForma := U60->U60_CODIGO
+
+	else
+		MsgAlert("Metodo de Pagamento Inválido!")
+		cDescForma := ""
+	endif
+
+	oDescForma:Refresh()
+
+	RestArea(aAreaU60)
+
+Return(lRet)
+
+/*/{Protheus.doc} GerarLink
+Funcao para gerar chamadas das funcoes da Classe Vindi
+para criar a fatura na Vindi
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 5/8/2023
+@param cPrefixo, character, Prefixo do Titulo Selecionado
+@param cNum, character, Numero do Titulo
+@param cParcela, character, Parcela
+@param cTipo, character, Tipo
+@param cFormaPg, character, Metodo de pagamento selecionado
+@param nParcelamento, numeric, Numero de parcelas definida
+@param dVencto, date, Data de Vencimento das parcelas
+@param oDlg, object, Objeto Dialog
+/*/
+Static Function GerarLink(cPrefixo, cNum, cParcela, cTipo,cFormaPg,nParcelamento,dVencto,oDlg)
+
+	Local lRet 			:= .F.
+	Local oVindi		:= NIL
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	Local cCodModulo	:= ""
+	Local cErroVindi	:= ""
+	Local cOrigem		:= "RUTILE51"
+	Local cOrigemDesc	:= "Geracao de Link de Pagamento"
+	Local cChave		:= ""
+	Local cJsonEnvio	:= ""
+	Local cCodRet		:= ""
+	Local cDescRetorno	:= ""
+	Local cDadosRetorno	:= ""
+	Local oVirtusFin	:= NIL
+	Local oJsonRetorno	:= NIL
+
+
+	if lFuneraria
+		cCodModulo := "FUN"
+	elseif lCemiterio
+		cCodModulo := "CEM"
+	endif
+
+	SE1->(DbSetOrder(1)) //E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+
+	if !Empty(cFormaPg) .And. !Empty(nParcelamento)
+
+		Begin Transaction
+
+			if SE1->(MsSeek(xFilial("SE1") + cPrefixo + cNum + cParcela + cTipo))
+
+				// crio o objeto da classe de funcoes financeiras do Virtus ERP
+				oVirtusFin := VirtusFin():New()
+
+				// crio o objeto de integracao com a vindi
+				oVindi := IntegraVindi():New()
+
+				//removo dados bancarios do titulo
+				oVirtusFin:ExcBordTit(SE1->(Recno()))
+
+				//atualizo a forma de pagamento do titulo
+				RecLock("SE1",.F.)
+
+				SE1->E1_XFORPG := cFormaPg
+
+				SE1->(MsUnlock())
+
+				// envia cliente para a Vindi
+				FWMsgRun(,{|oSay| lRet := oVindi:CliOnline("I",cCodModulo,@cErroVindi,cOrigem,cOrigemDesc)},'Aguarde...','Enviando Inclusão do Cliente na Plataforma Vindi...')
+
+				//cria fatura
+				if lRet
+
+					cChave := xFilial("SE1") + cPrefixo + cNum + cParcela + cTipo
+
+					oVindi:ValidaEnvio(cCodModulo,Rtrim(cChave),@cDadosRetorno)
+
+					if !Empty(cDadosRetorno)
+						FWJsonDeserialize(cDadosRetorno,@oJsonRetorno)
+					endif
+
+					if oJsonRetorno <> NIL .And. AttIsMemberOf(oJsonRetorno , "BILL")
+
+						cURLFatura := oJsonRetorno:bill:URL
+
+						VisualizaLink(cURLFatura)
+
+					else
+
+						FWMsgRun(,{|oSay| oVindi:IncluiFatura(cCodModulo,@cErroVindi,@cJsonEnvio,@cCodRet,@cDescRetorno,@cDadosRetorno,1,cChave,.T.,nParcelamento)},'Aguarde...','Gerando a fatura na Vindi...')
+
+						if !Empty(cErroVindi)
+
+							DisarmTransaction()
+
+							Help(,,'Help',,cErroVindi,1,0)
+						else
+
+							FWJsonDeserialize(cDadosRetorno,@oJsonRetorno)
+
+							if AttIsMemberOf(oJsonRetorno , "BILL")
+
+								cURLFatura := oJsonRetorno:bill:URL
+
+								VisualizaLink(cURLFatura)
+
+							endif
+
+						endif
+
+					endif
+
+				else
+
+					DisarmTransaction()
+
+					Help(,,'Help',,cErroVindi,1,0)
+				endif
+
+			endif
+
+		End Transaction
+	else
+		lRet := .F.
+		Help(,,'Help',,"Preenchimento do Metodo e Parcelamento Obrigatorio!",1,0)
+	endif
+
+Return(lRet)
+
+/*/{Protheus.doc} VisualizaLink
+Funcao para visualizar o Link da fatura gerada
+@type function
+@version  1.0
+@author raphaelgarcia
+@since 5/8/2023
+@param cURLFatura, character, Link da Fatura Gerada
+/*/
+Static Function VisualizaLink(cURLFatura)
+
+	Local oTelaLink			:= NIL
+	Local oGroup1			:= NIL
+	Local oCopiarLink		:= NIL
+	Local oFechar			:= NIL
+	Local oFont				:= NIL
+	Local cBotaoCSSAzul	:= CSSBotoesAzul()
+
+	Define Font oFont Name "Arial" Size 7, 16
+
+	DEFINE MSDIALOG oTelaLink TITLE "Visualizacao Link Pagamento" FROM 000, 000  TO 150, 500 COLORS 0, 16777215 PIXEL
+
+	@ 004, 003 GROUP oGroup1 TO 060, 244 PROMPT "Link da Fatura Gerada" OF oTelaLink COLOR 0, 16777215 PIXEL
+
+	@ 015, 005 Get oMemo Var cURLFatura Memo Size 233, 40 Of oTelaLink Pixel
+	oMemo:bRClicked := { || AllwaysTrue() }
+	oMemo:oFont     := oFont
+
+	@ 061, 156 BUTTON oCopiarLink PROMPT "Copiar Link" SIZE 037, 012 Action(CopiarLink(oTelaLink,cURLFatura)) OF oTelaLink PIXEL
+
+	oCopiarLink:SetCss(cBotaoCSSAzul)
+
+	@ 061, 206 BUTTON oFechar PROMPT "Fechar" SIZE 037, 012 Action(oTelaLink:End()) OF oTelaLink PIXEL
+
+	ACTIVATE MSDIALOG oTelaLink CENTERED
+
+Return()
+
+
+/*/{Protheus.doc} CSSBotoesAzul
+Funcao para customizar o botao da tela de link
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/07/2020
+@return return_type, return_description
+/*/
+Static Function CSSBotoesAzul()
+
+	Local cRetorno          as Character
+
+
+	// implementacao do CSS
+	cRetorno    := " QPushButton { background: #35ACCA; "
+	cRetorno    += " border: 1px solid #1f6779;"
+	cRetorno    += " outline:0;"
+	cRetorno    += " border-radius: 5px;"
+	cRetorno    += " font-family: Arial;"
+	cRetorno    += " font-size: 10px;"
+	cREtorno    += " font-weight: bold;"
+	cRetorno    += " padding: 6px;"
+	cRetorno    += " color: #ffffff;}"
+	cRetorno    += " QPushButton:hover { background-color: #1f6779;"
+	cRetorno    += " border-style: inset;"
+	cRetorno    += " border-color: #35ACCA;"
+	cRetorno    += " color: #ffffff; }"
+
+Return(cRetorno)
+
+/*/{Protheus.doc} CopiarLink
+Funcao para copiar Link gerado
+@type function
+@version  1.-
+@author raphaelgarcia
+@since 5/8/2023
+@param oTelaLink, object, Objeto Dialog 
+@param cURL, character, Link da fatura gerada
+/*/
+Static Function CopiarLink(oTelaLink,cURL)
+
+	Local oSyMsgCopia	:= ""
+	Local oFontMsg		:= NIL
+
+	Define Font oFontMsg Name "Arial" Size 7, 16
+
+	CopytoClipboard(cURLFatura)
+
+	@ 060, 007 SAY oSyMsgCopia PROMPT "Link Copiado com Sucesso!" SIZE 150, 007 Font oFontMsg OF oTelaLink COLORS 0, 16777215 PIXEL
+
+Return(Nil)
+
+/*/{Protheus.doc} GravaHistorico
+Funcao para gravar o historico de alteracoes do contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 08/03/2024
+/*/
+Static Function GravaHistorico(cContrato, aCampos)
+
+	Local aArea 	As Array
+	Local aAreaUF2 	As Array
+	Local aAreaU68 	As Array
+	Local aAreaU73 	As Array
+	Local cCodigo 	As Character
+	Local lRetorno 	As Logical
+	Local nX 		As Numeric
+
+	Default cContrato	:= ""
+	Default aCampos		:= {}
+
+	// atribui valor as variaveis
+	aArea 		:= GetArea()
+	aAreaUF2 	:= UF2->( GetArea() )
+	aAreaU68 	:= U68->( GetArea() )
+	aAreaU73 	:= U73->( GetArea() )
+	lRetorno	:= .T.
+	nX 			:= 0
+
+	If Len(aCampos) > 0
+
+		UF2->(DbSetOrder(1))
+		If UF2->(MsSeek(xFilial("UF2") + cContrato))
+
+			// codigo sequencial do historico
+			cCodigo := GetSXENum("U68", "U68_CODIGO")
+
+			//----------------------------//
+			//-- CABEÇALHO DA ALTERAÇÃO --//
+			//----------------------------//
+			If U68->(RecLock("U68",.T.))
+
+				U68->U68_FILIAL	:= xFilial("U68")
+				U68->U68_CODIGO	:= cCodigo
+				U68->U68_DATA	:= dDataBase
+				U68->U68_HORA	:= SubStr(Time(),1,5)
+				U68->U68_TIPO	:= "C" // C=Contrato;R=Reajuste;E=Exclusao do Reajuste
+				U68->U68_CONTRA	:= UF2->UF2_CODIGO
+				U68->U68_CLIENT	:= UF2->UF2_CLIENT
+				U68->U68_LOJA	:= UF2->UF2_LOJA
+				U68->U68_CODUSR	:= RetCodUsr()
+
+				U68->(ConfirmSx8())
+			EndIf
+
+			//----------------------//
+			//-- CAMPOS ALTERADOS --//
+			//----------------------//
+			If U73->(RecLock("U73",.T.))
+
+				U73->U73_FILIAL := xFilial("U73")
+				U73->U73_CODIGO	:= cCodigo
+
+				For nX := 1 To Len(aCampos)
+					U73->&(aCampos[nX,1]) := aCampos[nX,2]
+				Next nX
+
+				U73->(MsUnLock())
+
+			EndIf
+
+		EndIf
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} RetAltCpo
+Retorna array estruturado para gravacao do historico de alteracao de campo
+@type function
+@version 1.0
+@author nata.queiroz
+@since 1/8/2021
+@param cAliasUtil, character, cAliasUtil
+@param cChave, character, cChave
+@param cCampoAlias, character, cCampoAlias
+@param xVlrAnt, param_type, valor anterior
+@param xVlrPos, param_type, novo valor
+@return array, aItens
+/*/
+Static Function RetAltCpo(cAliasUtil, cChave, cCampoAlias, xVlrAnt, xVlrPos)
+	Local cTipo := TamSX3(cCampoAlias)[3]
+	Local aItens := {}
+
+	Default cAliasUtil := ""
+	Default cChave := ""
+	Default cCampoAlias := ""
+	Default xVlrAnt := Nil
+	Default xVlrPos := Nil
+
+	if !Empty(cAliasUtil) .And. !Empty(cTipo)
+		aadd(aItens,{"U73_ALIAS"	, cAliasUtil})
+		aadd(aItens,{"U73_CHAVE"	, cChave})
+		aadd(aItens,{"U73_TIPCPO"	, cTipo})
+		aadd(aItens,{"U73_CAMPO"	, cCampoAlias })
+
+		if cTipo == "C"
+
+			aadd(aItens,{"U73_CVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_CVLPOS"	, xVlrPos})
+
+		elseif cTipo == "N"
+
+			aadd(aItens,{"U73_NVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_NVLPOS"	, xVlrPos})
+
+		elseif cTipo == "D"
+
+			aadd(aItens,{"U73_DVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_DVLPOS"	, xVlrPos})
+
+		elseif cTipo == "L"
+
+			aadd(aItens,{"U73_LVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_LVLPOS"	, xVlrPos})
+
+		elseif cTipo == "M"
+
+			aadd(aItens,{"U73_MVLANT"	, xVlrAnt})
+			aadd(aItens,{"U73_MVLPOS"	, xVlrPos})
+
+		endif
+	endif
+
+Return aItens
