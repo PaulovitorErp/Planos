@@ -1,0 +1,73 @@
+#Include 'totvs.ch'
+
+/*/{Protheus.doc} RFUNE044
+Consulta específica Multi seleção de regras de reajustes
+UI4MRK
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/03/2021
+@return logical, retorno verdadeiro
+/*/
+User Function RFUNE044()
+
+	Local cTitulo	:= "Regras de Reajuste"
+	Local cMvParDef	:= ""
+	Local cVarIni	:= ""
+	Local nX		:= 1
+	Local nTamCod	:= TamSX3("UI4_CODIGO")[1]
+	Local aDados	:= {}
+
+	Static cMvRetor	:= ""
+
+	// verifico se a variavel ja tem conteudo
+	If !Empty(cMvRetor)
+
+		// limpo o conteudo da variavel
+		cMvRetor := ""
+
+	EndIf
+
+	UI4->(DbSetOrder(1)) // UI4_FILIAL + UI4_CODIGO
+	If UI4->(MsSeek(xFilial("UI4")))
+
+		While UI4->(!Eof()) .AND. UI4->UI4_FILIAL == xFilial("UI4")
+
+			aadd(aDados, AllTrim(UI4->UI4_CODIGO) + " - " + AllTrim(UI4->UI4_DESCRI))
+			cMvParDef += UI4->UI4_CODIGO
+			UI4->(DbSkip())
+
+		Enddo
+
+	Endif
+
+	If F_Opcoes(@cVarIni, cTitulo, aDados, cMvParDef, 12, 49, .F., nTamCod, 36)
+
+		For nX := 1 To Len(cVarIni) Step nTamCod
+
+			If substr(cVarIni, nX, nTamCod) # Replicate("*",nTamCod)
+
+				If !Empty(cMvRetor)
+					cMvRetor += ";"
+				EndIf
+
+				cMvRetor += substr(cVarIni,nX,nTamCod)
+
+			EndIf
+
+		Next nX
+
+	EndIf
+
+Return(.T.)
+
+/*/{Protheus.doc} RFUNE44A
+Funcao para retorno da consulta especifica
+@type function
+@version 1.0 
+@author g.sampaio
+@since 27/03/2021
+@return character, retorna as regras selecionadas
+/*/
+User Function RFUNE44A()
+Return(cMvRetor)

@@ -1,0 +1,166 @@
+#include "totvs.ch"
+
+/*/{Protheus.doc} RFUNE045
+description
+@type function
+@version 1.0
+@author g.sampaio
+@since 22/12/2021
+@return variant, return_description
+/*/
+User Function RFUNE045()
+
+	Local aWBrowse1 := {}
+	Local bFiltro   := {|| }
+	Local cGet1     := Space(80)
+	Local oWBrowse1 := Nil
+	Local oButton1  := Nil
+	Local oButton2  := Nil
+	Local oButton3  := Nil
+	Local oGet1	    := Nil
+	Local oGroup1   := Nil
+	Local oSay1     := Nil
+	Local oDlg      := Nil
+
+	Static __cCodPlanoEntregue := ""
+
+	// defino o bloco de código
+	bFiltro := {|| FWMsgRun(, {|oSay| GetConsulta(cGet1, @aWBrowse1, @oWBrowse1, @oDlg) }, "Aguarde", "Filtrando os planos...") }
+
+	DEFINE MSDIALOG oDlg TITLE "Consulta Plano Entregue" FROM 000, 000  TO 350, 550 COLORS 0, 16777215 PIXEL
+
+	@ 002, 003 GROUP oGroup1 TO 170, 272 OF oDlg COLOR 0, 16777215 PIXEL
+
+	@ 017, 010 MSGET oGet1 VAR cGet1 SIZE 208, 010 OF oGroup1 COLORS 0, 16777215 PIXEL VALID (iif(!Empty(cGet1) .And. Len(AllTrim(cGet1)) >= 3,Eval(bFiltro),.T.))
+	@ 010, 012 SAY oSay1 PROMPT "Filtro" SIZE 025, 007 OF oGroup1 COLORS 0, 16777215
+	@ 015, 226 BUTTON oButton1 PROMPT "Pesquisar" SIZE 037, 012 OF oDlg PIXEL PIXEL ACTION (GetConsulta(cGet1, @aWBrowse1, @oWBrowse1, @oDlg))
+
+	GetConsulta(cGet1, @aWBrowse1, @oWBrowse1, @oDlg)
+
+	@ 155, 225 BUTTON oButton2 PROMPT "Confirmar" SIZE 037, 012 OF oDlg PIXEL ACTION(__cCodPlanoEntregue := aWBrowse1[oWBrowse1:nAT, 2], oDlg:End())
+	@ 155, 185 BUTTON oButton3 PROMPT "Cancelar" SIZE 037, 012 OF oDlg PIXEL ACTION(__cCodPlanoEntregue := "", oDlg:End())
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+
+Return(.T.)
+
+/*/{Protheus.doc} GetConsulta
+description
+@type function
+@version  
+@author g.sampaio
+@since 22/12/2021
+@param cGet1, character, param_description
+@param aWBrowse1, array, param_description
+@param oWBrowse1, object, param_description
+@param oDlg, object, param_description
+@return variant, return_description
+/*/
+Static Function GetConsulta(cGet1, aWBrowse1, oWBrowse1, oDlg)
+
+	Local cQuery        := ""
+	Local cFilServico   := ""
+	Local oModel	    := FWModelActive()
+	Local oModelUJ0	    := NIL
+
+	// atribuo valor a variavel
+	if oModel <> NIL
+	
+		oModelUJ0	:= oModel:GetModel("UJ0MASTER")
+		cFilServico := oModelUJ0:GetValue("UJ0_FILSER")
+	
+	else
+	
+		cFilServico := UJ0->UJ0_FILSER
+	
+	endif
+
+	if Select("TRBPLN") > 0
+		TRBPLN->(DBCloseArea())
+	endIf
+
+	cQuery := " SELECT UF0.UF0_FILIAL FILIAL, "
+	cQuery += "  UF0.UF0_CODIGO CODIGO, "
+	cQuery += "  UF0.UF0_DESCRI DESCRICAO "
+	cQuery += " FROM " + RetSQLName("UF0") + " UF0 "
+	cQuery += " WHERE UF0.D_E_L_E_T_ = ' ' "
+	cQuery += " AND UF0.UF0_FILIAL = '" + xFilial("UF0",cFilServico) + "' "
+	cQuery += " AND UF0.UF0_STATUS = 'A' "
+
+	if !Empty(cGet1)
+		cQuery += " AND ( UF0.UF0_CODIGO LIKE '%"+AllTrim(cGet1)+"%' OR UF0.UF0_DESCRI LIKE '%"+AllTrim(cGet1)+"%' )
+	endIf
+
+	cQuery += " ORDER BY UF0.UF0_FILIAL, UF0.UF0_CODIGO "
+
+	MPSysOpenQuery( cQuery, 'TRBPLN' )
+
+	// limpo a variavel
+	aWBrowse1 := {}
+	FreeObj(oWBrowse1)
+	oWBrowse1 := Nil
+
+	if TRBPLN->(!Eof())
+
+		While TRBPLN->(!Eof())
+
+			// alimento o array de dados
+			AAdd(aWBrowse1,{TRBPLN->FILIAL, TRBPLN->CODIGO, TRBPLN->DESCRICAO})
+
+			TRBPLN->(DbSkip())
+		EndDo
+
+	else
+
+		AAdd(aWBrowse1,{"", "", ""})
+		MsgAlert("Não foram encontrados dados para a pesquisa!", "Atenção!")
+
+	endIf
+
+	if Select("TRBPLN") > 0
+		TRBPLN->(DBCloseArea())
+	endIf
+
+	// monto o browse novamente
+	fWBrowse1(@aWBrowse1, @oWBrowse1, @oDlg)
+
+Return(.T.)
+
+/*/{Protheus.doc} fWBrowse1
+description
+@type function
+@version  
+@author g.sampaio
+@since 22/12/2021
+@param aWBrowse1, array, param_description
+@param oWBrowse1, object, param_description
+@param oDlg, object, param_description
+@return variant, return_description
+/*/
+Static Function fWBrowse1(aWBrowse1, oWBrowse1, oDlg)
+
+	@ 034, 008 LISTBOX oWBrowse1 Fields HEADER "Filial","Codigo","Descrição" SIZE 257, 117 OF oDlg PIXEL ColSizes 50,50
+	oWBrowse1:SetArray(aWBrowse1)
+	oWBrowse1:bLine := {|| {;
+		aWBrowse1[oWBrowse1:nAt,1],;
+		aWBrowse1[oWBrowse1:nAt,2],;
+		aWBrowse1[oWBrowse1:nAt,3],;
+		}}
+
+	// DoubleClick event
+	oWBrowse1:bLDblClick := {|| __cCodPlanoEntregue := aWBrowse1[oWBrowse1:nAt,2], oDlg:End(),;
+		oWBrowse1:DrawSelect()}
+
+Return(Nil)
+
+/*/{Protheus.doc} RFUNE45A
+retorno da consulta especifica de servicos
+para integracao
+@type function
+@version 1.0
+@author g.sampaio
+@since 29/07/2021
+@return character, retorna a variavel estatica
+/*/
+User Function RFUNE45A()
+Return(__cCodPlanoEntregue)
