@@ -1,0 +1,907 @@
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "PROTHEUS.CH"
+#INCLUDE "TBICONN.CH"
+#INCLUDE "RWMAKE.CH"
+
+#DEFINE P_CLIENTEDE         1
+#DEFINE P_CLIENTEATE        2   
+#DEFINE P_LOJADE            3
+#DEFINE P_LOJAATE           4
+#DEFINE P_CONTRATODE        5
+#DEFINE P_CONTRATOATE       6
+#DEFINE P_VENCIMENTODE      7
+#DEFINE P_VENCIMENTOATE     8
+#DEFINE P_BAIXADE           9
+#DEFINE P_BAIXAATE          10
+#DEFINE P_BANCODE           11
+#DEFINE P_BANCOATE          12
+#DEFINE P_NATUREZADE        13
+#DEFINE P_NATUREZAATE       14
+
+
+/*/{Protheus.doc} RUTILR05
+// Relatorio de Baixas por Origem
+// Orientação do tipo Paisagem
+
+@author Raphael Martins 
+@since 25/01/2021
+@version undefined
+
+@type function
+/*/
+User Function RUTILR05()
+
+Local oReport   As Object
+
+oReport:= ReportDef()
+oReport:PrintDialog()
+
+Return
+
+/*/{Protheus.doc} ReportDef
+// Na seção de definição do relatório, função ReportDef(), devem ser criados os componentes de impressão, 
+as seções e as células, os totalizadores e demais componentes que o usuário poderá personalizar no relatório.
+
+@author Raphael Martins
+@since 25/01/2016
+@version undefined
+
+@type function
+/*/
+Static Function ReportDef()
+
+Local oReport                           As Object
+Local oBaixasNormais                    As Object
+Local oTotalBaixasNormais               As Object
+Local oDetalhesBaixasAdquirentes        As Object
+Local oBaixasAdquirentes                As Object
+Local oTotalBaixasAdquirentes           As Object
+Local oTotalBaixasGeral                 As Object
+Local cTitle                            As Character 
+Local cPerg                             As Character 
+
+//inicializo as variaveis
+cTitle    	                := "Relatorio de Baixas por Origem"
+cPerg 		                := "RUTILR05"
+oReport                     := NIL
+oBaixasNormais              := NIL
+oBaixasAdquirentes          := NIL
+oTotalBaixasAdquirentes     := NIL
+oTotalBaixasNormais         := NIL
+oDetalhesBaixasAdquirentes  := NIL
+oTotalBaixasGeral           := NIL
+
+oReport:= TReport():New("RUTILR05",cTitle,cPerg,{|oReport| PrintReport(oReport,oBaixasNormais,oBaixasAdquirentes,oDetalhesBaixasAdquirentes,oTotalBaixasNormais,oTotalBaixasAdquirentes,oTotalBaixasGeral)},"Este relatório apresenta a relação de baixas por origem.")
+//oReport:SetPortrait() 		    // Orientação retrato
+oReport:SetLandscape()		// Orientação paisagem 
+//oReport:HideHeader()  		// Nao imprime cabeçalho padrão do Protheus
+//oReport:HideFooter()			// Nao imprime rodapé padrão do Protheus
+oReport:HideParamPage()			// Inibe impressão da pagina de parametros
+oReport:SetUseGC( .F. ) 		// Desabilita o botão <Gestao Corporativa> do relatório
+oReport:DisableOrientation()    // Desabilita a seleção da orientação (retrato/paisagem)
+//oReport:cFontBody := "Arial"
+//oReport:nFontBody := 8
+
+AjustaSx1(cPerg) // cria as perguntas para gerar o relatorio
+Pergunte(oReport:GetParam(),.F.)
+
+//ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒø
+//Criacao da secao utilizada pelo relatorio                               
+//                                                                        
+//TRSection():New                                                         
+//ExpO1 : Objeto TReport que a secao pertence                             
+//ExpC2 : Descricao da seção                                              
+//ExpA3 : Array com as tabelas utilizadas pela secao. A primeira tabela   
+//        sera considerada como principal para a seção.                   
+//ExpA4 : Array com as Ordens do relatorio                                
+//ExpL5 : Carrega campos do SX3 como celulas                              
+//        Default : False                                                 
+//ExpL6 : Carrega ordens do Sindex                                        
+//        Default : False                                                 
+//                                                                        
+//¿ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ
+//ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒø
+//Criacao da celulas da secao do relatorio                                
+//                                                                        
+//TRCell():New                                                            
+//ExpO1 : Objeto TSection que a secao pertence                            
+//ExpC2 : Nome da celula do relatório. O SX3 será consultado              
+//ExpC3 : Nome da tabela de referencia da celula                          
+//ExpC4 : Titulo da celula                                                
+//        Default : X3Titulo()                                            
+//ExpC5 : Picture                                                         
+//        Default : X3_PICTURE                                            
+//ExpC6 : Tamanho                                                         
+//        Default : X3_TAMANHO                                            
+//ExpL7 : Informe se o tamanho esta em pixel                              
+//        Default : False                                                 
+//ExpB8 : Bloco de código para impressao.                                 
+//        Default : ExpC2                                                 
+//                                                                        
+//¿ƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒƒŸ
+
+//////////////////////////////////////////////////////////
+//SESSAO DE BAIXAS NORMAIS - EXCETO BAIXAS DE ADQUIRENTES 
+//////////////////////////////////////////////////////////
+oBaixasNormais := TRSection():New(oReport,"Baixas Normais Exceto Administradora de Cartao",{"QRYNOR"},/*Ordens do Relatório*/,/*Campos do SX3*/,/*Campos do SIX*/)
+oBaixasNormais:SetTotalInLine(.F.)
+
+TRCell():New(oBaixasNormais,"PREFIXO","QRYNOR","Prefixo",PesqPict("SE1","E1_PREFIXO"), TamSX3("E1_PREFIXO")[1]+1)
+TRCell():New(oBaixasNormais,"NUMERO","QRYNOR","Numero",PesqPict("SE1","E1_NUM"), TamSX3("E1_NUM")[1]+1)
+TRCell():New(oBaixasNormais,"PARCELA","QRYNOR","Parcela",PesqPict("SE1","E1_PARCELA"), TamSX3("E1_PARCELA")[1])
+TRCell():New(oBaixasNormais,"CLIENTE","QRYNOR","Cliente",PesqPict("SA1","A1_NOME"),TamSX3("A1_NOME")[1]-10)
+TRCell():New(oBaixasNormais,"NATUREZA","QRYNOR","Natureza",PesqPict("SED","ED_CODIGO"),TamSX3("ED_CODIGO")[1]+1)
+TRCell():New(oBaixasNormais,"EMISSAO","QRYNOR","Emissao",PesqPict("SE1","E1_EMISSAO"),TamSX3("E1_EMISSAO")[1]+10)
+TRCell():New(oBaixasNormais,"VENCIMENTO","QRYNOR","Vencimento",PesqPict("SE1","E1_VENCREA"),TamSX3("E1_VENCREA")[1]+10)
+TRCell():New(oBaixasNormais,"BAIXA","QRYNOR","Baixa",PesqPict("SE1","E1_BAIXA"),TamSX3("E1_BAIXA")[1]+10)
+TRCell():New(oBaixasNormais,"HISTORICO","QRYNOR","Historico",PesqPict("SE5","E5_HISTOR"),TamSX3("E5_HISTOR")[1]+1)
+TRCell():New(oBaixasNormais,"VALOR_ORIGINAL","QRYNOR","R$ Original",PesqPict("SE1","E1_VALOR"),TamSX3("E1_VALOR")[1]+1)
+TRCell():New(oBaixasNormais,"JUROS_MULTA","QRYNOR","Juros/Multa",PesqPict("SE5","E5_VLJUROS"),TamSX3("E5_VLJUROS")[1]+1)
+TRCell():New(oBaixasNormais,"DESCONTO","QRYNOR","Desconto",PesqPict("SE5","E5_VLJUROS"),TamSX3("E5_VLJUROS")[1]+1)
+TRCell():New(oBaixasNormais,"TOTAL_BAIXADO","QRYNOR","Total Baixa",PesqPict("SE5","E5_VALOR"),TamSX3("E5_VALOR")[1])
+TRCell():New(oBaixasNormais,"BANCO", "QRYNOR", "Banco",PesqPict("SE5","E5_BANCO"),TamSX3("E5_BANCO")[1]+1)
+TRCell():New(oBaixasNormais,"FORMA_PAGAMENTO","QRYNOR", "Forma Pagamento",PesqPict("SE5","E5_MOEDA"),TamSX3("E5_MOEDA")[1]+1)
+
+// Alinhamento a direita dos campos de valores
+oBaixasNormais:Cell("VALOR_ORIGINAL"):SetHeaderAlign("RIGHT")
+oBaixasNormais:Cell("JUROS_MULTA"):SetHeaderAlign("RIGHT")
+oBaixasNormais:Cell("DESCONTO"):SetHeaderAlign("RIGHT")
+oBaixasNormais:Cell("TOTAL_BAIXADO"):SetHeaderAlign("RIGHT")
+
+////////////////////////////////////
+//SESSAO TOTALIZADOR BAIXAS NORMAIS 
+////////////////////////////////////
+
+oTotalBaixasNormais := TRSection():New(oReport,"Total de Baixas Normais",{})
+oTotalBaixasNormais:SetHeaderPage(.F.)
+oTotalBaixasNormais:SetHeaderSection(.T.)
+
+TRCell():New(oTotalBaixasNormais,"nTotalBaixaNormal", , "R$ Total de Baixas Normais" ,PesqPict("SE1","E1_VALOR")  ,TamSX3("E1_VALOR ")[1]+1)
+TRCell():New(oTotalBaixasNormais,"nQuantidadeBaixaNormal", , "Quantidade de Baixas Normais ", "@E 9999999", 30)
+	
+// Alinhamento a direita dos campos de valores
+oTotalBaixasNormais:Cell("nTotalBaixaNormal"):SetHeaderAlign("RIGHT")
+oTotalBaixasNormais:Cell("nQuantidadeBaixaNormal"):SetHeaderAlign("RIGHT")
+
+
+
+////////////////////////////////////
+//SESSAO DE TITULOS DE ADQUIRETNES 
+////////////////////////////////////
+oBaixasAdquirentes := TRSection():New(oReport,"Baixas Administradoras Financeiras",{"QRYCC"},/*Ordens do Relatório*/,/*Campos do SX3*/,/*Campos do SIX*/)
+oBaixasAdquirentes:SetTotalInLine(.F.)
+
+TRCell():New(oBaixasAdquirentes,"PREFIXO","QRYNOR","Prefixo",PesqPict("SE1","E1_PREFIXO"), TamSX3("E1_PREFIXO")[1]+1)
+TRCell():New(oBaixasAdquirentes,"NUMERO","QRYNOR","Numero",PesqPict("SE1","E1_NUM"), TamSX3("E1_NUM")[1]+1)
+TRCell():New(oBaixasAdquirentes,"PARCELA","QRYNOR","Parcela",PesqPict("SE1","E1_PARCELA"), TamSX3("E1_PARCELA")[1])
+TRCell():New(oBaixasAdquirentes,"TIPO","QRYNOR","Tipo",PesqPict("SE1","E1_TIPO"), TamSX3("E1_TIPO")[1])
+TRCell():New(oBaixasAdquirentes,"CLIENTE","QRYNOR","Cliente",PesqPict("SA1","A1_NOME"),TamSX3("A1_NOME")[1]-10)
+TRCell():New(oBaixasAdquirentes,"NATUREZA","QRYNOR","Natureza",PesqPict("SED","ED_CODIGO"),TamSX3("ED_CODIGO")[1]+1)
+TRCell():New(oBaixasAdquirentes,"EMISSAO","QRYNOR","Emissao",PesqPict("SE1","E1_EMISSAO"),TamSX3("E1_EMISSAO")[1]+10)
+TRCell():New(oBaixasAdquirentes,"VENCIMENTO","QRYNOR","Vencimento",PesqPict("SE1","E1_VENCREA"),TamSX3("E1_VENCREA")[1]+10)
+TRCell():New(oBaixasAdquirentes,"BAIXA","QRYNOR","Baixa",PesqPict("SE1","E1_BAIXA"),TamSX3("E1_BAIXA")[1]+10)
+TRCell():New(oBaixasAdquirentes,"VALOR_PARCELA","QRYNOR","R$ Parcela",PesqPict("SE1","E1_VALOR"),TamSX3("E1_VALOR")[1]+1)
+TRCell():New(oBaixasAdquirentes,"TOTAL_REAL","QRYNOR","Total Parcelas",PesqPict("SE5","E5_VALOR"),TamSX3("E5_VALOR")[1])
+TRCell():New(oBaixasAdquirentes,"NSU", "QRYNOR", "NSU",PesqPict("SE1","E1_NSUTEF"),TamSX3("E1_NSUTEF")[1]+1)
+
+
+// Alinhamento a direita dos campos de valores
+oBaixasNormais:Cell("VALOR_ORIGINAL"):SetHeaderAlign("RIGHT")
+oBaixasNormais:Cell("TOTAL_BAIXADO"):SetHeaderAlign("RIGHT")
+
+////////////////////////////////////////////////////////////////////////////////////////////
+//SESSAO DE DETALHES DAS BAIXAS DE TITULOS QUE ORIGINARAM OS TITULOS CONTRA A ADQUIRENTE 
+////////////////////////////////////////////////////////////////////////////////////////////
+oDetalhesBaixasAdquirentes := TRSection():New(oReport,"Detalhes das Baixas dos Titulos Administradora(s) Financeira",{"QRYCC"},/*Ordens do Relatório*/,/*Campos do SX3*/,/*Campos do SIX*/)
+oDetalhesBaixasAdquirentes:SetTotalInLine(.F.)
+
+TRCell():New(oDetalhesBaixasAdquirentes,"NSU", "QRYNOR", "NSU",PesqPict("SE1","E1_NSUTEF"),TamSX3("E1_NSUTEF")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"PREFIXO","QRYNOR","Prefixo",PesqPict("SE1","E1_PREFIXO"), TamSX3("E1_PREFIXO")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"NUMERO","QRYNOR","Numero",PesqPict("SE1","E1_NUM"), TamSX3("E1_NUM")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"PARCELA","QRYNOR","Parcela",PesqPict("SE1","E1_PARCELA"), TamSX3("E1_PARCELA")[1])
+TRCell():New(oDetalhesBaixasAdquirentes,"TIPO","QRYNOR","Tipo",PesqPict("SE1","E1_TIPO"), TamSX3("E1_TIPO")[1])
+TRCell():New(oDetalhesBaixasAdquirentes,"CLIENTE","QRYNOR","Cliente",PesqPict("SA1","A1_NOME"),TamSX3("A1_NOME")[1]-10)
+TRCell():New(oDetalhesBaixasAdquirentes,"NATUREZA","QRYNOR","Natureza",PesqPict("SED","ED_CODIGO"),TamSX3("ED_CODIGO")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"EMISSAO","QRYNOR","Emissao",PesqPict("SE1","E1_EMISSAO"),TamSX3("E1_EMISSAO")[1]+10)
+TRCell():New(oDetalhesBaixasAdquirentes,"VENCIMENTO","QRYNOR","Vencimento",PesqPict("SE1","E1_VENCREA"),TamSX3("E1_VENCREA")[1]+10)
+TRCell():New(oDetalhesBaixasAdquirentes,"BAIXA","QRYNOR","Baixa",PesqPict("SE1","E1_BAIXA"),TamSX3("E1_BAIXA")[1]+10)
+TRCell():New(oDetalhesBaixasAdquirentes,"HISTORICO","QRYNOR","Historico",PesqPict("SE5","E5_HISTOR"),TamSX3("E5_HISTOR")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"VALOR_ORIGINAL","QRYNOR","R$ Original",PesqPict("SE1","E1_VALOR"),TamSX3("E1_VALOR")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"JUROS_MULTA","QRYNOR","Juros/Multa",PesqPict("SE5","E5_VLJUROS"),TamSX3("E5_VLJUROS")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"DESCONTO","QRYNOR","Desconto",PesqPict("SE5","E5_VLJUROS"),TamSX3("E5_VLJUROS")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"TOTAL_BAIXADO","QRYNOR","Total Baixa",PesqPict("SE5","E5_VALOR"),TamSX3("E5_VALOR")[1])
+TRCell():New(oDetalhesBaixasAdquirentes,"BANCO", "QRYNOR", "Banco",PesqPict("SE5","E5_BANCO"),TamSX3("E5_BANCO")[1]+1)
+TRCell():New(oDetalhesBaixasAdquirentes,"FORMA_PAGAMENTO","QRYNOR", "Forma Pagamento",PesqPict("SE5","E5_MOEDA"),TamSX3("E5_MOEDA")[1]+1)
+
+
+/////////////////////////////////////////////////
+//SESSAO TOTALIZADOR BAIXAS DE ADQUIRENTES 
+/////////////////////////////////////////////////
+
+oTotalBaixasAdquirentes := TRSection():New(oReport,"Total de Baixas Adquirentes",{}) 
+oTotalBaixasAdquirentes:SetHeaderPage(.F.)
+oTotalBaixasAdquirentes:SetHeaderSection(.T.)
+
+TRCell():New(oTotalBaixasAdquirentes,"nTotalBaixaAdquirentes", , "R$ Total de Baixas Adquirentes" ,PesqPict("SE1","E1_VALOR")  ,TamSX3("E1_VALOR ")[1]+1)
+TRCell():New(oTotalBaixasAdquirentes,"nQuantidadeBaixaAdquirentes", , "Quantidade de Baixas Adquirentes ", "@E 9999999", 30)
+//TRCell():New(oTotalBaixasAdquirentes,"nTotalTaxasAdministrativas", , "R$ Total de Taxas Administrativas" ,PesqPict("SE1","E1_VALOR")  ,TamSX3("E1_VALOR ")[1]+1)
+
+// Alinhamento a direita dos campos de valores
+oTotalBaixasAdquirentes:Cell("nTotalBaixaAdquirentes"):SetHeaderAlign("RIGHT")
+oTotalBaixasAdquirentes:Cell("nQuantidadeBaixaAdquirentes"):SetHeaderAlign("RIGHT")
+//oTotalBaixasAdquirentes:Cell("nTotalTaxasAdministrativas"):SetHeaderAlign("RIGHT")
+
+
+//Impressao do Cabecalho no topo da pagina
+oReport:Section(1):SetHeaderPage()
+oReport:Section(1):SetEdit(.F.)
+
+
+
+Return(oReport)                                                               
+ 
+/*/{Protheus.doc} PrintReport
+Funcao para Impressao do Relatorio
+@type function
+@version 1.0  
+@author Raphael Martins
+@since 18/01/2021
+@param oReport, object, Objeto do Relatorio
+@param oDetalhesBaixasAdquirentes, object, Objeto da Sessao de Baixa Adquirente
+@param oBaixasCartoes, object, Objeto da Sessa de Baixas da Administradora
+/*/
+
+Static Function PrintReport(oReport,oBaixasNormais,oBaixasAdquirentes,oDetalhesBaixasAdquirentes,oTotalBaixasNormais,oTotalBaixasAdquirentes,oTotalBaixasGeral)
+
+Local aParametros As Array
+
+aParametros := {} 
+
+if ValidParam(@aParametros)
+
+    //imprime sessao de baixas normais
+    ImprimeBaixasNormais(oReport,oBaixasNormais,oTotalBaixasNormais,aParametros)
+
+    //imprime sessao de baixas de adquirentes
+    ImprimeBaixasAdquirentes(oReport,oBaixasAdquirentes,oDetalhesBaixasAdquirentes,oTotalBaixasAdquirentes,aParametros)
+
+endif
+
+Return()
+
+/*/{Protheus.doc} ImprimeBaixasNormais
+Imprime as baixas normais Protheus
+@type function
+@version  1.0
+@author Raphael Martins 
+@since 21/01/2021
+@param oReport, object, param_description
+@param oBaixasNormais, object, param_description
+@param aParametros, Array, parametros da query
+@return return_type, return_description
+/*/
+Static Function ImprimeBaixasNormais(oReport,oBaixasNormais,oTotalBaixasNormais,aParametros)
+
+Local cQry As Character
+Local cPrefixTitAdm As Character
+Local lFuneraria As Logical
+Local nRegistros As Numeric 
+Local nTotalBaixaNormal As Numeric
+Local nQuantidadeBaixaNormal As Numeric
+
+//modulo de funeraria ativo?
+lFuneraria              := SuperGetMV("MV_XFUNE",,.F.)
+nRegistros              := 0 
+nTotalBaixaNormal       := 0 
+nQuantidadeBaixaNormal  := 0
+//prefixo do titulo gerado contra a adm financeira
+cPrefixTitAdm     := SuperGetMV("MV_LJTITGR",Nil,"REC") 
+
+cQry := " SELECT 
+cQry += " E5_PREFIXO 					AS PREFIXO, "
+cQry += " E5_NUMERO					    AS NUMERO, " 
+cQry += " E1_PARCELA					AS PARCELA, "
+cQry += " E1_EMISSAO					AS EMISSAO, "
+cQry += " A1_NOME						AS CLIENTE, "
+cQry += " E5_NATUREZ					AS NATUREZA, "
+cQry += " E1_VENCTO					    AS VENCIMENTO, "
+cQry += " E5_HISTOR					    AS HISTORICO, "
+cQry += " E5_DATA						AS BAIXA, "
+cQry += " E1_VALOR 					    AS VALOR_ORIGINAL, "
+cQry += " E5_VLJUROS + E5_VLMULTA		AS JUROS_MULTA, "
+cQry += " E5_VLDESCO					AS DESCONTO, "
+cQry += " E5_VALOR					    AS TOTAL_BAIXADO, "
+cQry += " E5_BANCO					    AS BANCO, "	
+cQry += " E5_MOEDA					    AS FORMA_PAGAMENTO "
+cQry += " FROM " + RetSQLName("SE1") + " E1 (NOLOCK) "
+cQry += " INNER JOIN " + RetSQLName("SA1") + " A1 (NOLOCK) "
+cQry += " ON E1.D_E_L_E_T_ = ' ' 
+cQry += " AND A1.D_E_L_E_T_ = ' ' 
+cQry += " AND A1.A1_FILIAL = '" + xFilial("SA1") + "' "
+cQry += " AND E1.E1_CLIENTE = A1.A1_COD
+cQry += " AND E1.E1_LOJA = A1.A1_LOJA  
+cQry += " INNER JOIN " + RetSQLName("SE5") + " E5 (NOLOCK) " 
+cQry += " ON E5.D_E_L_E_T_ = ' ' 
+cQry += " AND E1.E1_FILIAL = E5_FILIAL 
+cQry += " AND E1.E1_PREFIXO = E5.E5_PREFIXO 
+cQry += " AND E1.E1_NUM = E5.E5_NUMERO 
+cQry += " AND E1.E1_PARCELA = E5.E5_PARCELA 
+cQry += " AND E1.E1_TIPO = E5.E5_TIPO 
+cQry += " WHERE   
+cQry += " E1.E1_FILIAL = '" + xFilial("SE1") + "' "
+cQry += " AND E1.E1_PREFIXO <> '" + cPrefixTitAdm + "' " 
+cQry += " AND E5.E5_RECPAG = 'R'  
+cQry += " AND E5.E5_SITUACA <> 'C' 
+cQry += " AND E5_TIPODOC = 'VL' 
+cQry += " AND E5_MOTBX = 'NOR'
+cQry += " AND E5.E5_TIPODOC NOT IN ('MT','JR','ES','M2','J2','IB','AP','BL','C2','CB','CM','D2','DC','DV','NCC','SG','TC') 
+cQry += " AND E1.E1_SALDO = 0
+
+if !Empty(aParametros[P_CLIENTEATE])
+    cQry += "  AND E1.E1_CLIENTE BETWEEN '" + aParametros[P_CLIENTEDE] + "' AND '" + aParametros[P_CLIENTEATE] + "' "
+endif
+
+if !Empty(aParametros[P_LOJAATE])
+    cQry += "  AND E1.E1_LOJA BETWEEN '" + aParametros[P_LOJADE] + "' AND '" + aParametros[P_LOJAATE] + "' "
+endif  
+
+if !Empty(aParametros[P_CONTRATOATE] )
+    
+    if lFuneraria
+        cQry += "  AND E1.E1_XCTRFUN BETWEEN '" + aParametros[P_CONTRATODE]  + "' AND '" + aParametros[P_CONTRATOATE]  + "' "
+    else
+        cQry += "  AND E1.E1_XCONTRA BETWEEN '" + aParametros[P_CONTRATODE]  + "' AND '" + aParametros[P_CONTRATOATE]  + "' "
+    endif
+
+endif  
+
+if !Empty(aParametros[P_VENCIMENTOATE] )
+    cQry += "  AND E1.E1_VENCTO BETWEEN '" + DTOS(aParametros[P_VENCIMENTODE] ) + "' AND '" + DTOS(aParametros[P_VENCIMENTOATE] ) + "' "            
+endif
+
+if !Empty(aParametros[P_BAIXAATE])
+    cQry += "  AND E5.E5_DATA BETWEEN '" + DTOS(aParametros[P_BAIXADE] ) + "' AND '" + DTOS(aParametros[P_BAIXAATE] ) + "' "            
+endif
+
+if !Empty(aParametros[P_BANCOATE])
+    cQry += " AND E5.E5_BANCO BETWEEN '" + aParametros[P_BANCODE] + "' AND '" + aParametros[P_BANCOATE] + "' "            
+endif 
+
+if !Empty(aParametros[P_NATUREZAATE])
+    cQry += " AND E5.E5_NATUREZ BETWEEN '" + aParametros[P_NATUREZADE] + "' AND '" + aParametros[P_NATUREZAATE] + "' "            
+endif 
+
+If Select("QRYNOR") > 0
+    QRYNOR->(DbCloseArea())
+EndIf
+
+cQry := Changequery(cQry)
+TCQUERY cQry NEW ALIAS "QRYNOR"
+
+QRYNOR->(dbEval({|| nRegistros++}))
+QRYNOR->(dbGoTop())
+
+oReport:SetMeter(nRegistros)
+
+///////////////////////////////////////////////////////////
+///// IMPRIME SESSAO DE BAIXAS NORMAIS
+//////////////////////////////////////////////////////////
+While !oReport:Cancel() .And. QRYNOR->(!Eof())
+    
+            
+    If oReport:Cancel()
+        Exit
+    EndIf
+    
+    oBaixasNormais:Init()
+    oReport:IncMeter()
+ 
+    oBaixasNormais:Cell("PREFIXO"):SetValue(QRYNOR->PREFIXO)
+    oBaixasNormais:Cell("NUMERO"):SetValue(QRYNOR->NUMERO)
+    oBaixasNormais:Cell("PARCELA"):SetValue(QRYNOR->PARCELA)    
+    oBaixasNormais:Cell("EMISSAO"):SetValue(STOD(QRYNOR->EMISSAO)) 
+    oBaixasNormais:Cell("CLIENTE"):SetValue(Alltrim(QRYNOR->CLIENTE)) 
+    oBaixasNormais:Cell("NATUREZA"):SetValue(QRYNOR->NATUREZA) 
+    oBaixasNormais:Cell("VENCIMENTO"):SetValue(StoD(QRYNOR->VENCIMENTO)) 
+    oBaixasNormais:Cell("HISTORICO"):SetValue(Alltrim(QRYNOR->HISTORICO)) 
+    oBaixasNormais:Cell("BAIXA"):SetValue(StoD(QRYNOR->BAIXA)) 
+    oBaixasNormais:Cell("VALOR_ORIGINAL"):SetValue(QRYNOR->VALOR_ORIGINAL) 
+    oBaixasNormais:Cell("JUROS_MULTA"):SetValue(QRYNOR->JUROS_MULTA) 
+    oBaixasNormais:Cell("TOTAL_BAIXADO"):SetValue(QRYNOR->TOTAL_BAIXADO) 
+    oBaixasNormais:Cell("BANCO"):SetValue(QRYNOR->BANCO) 
+    oBaixasNormais:Cell("FORMA_PAGAMENTO"):SetValue(QRYNOR->FORMA_PAGAMENTO) 
+
+    oBaixasNormais:PrintLine()
+
+    nTotalBaixaNormal += QRYNOR->TOTAL_BAIXADO 
+    nQuantidadeBaixaNormal++
+
+
+    QRYNOR->(dbSkip())
+    
+    
+    oReport:SkipLine()
+    
+EndDo
+
+//////////////////////////////////////////
+// IMPRIME TOTALIZADOR DE BAIXA NORMAL
+/////////////////////////////////////////
+oTotalBaixasNormais:Init()
+oTotalBaixasNormais:Cell("nTotalBaixaNormal"):SetValue(Round(nTotalBaixaNormal,2))
+oTotalBaixasNormais:Cell("nQuantidadeBaixaNormal"):SetValue(nQuantidadeBaixaNormal)
+	
+oTotalBaixasNormais:PrintLine()
+oTotalBaixasNormais:Finish()
+	
+oTotalBaixasNormais:SetPageBreak(.T.)
+
+
+QRYNOR->(dbCloseArea())
+
+Return
+/*/{Protheus.doc} ImprimeBaixasAdquirentes
+Imprime baixas das adquirentes e detalha as origens das 
+mesmas
+@type function
+@version 1.0 
+@author Raphael Martins 
+@since 21/01/2021
+@param oReport, object, Objeto do relatorio
+@param oBaixasAdquirentes, object, Objeto das baixas das adquirentes
+@param oBaixasOrigemAd, object, origens dos titulos das adquirentes
+@param aParametros, array, parametros da query
+/*/
+Static Function ImprimeBaixasAdquirentes(oReport,oBaixasAdquirentes,oDetalhesBaixasAdquirentes,oTotalBaixasAdquirentes,aParametros)
+
+Local cQry          As Character
+Local lFuneraria    As Logical
+Local cFilAdm       As Character
+Local cPrefixo      As Character
+Local cTitulo       As Character
+Local cParcela      As Character
+Local cTipo         As Character
+Local nRegistros    As Numeric 
+Local nTotalBaixaAdquirentes As Numeric 
+Local nQuantidadeBaixaAdquirentes As Numeric 
+Local nTotalTaxasAdministrativas As Numeric
+Local nTaxaParcela As Numeric
+Local nValorParcela As Numeric
+Local nSomaParcelas As Numeric
+Local nTotalParcelas As Numeric
+Local nPercentParcela As Numeric
+
+//modulo de funeraria ativo?
+lFuneraria                  := SuperGetMV("MV_XFUNE",,.F.)
+nRegistros                  := 0 
+nTotalBaixaAdquirentes      := 0 
+nQuantidadeBaixaAdquirentes := 0 
+nTotalTaxasAdministrativas  := 0 
+
+cQry := " SELECT " 
+cQry += " DISTINCT "
+cQry += " SE1.E1_FILIAL         AS FILIAL_ADM, "
+cQry += " SE1.E1_PREFIXO 		AS ADM_PREFIXO, "
+cQry += " SE1.E1_NUM			AS ADM_TITULO, "
+cQry += " SE1.E1_PARCELA		AS ADM_PARCELA_ADM, "
+cQry += " SE1.E1_VALOR		    AS ADM_VALOR_PARCELA, "
+cQry += " SE1.E1_VLRREAL		AS ADM_VALOR_TOTAL, "
+cQry += " SE1.E1_TIPO 		    AS ADM_TIPO, "
+cQry += " SE1.E1_NSUTEF		    AS NSUTEF, "
+cQry += " SE1.E1_NUMCART        AS NUM_CART, "
+cQry += " SE1.E1_EMISSAO		AS ADM_EMISSAO, "
+cQry += " SE1.E1_VENCTO		    AS ADM_VENCIMENTO, "
+cQry += " SE1.E1_BAIXA		    AS ADM_BAIXA, "  
+cQry += " SE1.E1_NOMCLI		    AS ADM_NOME, "
+cQry += " SE1.E1_NATUREZ		AS ADM_NATUREZA, "
+cQry += " MDM.MDM_LOTE		    AS LOTE_BAIXA, "
+cQry += " SE5.E5_PREFIXO		AS PREFIXO_ORIGINAL, "
+cQry += " SE5.E5_NUMERO		    AS NUMERO_ORIGINAL, "
+cQry += " SE5.E5_PARCELA		AS PARCELA_ORIGINAL, "
+cQry += " E1B.E1_EMISSAO		AS EMISSAO_ORIGINAL, "
+cQry += " E1B.E1_VENCTO		    AS VENCIMENTO_ORIGINAL, "
+cQry += " SE5.E5_DATA			AS BAIXA_ORIGINAL, "
+cQry += " SE5.E5_HISTOR		    AS HISTORICO_ORIGINAL, "
+cQry += " E1B.E1_VALOR		    AS VALOR, "
+cQry += " SE5.E5_VLJUROS + E5_VLMULTA AS JUROS_MULTA_ORIGINAL, "
+cQry += " SE5.E5_VLDESCO		AS DESCONTO_ORIGINAL, "
+cQry += " SE5.E5_VALOR			AS VALOR_BAIXADO_ORIGINAL, "
+cQry += " SE5.E5_BANCO		    AS BANCO_ORIGINAL, "
+cQry += " SE5.E5_MOEDA		    AS FORMA_ORIGINAL, "
+cQry += " SA1.A1_NOME		    AS CLIENTE_ORIGINAL, "
+cQry += " SE5.E5_NATUREZ		AS NATUREZA_ORIGINAL, "
+cQry += " SE5.E5_TIPO			AS TIPO_ORIGINAL, "
+cQry += " SE5.E5_VALOR		    AS VALOR_ORIGINAL, "
+cQry += " SE5.E5_DATA           AS BAIXA_ORIGINAL "
+cQry += " FROM 
+///////////////////////////////////////////////////////
+//// CONSULTO TITULOS DA ADMINISTRADORA FINANCEIRA
+//////////////////////////////////////////////////////
+cQry += RetSQLName("SE1") + " SE1 (NOLOCK) "
+cQry += " INNER JOIN  "
+
+///////////////////////////////////////////////////////////////////////////////////////////
+//// CONSULTO NA TABELA DE TITULOS GERADOS (MDN) O LOTE DAS BAIXAS REALIZADAS PELO LOJA
+///////////////////////////////////////////////////////////////////////////////////////////
+cQry += RetSQLName("MDN") + " MDN (NOLOCK) "
+cQry += " ON SE1.D_E_L_E_T_ = ' '  "
+cQry += " AND MDN.D_E_L_E_T_ = ' '  "
+cQry += " AND SE1.E1_FILIAL = MDN.MDN_GRFILI "
+cQry += " AND SE1.E1_PREFIXO = MDN.MDN_PREFIX "
+cQry += " AND SE1.E1_NUM = MDN.MDN_NUM "
+cQry += " AND TRIM(SE1.E1_PARCELA) = TRIM(MDN.MDN_PARCEL) "
+cQry += " AND SE1.E1_TIPO = MDN.MDN_TIPO "
+cQry += " INNER JOIN  "
+
+/////////////////////////////////////////////////////////////////////
+//// CONSULTO NA TABELA DE TITULOS BAIXADOS PELO LOTE GERADO NA MDN
+////////////////////////////////////////////////////////////////////
+cQry += RetSQLName("MDM") + " MDM (NOLOCK) "
+cQry += " ON MDM.D_E_L_E_T_ = ' '  "
+cQry += " AND MDM.MDM_BXFILI = MDN.MDN_GRFILI "
+cQry += " AND MDM.MDM_LOTE = MDN.MDN_LOTE "
+cQry += " AND MDM.MDM_ESTORN = '2' "
+cQry += " INNER JOIN  "
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//// ENCONTRO OS TITULOS BAIXADOS QUE ORIGINARAM O TITULO CONTRA A ADMINISTRADORA FINANCEIRA
+//////////////////////////////////////////////////////////////////////////////////////////////
+cQry += RetSQLName("SE5") + " SE5  (NOLOCK) "
+cQry += " ON SE5.D_E_L_E_T_ = ' ' " 
+cQry += " AND SE5.E5_FILIAL = MDM.MDM_BXFILI "
+cQry += " AND SE5.E5_PREFIXO = MDM.MDM_PREFIX "
+cQry += " AND SE5.E5_NUMERO = MDM.MDM_NUM "
+cQry += " AND TRIM(SE5.E5_PARCELA) = TRIM(MDM.MDM_PARCEL) "
+cQry += " AND SE5.E5_TIPO = MDM.MDM_TIPO "
+cQry += " AND SE5.E5_SEQ = MDM.MDM_SEQ "
+cQry += " INNER JOIN  "
+cQry += RetSQLName("SE1") + " E1B (NOLOCK) "
+cQry += " ON E1B.D_E_L_E_T_ = ' '  "
+cQry += " AND SE5.E5_FILIAL = E1B.E1_FILIAL "
+cQry += " AND SE5.E5_PREFIXO = E1B.E1_PREFIXO "
+cQry += " AND SE5.E5_NUMERO = E1B.E1_NUM "
+cQry += " AND SE5.E5_PARCELA = E1B.E1_PARCELA "
+cQry += " AND SE5.E5_TIPO = E1B.E1_TIPO "
+cQry += " AND SE5.E5_TIPODOC = 'BA' "
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+//// ENCONTRO O CADASTRO DO CLIENTE DO TITULO ORIGINAL PARA IMPRESSAO DO NOME COMPLETO
+//////////////////////////////////////////////////////////////////////////////////////////////
+cQry += " INNER JOIN  "
+cQry += RetSQLName("SA1") + " SA1 (NOLOCK) "
+cQry += " ON SA1.D_E_L_E_T_ = ' '  "
+cQry += " AND SA1.A1_FILIAL = '" + xFilial("SA1") + "' "
+cQry += " AND SA1.A1_COD = SE5.E5_CLIFOR "
+cQry += " AND SA1.A1_LOJA = SE5.E5_LOJA " 
+
+cQry += " WHERE  "
+cQry += " SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+cQry += " AND SE1.E1_SALDO = 0 " 
+
+if !Empty(aParametros[P_CLIENTEATE])
+    cQry += "  AND SE1.E1_CLIENTE BETWEEN '" + aParametros[P_CLIENTEDE] + "' AND '" + aParametros[P_CLIENTEATE] + "' "
+endif
+
+if !Empty(aParametros[P_LOJAATE])
+    cQry += "  AND SE1.E1_LOJA BETWEEN '" + aParametros[P_LOJADE] + "' AND '" + aParametros[P_LOJAATE] + "' "
+endif  
+
+if !Empty(aParametros[P_CONTRATOATE] )
+    
+    if lFuneraria
+        cQry += "  AND E1B.E1_XCTRFUN BETWEEN '" + aParametros[P_CONTRATODE]  + "' AND '" + aParametros[P_CONTRATOATE]  + "' "
+    else
+        cQry += "  AND E1B.E1_XCONTRA BETWEEN '" + aParametros[P_CONTRATODE]  + "' AND '" + aParametros[P_CONTRATOATE]  + "' "
+    endif
+
+endif  
+
+if !Empty(aParametros[P_VENCIMENTOATE] )
+    cQry += "  AND SE1.E1_VENCTO BETWEEN '" + DTOS(aParametros[P_VENCIMENTODE] ) + "' AND '" + DTOS(aParametros[P_VENCIMENTOATE] ) + "' "            
+endif
+
+if !Empty(aParametros[P_BAIXAATE])
+    cQry += "  AND SE1.E1_BAIXA BETWEEN '" + DTOS(aParametros[P_BAIXADE] ) + "' AND '" + DTOS(aParametros[P_BAIXAATE] ) + "' "            
+endif
+
+if !Empty(aParametros[P_BANCOATE])
+    cQry += " AND SE5.E5_BANCO BETWEEN '" + aParametros[P_BANCODE] + "' AND '" + aParametros[P_BANCOATE] + "' "            
+endif 
+
+if !Empty(aParametros[P_NATUREZAATE])
+    cQry += " AND SE5.E5_NATUREZ BETWEEN '" + aParametros[P_NATUREZADE] + "' AND '" + aParametros[P_NATUREZAATE] + "' "            
+endif 
+
+cQry += " ORDER BY ADM_PREFIXO,ADM_TITULO,ADM_PARCELA_ADM,ADM_TIPO,PARCELA_ORIGINAL "
+
+If Select("QRYADQ") > 0
+    QRYADQ->(DbCloseArea())
+EndIf
+
+cQry := Changequery(cQry)
+TCQUERY cQry NEW ALIAS "QRYADQ"
+
+QRYADQ->(dbEval({|| nRegistros++}))
+QRYADQ->(dbGoTop())
+
+oReport:SetMeter(nRegistros)
+
+///////////////////////////////////////////////////////////
+///// IMPRIME SESSAO DE BAIXAS DA ADQUIRENTES
+//////////////////////////////////////////////////////////
+While !oReport:Cancel() .And. QRYADQ->(!Eof())
+
+    cFilAdm         := QRYADQ->FILIAL_ADM 
+    cPrefixo        := QRYADQ->ADM_PREFIXO
+    cTitulo         := QRYADQ->ADM_TITULO
+    cParcela        := QRYADQ->ADM_PARCELA_ADM
+    cTipo           := QRYADQ->ADM_TIPO
+    
+    //variaveis para calculo de valor de taxa administrativa 
+    nTotalParcelas   := QRYADQ->ADM_VALOR_TOTAL
+    nValorParcela   := QRYADQ->ADM_VALOR_PARCELA
+    nPercentParcela := 0
+    nSomaParcelas   := 0
+
+    If oReport:Cancel()
+        Exit
+    EndIf
+    
+    oBaixasAdquirentes:Init()
+    
+    oReport:IncMeter()
+
+    oBaixasAdquirentes:Cell("PREFIXO"):SetValue(QRYADQ->ADM_PREFIXO)
+    oBaixasAdquirentes:Cell("NUMERO"):SetValue(QRYADQ->ADM_TITULO)
+    oBaixasAdquirentes:Cell("PARCELA"):SetValue(QRYADQ->ADM_PARCELA_ADM)  
+    oBaixasAdquirentes:Cell("TIPO"):SetValue(QRYADQ->ADM_TIPO)  
+    oBaixasAdquirentes:Cell("CLIENTE"):SetValue(Alltrim(QRYADQ->ADM_NOME))  
+    oBaixasAdquirentes:Cell("NATUREZA"):SetValue(QRYADQ->ADM_NATUREZA)  
+    oBaixasAdquirentes:Cell("EMISSAO"):SetValue(STOD(QRYADQ->ADM_EMISSAO))  
+    oBaixasAdquirentes:Cell("VENCIMENTO"):SetValue(STOD(QRYADQ->ADM_VENCIMENTO))  
+    oBaixasAdquirentes:Cell("BAIXA"):SetValue(STOD(QRYADQ->ADM_BAIXA))  
+    oBaixasAdquirentes:Cell("VALOR_PARCELA"):SetValue(QRYADQ->ADM_VALOR_PARCELA)  
+    oBaixasAdquirentes:Cell("TOTAL_REAL"):SetValue(QRYADQ->ADM_VALOR_TOTAL)  
+    
+    
+    if !Empty(QRYADQ->NUM_CART)
+        oBaixasAdquirentes:Cell("NSU"):SetValue(ALLTRIM(QRYADQ->NUM_CART))  
+    else
+        oBaixasAdquirentes:Cell("NSU"):SetValue(ALLTRIM(QRYADQ->NSUTEF))  
+    endif
+
+    oBaixasAdquirentes:PrintLine()
+
+    nTotalBaixaAdquirentes += QRYADQ->ADM_VALOR_PARCELA
+    nQuantidadeBaixaAdquirentes++
+    
+    While QRYADQ->(!Eof()) .And. cFilAdm == QRYADQ->FILIAL_ADM .And. cPrefixo == QRYADQ->ADM_PREFIXO .And.;
+        cTitulo == QRYADQ->ADM_TITULO .And. cParcela == QRYADQ->ADM_PARCELA_ADM .And. cTipo == QRYADQ->ADM_TIPO
+
+        oDetalhesBaixasAdquirentes:Init()
+
+        oDetalhesBaixasAdquirentes:Cell("NSU"):SetValue(ALLTRIM(QRYADQ->NSUTEF)) 
+        oDetalhesBaixasAdquirentes:Cell("PREFIXO"):SetValue(QRYADQ->PREFIXO_ORIGINAL)
+        oDetalhesBaixasAdquirentes:Cell("NUMERO"):SetValue(QRYADQ->NUMERO_ORIGINAL)
+        oDetalhesBaixasAdquirentes:Cell("PARCELA"):SetValue(QRYADQ->PARCELA_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("TIPO"):SetValue(QRYADQ->TIPO_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("CLIENTE"):SetValue(Alltrim(QRYADQ->CLIENTE_ORIGINAL))  
+        oDetalhesBaixasAdquirentes:Cell("NATUREZA"):SetValue(QRYADQ->NATUREZA_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("EMISSAO"):SetValue(STOD(QRYADQ->EMISSAO_ORIGINAL))  
+        oDetalhesBaixasAdquirentes:Cell("VENCIMENTO"):SetValue(STOD(QRYADQ->VENCIMENTO_ORIGINAL))  
+        oDetalhesBaixasAdquirentes:Cell("BAIXA"):SetValue(STOD(QRYADQ->BAIXA_ORIGINAL))  
+        oDetalhesBaixasAdquirentes:Cell("HISTORICO"):SetValue(Alltrim(QRYADQ->HISTORICO_ORIGINAL))  
+        oDetalhesBaixasAdquirentes:Cell("VALOR_ORIGINAL"):SetValue(QRYADQ->VALOR)  
+        oDetalhesBaixasAdquirentes:Cell("JUROS_MULTA"):SetValue(QRYADQ->JUROS_MULTA_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("DESCONTO"):SetValue(QRYADQ->DESCONTO_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("TOTAL_BAIXADO"):SetValue(QRYADQ->VALOR_BAIXADO_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("BANCO"):SetValue(QRYADQ->BANCO_ORIGINAL)  
+        oDetalhesBaixasAdquirentes:Cell("FORMA_PAGAMENTO"):SetValue(QRYADQ->FORMA_ORIGINAL)  
+
+        oDetalhesBaixasAdquirentes:PrintLine()
+
+        nSomaParcelas += QRYADQ->VALOR_BAIXADO_ORIGINAL
+
+        QRYADQ->(DBSkip())
+
+    EndDo
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    ///CALCULA A TAXA ADMINISTRATIVA COBRADA SOBRE A PARCELA BAIXADA DA ADQUIRENTE
+    ////////////////////////////////////////////////////////////////////////////////
+    nTaxaParcela               := nSomaParcelas - nTotalParcelas
+    nPercentParcela            := nValorParcela / nTotalParcelas
+    nTotalTaxasAdministrativas += nTaxaParcela * nPercentParcela
+
+    oReport:SkipLine()
+
+    oDetalhesBaixasAdquirentes:Finish()
+    oBaixasAdquirentes:Finish()
+
+EndDo
+
+//////////////////////////////////////////////
+// IMPRIME TOTALIZADOR DE BAIXA ADQUIRENTES
+//////////////////////////////////////////////
+
+oTotalBaixasAdquirentes:Init()
+oTotalBaixasAdquirentes:Cell("nTotalBaixaAdquirentes"):SetValue(Round(nTotalBaixaAdquirentes,2))
+oTotalBaixasAdquirentes:Cell("nQuantidadeBaixaAdquirentes"):SetValue(nQuantidadeBaixaAdquirentes)
+
+//oTotalBaixasAdquirentes:Cell("nTotalTaxasAdministrativas"):SetValue(nTotalTaxasAdministrativas)
+
+	
+oTotalBaixasAdquirentes:PrintLine()
+oTotalBaixasAdquirentes:Finish()
+	
+oTotalBaixasAdquirentes:SetPageBreak(.T.)
+
+
+Return()
+/*/{Protheus.doc} AjustaSX1
+// Cria a tela de perguntas do relatorio
+@author Raphael Martins Garcia
+@since 18/01/2021
+@version undefined
+
+@type function
+/*/
+Static Function AjustaSX1(cPerg)
+
+Local aHelpPor	:= {}
+Local aHelpEng	:= {}
+Local aHelpSpa	:= {} 
+	
+U_xPutSX1( cPerg, "01","Do Cliente ?                 ","","","mv_ch1","C",TamSx3("A1_COD")[1],0,0,"G",'',"SA1","","",;
+"mv_par01","","","","","","","","","","","","","","","","",;
+{'Informe o código inicial dos clientes','s a serem processados.                  '},aHelpEng,aHelpSpa) 
+
+U_xPutSX1( cPerg, "02","Ate o Cliente ?              ","","","mv_ch2","C",TamSx3("A1_COD")[1],0,0,"G",'',"SA1","","",;
+"mv_par02","","","","ZZZZZZ","","","","","","","","","","","","",;
+{'Informe o código final dos clientes a ','serem processados.                      '},aHelpEng,aHelpSpa) 
+
+U_xPutSX1( cPerg, "03","Da Loja ?                 ","","","mv_ch3","C",TamSx3("A1_LOJA")[1],0,0,"G",'',"","","",;
+"mv_par03","","","","","","","","","","","","","","","","",;
+{'Informe o código inicial das lojas','s a serem processados.                  '},aHelpEng,aHelpSpa) 
+
+U_xPutSX1( cPerg, "04","Ate a Loja ?              ","","","mv_ch4","C",TamSx3("A1_LOJA")[1],0,0,"G",'',"","","",;
+"mv_par04","","","","ZZ","","","","","","","","","","","","",;
+{'Informe o código final das lojas a ','serem processados.                      '},aHelpEng,aHelpSpa) 
+
+U_xPutSX1( cPerg, "05","Do Contrato ?                 ","","","mv_ch5","C",6,0,0,"G",'',"","","",;
+"mv_par05","","","","","","","","","","","","","","","","",;
+{'Informe o código inicial dos contratos a',' serem processados.                     '},aHelpEng,aHelpSpa) 
+
+U_xPutSX1( cPerg, "06","Ate o Contrato ?              ","","","mv_ch6","C",6,0,0,"G",'',"","","",;
+"mv_par06","","","","ZZZZZZ","","","","","","","","","","","","",;
+{'Informe o código final dos contratos a s','erem processados.                       '},aHelpEng,aHelpSpa)
+
+
+U_xPutSX1( cPerg, "07","Do Vencimento?           ","","","mv_ch7","D",8,0,0,"G","","","","",;
+"mv_par07","","","","","","","","","","","","","","","","",;
+{'Informe a data inicial de Vencimentos dos titu','los a serem processados.            '},aHelpEng,aHelpSpa)
+
+U_xPutSX1( cPerg, "08","Ate Vencimento?           ","","","mv_ch8","D",8,0,0,"G","","","","",;
+"mv_par08","","","","","","","","","","","","","","","","",;
+{'Informe a data inicial de Vencimentos dos titu','los a serem processados.            '},aHelpEng,aHelpSpa)
+
+
+U_xPutSX1( cPerg, "09","Da Data de Baixa?           ","","","mv_ch8","D",8,0,0,"G","","","","",;
+"mv_par09","","","","","","","","","","","","","","","","",;
+{'Informe a data inicial de baixas dos titu','los a serem processados.            '},aHelpEng,aHelpSpa)
+
+
+U_xPutSX1( cPerg, "10","Até a Data de Baixa ?                  ","","","mv_ch9","D",8,0,0,"G","","","","",;
+"mv_par10","","","","","","","","","","","","","","","","",;
+{'Informe a data final de baixas dos titu','los a serem processados.              '},aHelpEng,aHelpSpa)    
+
+
+U_xPutSX1( cPerg, "11","Do Banco ?","Do Banco ?","Do Banco ?","Banco","C",3,0,0,"G","","SA6","","","MV_PAR11","","","","","","","","","","","","","","","","",aHelpPor,aHelpEng,aHelpSpa)
+
+U_xPutSX1( cPerg, "12","Ate o Banco ?","Ate o Banco ?","Ate o Banco ?","Banco","C",3,0,0,"G","","SA6","","","MV_PAR12","","","","","","","","","","","","","","","","",aHelpPor,aHelpEng,aHelpSpa)
+        
+U_xPutSX1( cPerg, "13","Da Natureza ?","Da Natureza ?","Da Natureza","Natureza","C",10,0,0,"G","","SED","","","MV_PAR13","","","","","","","","","","","","","","","","",aHelpPor,aHelpEng,aHelpSpa)
+
+U_xPutSX1( cPerg, "14","Ate a Natureza ?","Ate a Natureza?","Ate a Natureza?","Banco","C",10,0,0,"G","","SED","","","MV_PAR14","","","","","","","","","","","","","","","","",aHelpPor,aHelpEng,aHelpSpa)
+	
+
+Return()
+
+/*/{Protheus.doc} ValidParam
+Valida parametros preenchidos no pergunte
+@type function
+@version 1.0 
+@author Raphael Martins 
+@since 21/01/2021
+@param aParametros
+/*/
+Static Function ValidParam(aParametros)
+
+Local cClienteDe As Character
+Local cClienteAte As Character
+Local cLojaDe As Character
+Local cLojaAte As Character
+Local cContratoDe As Character
+Local cContratoAte As Character
+Local dDataVencimentoDe As Character
+Local dDataVencimentoAte As Character
+Local dDataBaixaDe As Date
+Local dDataBaixaAte As Date
+Local cBancoDe As Character
+Local cBancoAte As Character
+Local dNaturezaDe As Character
+Local dNaturezaAte As Character
+Local lRet As Logical
+
+// parametros
+cClienteDe          := MV_PAR01
+cClienteAte         := MV_PAR02
+cLojaDe             := MV_PAR03
+cLojaAte            := MV_PAR04
+cContratoDe         := MV_PAR05
+cContratoAte        := MV_PAR06
+dDataVencimentoDe   := MV_PAR07
+dDataVencimentoAte  := MV_PAR08
+dDataBaixaDe        := MV_PAR09
+dDataBaixaAte       := MV_PAR10
+cBancoDe            := MV_PAR11
+cBancoAte           := MV_PAR12
+dNaturezaDe         := MV_PAR13
+dNaturezaAte        := MV_PAR14
+lRet:= .T.
+
+// caso o cliente ate estiver vazio, considero todos "ZZZZZZ"
+if Empty(cClienteDe) .And. Empty(cClienteAte)
+    cClienteAte	:= Replicate("Z",TamSX3("A1_COD")[1])
+endIf
+
+if Empty(cLojaDe) .And. Empty(cLojaAte)
+    cLojaAte	:= Replicate("Z",TamSX3("A1_LOJA")[1])
+endIf
+
+
+if Empty(cContratoDe) .And. Empty(cContratoAte)
+    cContratoAte	:= Replicate("Z",TamSX3("E1_XCONTRA")[1])
+endIf
+
+// valido o preenchimento dos dados de data
+if !Empty(dDataVencimentoDe) .And. Empty(dDataVencimentoAte)
+    lRet := .F.
+    MsgAlert("O parametro 'Vencimento Ate' deve ser preenchido, pois o Parametro 'Vencimento de' está preenchido.")
+endIf
+
+// valido o preenchimento dos dados de data
+if !Empty(dDataBaixaDe) .And. Empty(dDataBaixaAte)
+    lRet := .F.
+    MsgAlert("O parametro 'Baixa Ate' deve ser preenchido, pois o Parametro 'Data de' está preenchido.")
+endIf
+
+if Empty(cBancoDe) .And. Empty(cBancoAte)
+    cBancoAte	:= Replicate("Z",TamSX3("A6_COD")[1])
+endIf
+
+if Empty(dNaturezaDe) .And. Empty(dNaturezaAte)
+    cBancoAte	:= Replicate("Z",TamSX3("ED_CODIGO")[1])
+endIf
+
+if lRet 
+    
+    Aadd( aParametros, cClienteDe)			
+	Aadd( aParametros, cClienteAte)			
+	Aadd( aParametros, cLojaDe)		
+	Aadd( aParametros, cLojaAte)		
+	Aadd( aParametros, cContratoDe)
+    Aadd( aParametros, cContratoAte)				
+	Aadd( aParametros, dDataVencimentoDe)			
+	Aadd( aParametros, dDataVencimentoAte)		
+    Aadd( aParametros, dDataBaixaDe)	
+    Aadd( aParametros, dDataBaixaAte)	
+    Aadd( aParametros, cBancoDe)	
+    Aadd( aParametros, cBancoAte)
+    Aadd( aParametros, dNaturezaDe)
+    Aadd( aParametros, dNaturezaAte)
+
+endif
+
+
+Return(lRet)
