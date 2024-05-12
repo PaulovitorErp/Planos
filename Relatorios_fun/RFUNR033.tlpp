@@ -1,0 +1,742 @@
+#include "totvs.ch"
+
+//Cores
+#Define COR_FUNDOTIT   	RGB(207, 207, 207)
+#Define COR_LINHA1   	RGB(238, 233, 233)
+#Define COR_LINHA2  	RGB(255, 255, 255)
+
+/*/{Protheus.doc} RFUNR033
+Impressao da Ficha de Contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param cCodContrato, character, codigo do contrato
+/*/
+User Function RFUNR033(cCodContrato As Character)
+
+	Local aDadosRelatorios  As Array
+	Local cRelatorio        As Character
+	Local oProcess          As Object
+
+	Default cCodContrato    := ""
+
+	// atribui valor as variaveis
+	cRelatorio          := "Ficha do Contrato"
+	aDadosRelatorios    := {}
+
+	// tela de impressao em lote
+	TelaImpressaoEmLote(cCodContrato, @aDadosRelatorios)
+
+	If Len(aDadosRelatorios) > 0
+
+		oProcess := MsNewProcess():New( { | lEnd | ImpressaoRelatorio( @oProcess, @lEnd, cRelatorio, aDadosRelatorios) }, cRelatorio, "Aguarde, processando os dados do relatorio...", .F. )
+		oProcess:Activate()
+
+	EndIf
+
+Return(Nil)
+
+
+/*/{Protheus.doc} TelaImpressaoEmLote
+Tela para Impressao da Ficha em Lote
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param cCodContrato, character, codigo do contrato
+@param aDadosRelatorios, array, dados de impressao do relatorio
+/*/
+Static Function TelaImpressaoEmLote(cCodContrato As Character, aDadosRelatorios As Array)
+
+	Local aArea             As Array
+	Local aAreaUF2          As Array
+	Local aBeneficiarios    As Array
+	Local aTitulos          As Array
+	Local aCobertura        As Array
+	Local aReajuste         As Array
+
+	Default cCodContrato        := ""
+	Default aDadosRelatorios    := {}
+
+	aArea               := GetArea()
+	aAreaUF2            := UF2->(GetArea())
+	aBeneficiarios      := {}
+	aTitulos            := {}
+	aCobertura          := {}
+	aReajuste           := {}
+
+	UF2->(DBSetOrder(1))
+	If UF2->(MsSeek(xFilial("UF2")+cCodContrato))
+
+		// pego os dados de beneficiarios
+		aBeneficiarios := Beneficiarios(UF2->UF2_CODIGO)
+
+		// pego os dados de beneficiarios
+		aTitulos := FinanceiroContrato(UF2->UF2_CODIGO)
+
+		// monto os dados do relatorio
+		Aadd( aDadosRelatorios, { UF2->(Recno()), aBeneficiarios, aTitulos, aCobertura, aReajuste })
+
+	EndIf
+
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+	/*Local oButton1
+	Local oButton2
+	Local oButton3
+	Local oButton4
+	Local oCheckBo1
+	Local lCheckBo1 := .F.
+	Local oCheckBo2
+	Local lCheckBo2 := .F.
+	Local oCheckBo3
+	Local lCheckBo3 := .F.
+	Local oCheckBo4
+	Local lCheckBo4 := .F.
+	Local oCheckBo5
+	Local lCheckBo5 := .F.
+	Local oCheckBo6
+	Local lCheckBo6 := .F.
+	Local oCheckBo7
+	Local lCheckBo7 := .F.
+	Local oCheckBo8
+	Local lCheckBo8 := .F.
+	Local oCheckBo9
+	Local lCheckBo9 := .F.
+	Local oComboBo1
+	Local nComboBo1 := 1
+	Local oGet1
+	Local cGet1 := "Define variable value"
+	Local oGet2
+	Local cGet2 := "Define variable value"
+	Local oGet3
+	Local cGet3 := "Define variable value"
+	Local oGet4
+	Local cGet4 := "Define variable value"
+	Local oGet5
+	Local cGet5 := "Define variable value"
+	Local oGet6
+	Local cGet6 := "Define variable value"
+	Local oGet7
+	Local cGet7 := "Define variable value"
+	Local oGet8
+	Local cGet8 := "Define variable value"
+	Local oGet9
+	Local cGet9 := "Define variable value"
+	Local oGroup1
+	Local oGroup2
+	Local oGroup3
+	Local oSay1
+	Local oSay2
+	Local oSay3
+	Local oSay4
+	Local oSay5
+	Local oSay6
+	Local oSay7
+	Local oSay8
+	Static oDlg
+
+	DEFINE MSDIALOG oDlg TITLE "New Dialog" FROM 000, 000  TO 400, 800 COLORS 0, 16777215 PIXEL
+
+	@ 003, 003 GROUP oGroup1 TO 161, 268 PROMPT "Filtros" OF oDlg COLOR 0, 16777215 PIXEL
+	@ 004, 274 GROUP oGroup2 TO 161, 396 PROMPT "InformaÃ§Ãµes RelatÃ³rio" OF oDlg COLOR 0, 16777215 PIXEL
+	@ 163, 004 GROUP oGroup3 TO 196, 395 OF oDlg COLOR 0, 16777215 PIXEL
+	@ 017, 281 CHECKBOX oCheckBo1 VAR lCheckBo1 PROMPT "Financeiro em Aberto" SIZE 066, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 031, 282 CHECKBOX oCheckBo2 VAR lCheckBo2 PROMPT "Financeiro Baixado" SIZE 059, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 015, 350 MSGET oGet1 VAR cGet1 SIZE 028, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 029, 350 MSGET oGet2 VAR cGet2 SIZE 029, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 053, 282 CHECKBOX oCheckBo3 VAR lCheckBo3 PROMPT "RemoÃ§Ãµes" SIZE 048, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 063, 282 CHECKBOX oCheckBo4 VAR lCheckBo4 PROMPT "Inclusoes" SIZE 048, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 075, 282 CHECKBOX oCheckBo5 VAR lCheckBo5 PROMPT "Cobertura" SIZE 048, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 088, 283 CHECKBOX oCheckBo6 VAR lCheckBo6 PROMPT "Detalhamento Parcela" SIZE 080, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 099, 283 CHECKBOX oCheckBo7 VAR lCheckBo7 PROMPT "Historico de Valores" SIZE 064, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 017, 013 SAY oSay1 PROMPT "Contrato de" SIZE 042, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 015, 051 MSGET oGet3 VAR cGet3 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 016, 122 SAY oSay2 PROMPT "de" SIZE 013, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 014, 144 MSGET oGet4 VAR cGet4 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 034, 014 SAY oSay3 PROMPT "Data de" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 033, 051 MSGET oGet5 VAR cGet5 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 034, 144 MSGET oGet6 VAR cGet6 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 034, 122 SAY oSay4 PROMPT "de" SIZE 014, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 051, 015 SAY oSay5 PROMPT "Plano" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 050, 051 MSGET oGet7 VAR cGet7 SIZE 192, 037 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 099, 013 SAY oSay6 PROMPT "Vendedor de " SIZE 038, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 097, 052 MSGET oGet8 VAR cGet8 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 098, 120 SAY oSay7 PROMPT "de" SIZE 025, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 096, 145 MSGET oGet9 VAR cGet9 SIZE 060, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 125, 018 SAY oSay8 PROMPT "Status" SIZE 031, 007 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 123, 052 MSCOMBOBOX oComboBo1 VAR nComboBo1 ITEMS {} SIZE 072, 010 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 175, 348 BUTTON oButton1 PROMPT "Imprimir" SIZE 037, 012 OF oDlg PIXEL
+	@ 175, 301 BUTTON oButton2 PROMPT "Fechar" SIZE 037, 012 OF oDlg PIXEL
+	@ 175, 013 BUTTON oButton3 PROMPT "Limpar Filtros" SIZE 037, 012 OF oDlg PIXEL
+	@ 143, 315 BUTTON oButton4 PROMPT "Inverter SeleÃ§Ã£o" SIZE 044, 012 OF oDlg PIXEL
+	@ 111, 283 CHECKBOX oCheckBo8 VAR lCheckBo8 PROMPT "Assinatura" SIZE 048, 008 OF oDlg COLORS 0, 16777215 PIXEL
+	@ 042, 282 CHECKBOX oCheckBo9 VAR lCheckBo9 PROMPT "Ãšltimas Parcelas Pagas" SIZE 068, 008 OF oDlg COLORS 0, 16777215 PIXEL
+
+	ACTIVATE MSDIALOG oDlg CENTERED
+    */
+
+Return(Nil)
+
+/*/{Protheus.doc} ImpressaoRelatorio
+Funcao para impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param oProcess, object, objeto do processamento
+@param lEnd, logical, finaliza a impressao
+@param cRelatorio, character, titulo do relatorio
+@param aDadosRelatorios, array, dados de impressao do relatorio
+/*/
+Static Function ImpressaoRelatorio(oProcess, lEnd, cRelatorio, aDadosRelatorios As Array)
+
+	Local aArea                 As Array
+	Local aAreaUF2              As Array
+	Local aColBeneficiarios     As Array
+	Local aTitBeneficiarios     As Array
+	Local aTitTitulosPagos		As Array
+	Local aDadosBeneficiarios   As Array
+	Local aDadosTitulos 		As Array
+	Local aUltimosPagos			As Array
+	Local nMVTamanhoFonte       As Numeric
+	Local nRelatorio            As Numeric
+	Local dDeData				As Date
+	Local dAteData				As Date
+	Local oGeraPDF              As Object
+	Local oPDFPrint             As Object
+	Local oBrush1				As Object
+	Local oBrush2				As Object
+	Local oBrush3				As Object
+
+	// atribui valor as variaveis
+	aArea               := GetArea()
+	aAreaUF2            := UF2->(GetArea())
+	aDadosTitulos		:= {}
+	aUltimosPagos		:= {}
+	aTitTitulosPagos	:=  {"Competência", "Pagamento", "Valor"}
+	dDeData				:= StoD("")
+	dAteData			:= StoD("")
+	nMVTamanhoFonte 	:= SuperGetMV("MV_XFONTV1",,1)
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Iniciando objeto de impressao...')
+
+	// inicio a classe de geracao de planilha
+	oGeraPDF := VirtusRelPDF():New(@oPDFPrint, cRelatorio, 2, 2)
+
+	// posiciono nas colunas de beneficiarios
+	aColBeneficiarios   := { oGeraPDF:nMargemL, 750, 1050, 1500, 1700, 1900, oGeraPDF:nMargemR-500 }
+
+	// titulos das colunas de beneficiarios
+	aTitBeneficiarios   := {"Nome", "Tipo", "Parentesco", "Inclusão", "Carência", "Dt.Nasci", "Falecimento"}
+
+	For nRelatorio := 1 To Len(aDadosRelatorios)
+
+		// se o recno e maior que zero
+		If aDadosRelatorios[nRelatorio, 1] > 0
+
+			// posiciono no registro do contrato
+			UF2->(DBGoTo(aDadosRelatorios[nRelatorio, 1]))
+
+			UF0->(DBSetOrder(1))
+			UF0->(MsSeek(xFilial("UF0")+UF2->UF2_PLANO))
+
+			SA1->(DBSetOrder(1))
+			If SA1->(MsSeek(xFilial("SA1")+UF2->UF2_CLIENT + UF2->UF2_LOJA))
+
+				oBrush1 := TBrush():New( , COR_FUNDOTIT )
+				oBrush2 := TBrush():New( , COR_LINHA1 )
+				oBrush3 := TBrush():New( , COR_LINHA2 )
+
+				//------------------------
+				// impresso do cabecalho
+				//------------------------
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua2('Impressao do cabecalho...')
+
+				oGeraPDF:ImpCabecalho(@oPDFPrint, cRelatorio, dDeData, dAteData)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------------
+				// imprimo os dados do titular
+				//--------------------------------------
+
+				// monto o fillRect
+				oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Dados do Titular", oGeraPDF:oFontNCab )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Nome:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 100, AllTrim(Upper(SA1->A1_NOME)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Sexo:", oGeraPDF:oFontNCab )
+				If SA1->A1_XSEXO == "M" // masculino
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1085, "MASCULINO", oGeraPDF:oFontItens )
+				ElseIf SA1->A1_XSEXO == "F" // feminino
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1085, "FEMININO", oGeraPDF:oFontItens )
+				EndIf
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "Dt.Nascimento:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1800, AllTrim(DtoC(SA1->A1_XDTNASC)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Estado Civil:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 175, AllTrim(Upper(RetEstadoCivil(SA1->A1_XESTCIV))), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Conjuge:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1125, AllTrim(Upper(SA1->A1_XCONJUG)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "RG:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 65, AllTrim(Upper(SA1->A1_PFISICA)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 500, "CPF:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 575, AllTrim(Transform(SA1->A1_CGC, "@R 999.999.999-99")), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Profissão:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1135, AllTrim(Upper(SA1->A1_XPROFIS)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Endereço:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 135, AllTrim(Upper(SA1->A1_END)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "Bairro:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1685, AllTrim(Upper(SA1->A1_BAIRRO)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Complemento:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 185, AllTrim(Upper(SA1->A1_COMPLEM)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "CEP:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1675, AllTrim(Transform(SA1->A1_CEP, "@R 99.999-999")), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Ponto de Referencia:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 265, AllTrim(Upper(SA1->A1_XREFERE)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Estado:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1100, AllTrim(Upper(Posicione("SX5",1,xFilial("SX5")+"12"+SA1->A1_EST,"X5_DESCRI"))), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "Cidade:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1700, AllTrim(Upper(SA1->A1_MUN)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Telefone:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 125, if(!Empty(SA1->A1_DDD),SA1->A1_DDD,"") + " " + AllTrim(Upper(SA1->A1_TEL)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Celular:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1100, if(!Empty(SA1->A1_XDDDCEL),SA1->A1_XDDDCEL,"") + " " + AllTrim(Upper(SA1->A1_XCEL)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "Celular Adicional:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1825, if(!Empty(SA1->A1_XDDDCEL),SA1->A1_XDDDCEL,"") + " " + AllTrim(Upper(SA1->A1_XCEL2)), oGeraPDF:oFontItens )
+
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "E-mail:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 100, AllTrim(Upper(SA1->A1_EMAIL)), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------------
+				// imprimo os dados do contrato
+				//--------------------------------------
+
+				// monto o fillRect
+				oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Dados do Contrato", oGeraPDF:oFontNCab )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Código:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 100, AllTrim(Upper(UF2->UF2_CODIGO)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 500, "Tipo de Plano:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 700, AllTrim(Upper(UF0->UF0_DESCRI)), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1600, "Data de Contratação:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1890, DtoC(UF2->UF2_DATA), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Valor do Plano:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 190, "R$ " + AllTrim(Transform(UF2->UF2_VALOR + UF2->UF2_VLADIC, "@E 999,999.99")), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 500, "Dia de Vencimento:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 750, StrZero(Day(UF2->UF2_PRIMVE), 2), oGeraPDF:oFontItens )
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Forma de Pagamento:", oGeraPDF:oFontNCab )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1290, AllTrim(Upper(POSICIONE("SX5",1,XFILIAL("SX5") + "24" + UF2->UF2_FORPG,"X5_DESCRI"))), oGeraPDF:oFontItens )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------------
+				// imprimo os beneficiarios do contrato
+				//--------------------------------------
+
+				// monto o fillRect
+				oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, 1000, "Beneficiários", oGeraPDF:oFontNCab )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------
+				// faco a impressao do relatorio
+				//-------------------------------
+
+				// faco tratamento dos dados
+				aDadosBeneficiarios := U_UTrataDados(aTitBeneficiarios, aDadosRelatorios[nRelatorio, 2])
+
+				// faco a impressao do conteudo do relatorio
+				oGeraPDF:ImpRelatorio( @oProcess, @lEnd, @oPDFPrint, cRelatorio, aTitBeneficiarios, aColBeneficiarios, aDadosBeneficiarios)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------------
+				// imprimo o total de beneficiarios
+				//--------------------------------------
+
+				// monto o fillRect
+				oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Total de Beneficiários:" + Space(5) + cValToChar(Len(aDadosBeneficiarios)), oGeraPDF:oFontNCab )
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				// dados dos titulos
+				aDadosTitulos := aDadosRelatorios[nRelatorio, 3]
+
+				// dados dos ultimos titulos pagos
+				If Len(aDadosTitulos) > 0
+					aUltimosPagos := aDadosTitulos[1, 1] // faco tratamento dos dados
+				EndIf
+
+				//--------------------------------------
+				// ultmas parcelas pagas
+				//--------------------------------------
+
+				If Len(aUltimosPagos) > 0
+
+					// monto o fillRect
+					oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 950, "Últimas Parcelas Pagas", oGeraPDF:oFontNCab )
+
+					// salto a linha
+					oGeraPDF:nLinha += 50
+
+					// monto o fillRect
+					oGeraPDF:MontaFillRect(@oPDFPrint, oBrush1)
+
+					//==========================
+					// cabecalho parcelas pagas
+					//==========================
+
+					// primeiro bloco
+					oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, "Competência", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 250, "Pagamento", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 500, "Valor", oGeraPDF:oFontNCab )
+
+					// sgundo bloco
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 850, "Competência", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1100, "Pagamento", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1350, "Valor", oGeraPDF:oFontNCab )
+
+					// terceiro bloco
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1650, "Competência", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 1900, "Pagamento", oGeraPDF:oFontNCab )
+					oPDFPrint:Say( oGeraPDF:nLinha+17, 2150, "Valor", oGeraPDF:oFontNCab )
+
+					// salto a linha
+					oGeraPDF:nLinha += 50
+
+					// dados do titulos pagos
+					aDadosTitPagos :=  U_UTrataDados(aTitTitulosPagos, aUltimosPagos)
+
+					//================
+					// primeira linha
+					//================
+
+					If Len(aDadosTitPagos) > 0
+
+						// monto o fillRect
+						oGeraPDF:MontaFillRect(@oPDFPrint, oBrush2)
+
+						// primeiro bloco
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, aDadosTitPagos[1][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 250, DtoC(aDadosTitPagos[1][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 500, "R$ " + AllTrim(Transform(aDadosTitPagos[1][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// segundo bloco
+					If Len(aDadosTitPagos) > 1
+
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 850, aDadosTitPagos[2][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1100, DtoC(aDadosTitPagos[2][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1350, "R$ " + AllTrim(Transform(aDadosTitPagos[2][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// terceiro bloco
+					If Len(aDadosTitPagos) > 2
+
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1650, aDadosTitPagos[3][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1900, DtoC(aDadosTitPagos[3][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 2150, "R$ " + AllTrim(Transform(aDadosTitPagos[3][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// salto a linha
+					oGeraPDF:nLinha += 50
+
+					//================
+					// segunda linha
+					//================
+
+					If Len(aDadosTitPagos) > 3
+
+						// monto o fillRect
+						oGeraPDF:MontaFillRect(@oPDFPrint, oBrush3)
+
+						// primeiro bloco
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, aDadosTitPagos[4][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 250, DtoC(aDadosTitPagos[4][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 500, "R$ " + AllTrim(Transform(aDadosTitPagos[4][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// segundo bloco
+					If Len(aDadosTitPagos) > 4
+
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 850, aDadosTitPagos[5][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1100, DtoC(aDadosTitPagos[5][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1350, "R$ " + AllTrim(Transform(aDadosTitPagos[5][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// terceiro bloco
+					If Len(aDadosTitPagos) > 5
+
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1650, aDadosTitPagos[6][1][2], oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 1900, DtoC(aDadosTitPagos[6][2][2]), oGeraPDF:oFontItens )
+						oPDFPrint:Say( oGeraPDF:nLinha+17, 2150, "R$ " + AllTrim(Transform(aDadosTitPagos[6][3][2], "@E 999,999.99")), oGeraPDF:oFontItens )
+
+					EndIf
+
+					// salto a linha
+					oGeraPDF:nLinha += 50
+
+				EndIf
+
+				// salto a linha
+				oGeraPDF:nLinha += 150
+
+				// impressao da linha divisoria
+				oPDFPrint:Line(oGeraPDF:nLinha, oGeraPDF:nMargemL + 250, oGeraPDF:nLinha, oGeraPDF:nMargemL + 750)
+				oPDFPrint:Line(oGeraPDF:nLinha, 1450, oGeraPDF:nLinha, 1950)
+
+				// salto a linha
+				oGeraPDF:nLinha += 25
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 300, AllTrim(Upper(SA1->A1_NOME)), oGeraPDF:oFontItens )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 1500, AllTrim(Upper(SM0->M0_NOMECOM)), oGeraPDF:oFontItens )
+
+				//------------------------
+				// impresso do rodape
+				//------------------------
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua2('Impressao do rodape...')
+
+				// faco a impressao do rodape
+				oGeraPDF:ImpRodape(@oPDFPrint)
+
+			EndIf
+
+		EndIf
+
+	Next nRelatorio
+
+	//------------------------
+	// gera o relatorio
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Gerando o PDF do relatorio...')
+
+	// faco a impressao do relatorio
+	oGeraPDF:Imprimir(@oPDFPrint)
+
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} Beneficiarios
+Beneficiarios do Contrato
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param cCodContrato, character, codigo do contrato
+@return array, dados do beneficiario do contrato
+/*/
+Static Function Beneficiarios(cCodContrato As Character)
+
+	Local aRetorno      		As Array
+	Local cQuery        		As Character
+	Local cTipoBeneficiario		As Character
+	Local cGrauParentesco		As Character
+
+	Default cCodContrato    := ""
+
+	// atribui valor das variaveis
+	aRetorno := {}
+
+	// query de consulta de beneficiarios
+	cQuery := " SELECT
+	cQuery += "     BENEFICIARIOS.UF4_NOME      AS NOME, "
+	cQuery += "     BENEFICIARIOS.UF4_TIPO    	AS TIPO_BENEF, "
+	cQuery += "     BENEFICIARIOS.UF4_GRAU    	AS GRAU_PARE, "
+	cQuery += "     BENEFICIARIOS.UF4_DTINC     AS DATA_INCL, "
+	cQuery += "     BENEFICIARIOS.UF4_CAREN    	AS DATA_CARE, "
+	cQuery += "     BENEFICIARIOS.UF4_DTNASC    AS DATA_NASC, "
+	cQuery += "     BENEFICIARIOS.UF4_FALECI    AS DATA_FALE "
+	cQuery += " FROM " + RetSQLName("UF4") + " BENEFICIARIOS    "
+	cQuery += " WHERE BENEFICIARIOS.D_E_L_E_T_ = ' ' "
+	cQuery += "     AND BENEFICIARIOS.UF4_FILIAL = '" + xFilial("UF4") +"' "
+	cQuery += "     AND BENEFICIARIOS.UF4_CODIGO = '" + AllTrim(cCodContrato) +"' "
+	cQuery += " ORDER BY BENEFICIARIOS.UF4_FALECI, BENEFICIARIOS.UF4_TIPO DESC, BENEFICIARIOS.UF4_NOME "
+
+	cQuery  := changeQuery( cQuery )
+
+	MPSysOpenQuery( cQuery, 'TRBUF4' )
+
+	While TRBUF4->(!Eof())
+
+		// tipo de beneficiario
+		Do Case
+		Case TRBUF4->TIPO_BENEF == "1"
+			cTipoBeneficiario := "Beneficiario"
+		Case TRBUF4->TIPO_BENEF == "2"
+			cTipoBeneficiario := "Agregado"
+		Case TRBUF4->TIPO_BENEF == "3"
+			cTipoBeneficiario := "Titular"
+		EndCase
+
+		// grau de parentesco
+		cGrauParentesco := U_UGetGrauPar(.F., .F., TRBUF4->GRAU_PARE)
+
+		// alimento os dados dos beneficiarios
+		Aadd( aRetorno, { AllTrim(TRBUF4->NOME), Upper(cTipoBeneficiario), Upper(cGrauParentesco), StoD(TRBUF4->DATA_INCL), StoD(TRBUF4->DATA_CARE), StoD(TRBUF4->DATA_NASC), StoD(TRBUF4->DATA_FALE)})
+
+		TRBUF4->(DbSkip())
+	EndDo
+
+Return(aRetorno)
+
+Static Function FinanceiroContrato(cCodContrato As Character)
+
+	Local aRetorno      		As Array
+	Local aTitulosPagos			As Array
+	Local cQuery        		As Character
+
+	Default cCodContrato    := ""
+
+	// atribui valor das variaveis
+	aRetorno 		:= {}
+	aTitulosPagos	:= {}
+
+	// query do relatorio
+	cQuery := " SELECT TOP 6 "
+	cQuery += " 	TITULOS_PAGOS.E1_VENCORI	AS DATA_VENCORI, "
+	cQuery += " 	TITULOS_PAGOS.E1_BAIXA		AS DATA_PAGAMENTO, "
+	cQuery += " 	TITULOS_PAGOS.E1_VALLIQ		AS VALOR_PAGO "
+	cQuery += " FROM " + RetSQLName("SE1") + " TITULOS_PAGOS "
+	cQuery += " WHERE TITULOS_PAGOS.D_E_L_E_T_ = ' ' "
+	cQuery += " AND TITULOS_PAGOS.E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQuery += " AND TITULOS_PAGOS.E1_XCTRFUN = '" + AllTrim(cCodContrato) + "' "
+	cQuery += " AND TITULOS_PAGOS.E1_BAIXA <> ' ' "
+	cQuery += " AND TITULOS_PAGOS.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+	cQuery += " ,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+	cQuery += " ,'IV-','RA','NCC','NDC') "
+	cQuery += " ORDER BY TITULOS_PAGOS.E1_VENCORI DESC"
+
+	cQuery  := changeQuery( cQuery )
+
+	MPSysOpenQuery( cQuery, 'TRBSE1' )
+
+	While TRBSE1->(!Eof())
+
+		Aadd( aTitulosPagos, { MesExtenso(StoD(TRBSE1->DATA_VENCORI)) + "/" + cValToChar(Year(StoD(TRBSE1->DATA_VENCORI))), StoD(TRBSE1->DATA_PAGAMENTO), TRBSE1->VALOR_PAGO })
+
+		TRBSE1->(DbSkip())
+	EndDo
+
+	If Len(aTitulosPagos) > 0
+		Aadd(aRetorno, {aTitulosPagos})
+	EndIf
+
+Return(aRetorno)
+
+Static Function RetEstadoCivil(cEstadoCivil As Character)
+
+	Local cRetorno As Character
+
+	Default cEstadoCivil := ""
+
+	if !Empty(cEstadoCivil)
+
+		If AllTRim(cEstadoCivil) == "S"
+			cRetorno := "Solteiro(a)"
+		ElseIf AllTRim(cEstadoCivil) == "C"
+			cRetorno := "Casado(a)"
+		ElseIf AllTRim(cEstadoCivil) == "D"
+			cRetorno := "Divorciado(a)"
+		ElseIf AllTRim(cEstadoCivil) == "V"
+			cRetorno := "Viuvo(a)"
+		ElseIf AllTRim(cEstadoCivil) == "J"
+			cRetorno := "Junto"
+		ElseIf AllTRim(cEstadoCivil) == "P"
+			cRetorno := "Separado(a)"
+		ElseIf AllTRim(cEstadoCivil) == "U"
+			cRetorno := "Uniao Estavel"
+		Else
+			cRetorno := "Outros"
+		EndIf
+
+	else
+		cRetorno := ""
+	endif
+
+Return(cRetorno)

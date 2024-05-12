@@ -1,0 +1,867 @@
+#include "totvs.ch"
+
+//Cores
+#Define COR_FUNDOTIT   	RGB(207, 207, 207)
+#Define COR_LINHA1   	RGB(238, 233, 233)
+#Define COR_LINHA2  	RGB(255, 255, 255)
+
+//Alinhamentos
+#Define PAD_LEFT    0
+#Define PAD_RIGHT   1
+#Define PAD_CENTER  2
+#Define PAD_JUSTIFY 3 //Opção disponível somente a partir da versão 1.6.2 da TOTVS Printer
+
+#Define P_PAI 		1
+#Define P_CODIGO 	2
+#Define P_DESC 		3
+#Define P_TIPO 		4
+#Define P_ORDIMP 	5
+#Define P_CLAUSU 	6
+
+#Define T_ORDEM 	1
+#Define T_DESCRICAO 2
+#Define T_ITENS		3
+
+#Define C_CODIGO 	1
+#Define C_DESC 		2
+#Define C_TIPO 		3
+#Define C_ORDIMP 	4
+#Define C_CLAUSU 	5
+
+/*/{Protheus.doc} RFUNR037
+Impressao do Contrato de Convalescente
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param cCodContrato, character, codigo do contratoadmin	
+/*/
+User Function RFUNR037(cCodContrato As Character, cCodConvalesce As Character)
+
+	Local aDadosRelatorios  As Array
+	Local cRelatorio        As Character
+	Local oProcess          As Object
+
+	Default cCodContrato    := ""
+
+	// atribui valor as variaveis
+	cRelatorio          := "Contrato de Locação de Equipamentos Convalescente"
+	aDadosRelatorios    := {}
+
+	// tela de impressao em lote
+	DadosConvalescente(cCodContrato, @aDadosRelatorios)
+
+	If Len(aDadosRelatorios) > 0
+
+		oProcess := MsNewProcess():New( { | lEnd | ImpressaoRelatorio( @oProcess, @lEnd, cRelatorio, aDadosRelatorios) }, cRelatorio, "Aguarde, processando os dados do relatorio...", .F. )
+		oProcess:Activate()
+
+	EndIf
+
+Return(Nil)
+
+User Function RFUNR37V(cVariavel)
+
+	Local cRetorno	As Character
+
+	Default cVariavel := ""
+
+	If cVariavel == "{{CNV_DATA_DEVOLUCAO}}"
+		cRetorno := RetDataDevolucao()
+	ElseIf cVariavel == "{{CNV_DATA_RETIRADA}}"
+		cRetorno := RetDataRetirada()
+	ElseIf cVariavel == "{{CNV_DIAS_RETORNO}}"
+		cRetorno := RetDiasRetorno(1)
+	ElseIf cVariavel == "{{CNV_DIAS_RETORNO_EXTENSO}}"
+		cRetorno := RetDiasRetorno(2)
+	ElseIf cVariavel == "{{CNV_VALOR_EQUIP}}"
+		cRetorno := RetValorEquip(1)
+	ElseIf cVariavel == "{{CNV_VALOR_EQUIP_EXTENSO}}"
+		cRetorno := RetValorEquip(2)
+	ElseIf cVariavel == "{{CNV_DIA_VENC}}"
+		cRetorno := RetDiaVenc(1)
+	ElseIf cVariavel == "{{CNV_DIA_VENC_EXTENSO}}"
+		cRetorno := RetDiaVenc(2)
+	EndIf
+
+Return(cRetorno)
+
+/*/{Protheus.doc} DadosConvalescente
+Funcao para tratar dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param cCodContrato, character, codigo do contrato
+@param aDadosRelatorios, array, dados de impressao do relatorio
+/*/
+Static Function DadosConvalescente(cCodContrato As Character, aDadosRelatorios As Array)
+
+	Local aArea             As Array
+	Local aAreaUF2          As Array
+
+	Default cCodContrato        := ""
+	Default aDadosRelatorios    := {}
+
+	aArea               := GetArea()
+	aAreaUF2            := UF2->(GetArea())
+
+	UF2->(DBSetOrder(1))
+	If UF2->(MsSeek(xFilial("UF2")+cCodContrato))
+
+		// monto os dados do relatorio
+		Aadd( aDadosRelatorios, { UF2->(Recno()) })
+
+	EndIf
+
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} ImpressaoRelatorio
+Funcao para impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 2/17/2024
+@param oProcess, object, objeto do processamento
+@param lEnd, logical, finaliza a impressao
+@param cRelatorio, character, titulo do relatorio
+@param aDadosRelatorios, array, dados de impressao do relatorio
+/*/
+Static Function ImpressaoRelatorio(oProcess, lEnd, cRelatorio, aDadosRelatorios As Array)
+
+	Local aArea                 As Array
+	Local aAreaUF2              As Array
+	Local aClausulas			As Array
+	Local aClausPrim			As Array
+	Local cLogoPDF              As Character
+	Local cConteudoPrim			As Character
+	Local nMVTamanhoFonte       As Numeric
+	Local nRelatorio            As Numeric
+	Local nLinhaCol1	        As Numeric
+	Local nLinhaCol2	        As Numeric
+	Local nLinhaCol3	        As Numeric
+	Local nLinhaImp			 	As Numeric
+	Local nAjustLin				As Numeric
+	Local nAjustCol				As Numeric
+	Local nLinhaClausula		As Numeric
+	Local nLinhas				As Numeric
+	Local nLenClausula			As Numeric
+	Local dDeData				As Date
+	Local dAteData				As Date
+	Local oGeraPDF              As Object
+	Local oPDFPrint             As Object
+	Local oBrush1				As Object
+	Local oBrush2				As Object
+	Local oBrush3				As Object
+
+	// atribui valor as variaveis
+	aArea               := GetArea()
+	aAreaUF2            := UF2->(GetArea())
+	aDadosTitulos		:= {}
+	aUltimosPagos		:= {}
+	aClausPrim			:= {}
+	cConteudoPrim		:= ""
+	dDeData				:= StoD("")
+	dAteData			:= StoD("")
+	nLinhaImp			:= 50
+	nAjustLin			:= 30
+	nAjustCol			:= 150
+	nLinhaClausula		:= 0
+	nMVTamanhoFonte 	:= SuperGetMV("MV_XFONTV1",,1)
+	cLogoPDF	        := "rosa_master.png"
+	aClausulas 			:= GetClausulas()
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Iniciando objeto de impressao...')
+
+	// inicio a classe de geracao de planilha
+	oGeraPDF := VirtusRelPDF():New(@oPDFPrint, cRelatorio, 2, 2)
+
+	oGeraPDF:nMargemL 	:= 15
+	oGeraPDF:nLinRodPe	:= 2955
+
+	// inicio a primeira linha de imrpressao
+	nLinhaCol1 := nLinhaImp
+	nLinhaCol2 := nLinhaImp
+	nLinhaCol3 := nLinhaImp
+
+	For nRelatorio := 1 To Len(aDadosRelatorios)
+
+		// se o recno e maior que zero
+		If aDadosRelatorios[nRelatorio, 1] > 0
+
+			// posiciono no registro do contrato
+			UF2->(DBGoTo(aDadosRelatorios[nRelatorio, 1]))
+
+			SA1->(DBSetOrder(1))
+			If SA1->(MsSeek(xFilial("SA1")+UF2->UF2_CLIENT + UF2->UF2_LOJA))
+
+				oBrush1 := TBrush():New( , COR_FUNDOTIT )
+				oBrush2 := TBrush():New( , COR_LINHA1 )
+				oBrush3 := TBrush():New( , COR_LINHA2 )
+
+				//------------------------
+				// impresso do cabecalho
+				//------------------------
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua2('Impressao do cabecalho...')
+
+				// imprime a logo do relatorio
+				oPDFPrint:SayBitMap( nLinhaCol2 - nAjustLin, oGeraPDF:nMargemL, cLogoPDF)
+
+				// impressao do titulo do relatorio
+				oPDFPrint:Say(nLinhaCol1 + 25, oGeraPDF:nMargemL + 600, cRelatorio, oGeraPDF:oFontTitulo)
+				oPDFPrint:Say(nLinhaCol1, oGeraPDF:nMargemR - 500, "Nº de Adesão", oGeraPDF:oFontNConteudo)
+				oPDFPrint:Say(nLinhaCol1 + 30, oGeraPDF:nMargemR - 490, AllTrim(UJH->UJH_CODIGO) , oGeraPDF:oFontItens)
+				nLinhaCol1+=30
+
+				oGeraPDF:nLinha := nLinhaCol1
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				//--------------------------------------
+				// imprimo os dados da primeira clausula
+				//--------------------------------------
+
+				// monto o fillRect
+				oPDFPrint:Fillrect( {oGeraPDF:nLinha-15, oGeraPDF:nMargemL, oGeraPDF:nLinha+35, oGeraPDF:nMargemR-185 }, oBrush1 )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, OrdExtenso(Val(aClausulas[1][T_ORDEM])) + " - " + AllTrim(aClausulas[1][T_DESCRICAO]), oGeraPDF:oFontNCab )
+
+				aClausPrim := aClausulas[1][T_ITENS]
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				cConteudoPrim := AllTrim(aClausPrim[1][C_CLAUSU])
+
+				nLinhas 		:= oGeraPDF:CountLines(AllTrim(cConteudoPrim))
+
+				If nLinhas <= INT(Len(AllTrim(cConteudoPrim))/90)
+					nLinhas := nLinhas + INT(Len(AllTrim(cConteudoPrim))/90)
+				EndIf
+
+				nLenClausula 	:= nLinhas * 50
+
+				If nLenClausula < 150
+					nLenClausula := 150
+				EndIf
+
+				// impressao da clausula
+				oPDFPrint:SayAlign( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, cConteudoPrim, oGeraPDF:oFontConteudo, oGeraPDF:nMargemR-325, nLenClausula, , PAD_JUSTIFY )
+
+				// salto a linha
+				oGeraPDF:nLinha += (nLinhas * 35) + 15
+
+				//--------------------------------------
+				// impressao das informacoes da locacao
+				//--------------------------------------
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "Locatário(a):", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 225, AllTrim(SA1->A1_NOME) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 500, "CPF/CNPJ:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 650, AllTrim(SA1->A1_CGC) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "Data:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 125, DtoC(UJH->UJH_DATARE) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 500, "Inscrição:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 625, AllTrim(UF2->UF2_CODIGO) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "Endereço:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 200, AllTrim(SA1->A1_END) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg, "Bairro:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 125, AllTrim(SA1->A1_BAIRRO) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 500, "CEP:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 625, AllTrim(SA1->A1_CEP) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "Complemento:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 240, AllTrim(SA1->A1_COMPLEM) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg, "Cidade:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 100, AllTrim(SA1->A1_MUN) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 500, "Estado:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 615, AllTrim(SA1->A1_EST) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "E-mail:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 225, AllTrim(SA1->A1_EMAIL) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg, "Telefone:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 75, AllTrim(SA1->A1_TEL) , oGeraPDF:oFontItens)
+
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 500, "Celular:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg + 625, AllTrim(SA1->A1_XCEL) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 50
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, "Beneficiário:", oGeraPDF:oFontNConteudo )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 225, AllTrim(Posicione("UF4", 1, xFilial("UF4") + UJH->UJH_CONTRA + UJH->UJH_CODBEN, "UF4_NOME")) , oGeraPDF:oFontItens)
+
+				// salto a linha
+				oGeraPDF:nLinha += 100
+
+				nLinhaClausula := oGeraPDF:nLinha
+
+				ImprimeClausulas(@oPDFPrint, @oGeraPDF, @nLinhaClausula, aClausulas)
+
+			EndIf
+
+		EndIf
+
+	Next nRelatorio
+
+	// faco a impressao do rodape
+	oGeraPDF:ImpRodape(@oPDFPrint)
+
+	//------------------------
+	// gera o relatorio
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Gerando o PDF do relatorio...')
+
+	// faco a impressao do relatorio
+	oGeraPDF:Imprimir(@oPDFPrint)
+
+	RestArea(aAreaUF2)
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function ImprimeClausulas(oPDFPrint, oGeraPDF, nLinhaClausula, aClausulas)
+
+	Local aAux			As Array
+	Local aImpClausula	As Array
+	Local cImprimeClaus	As Character
+	Local cContClausula	As Character
+	Local lLadoB		As Logical
+	Local nClausula		As Numeric
+	Local nLenClausula	As Numeric
+	Local nImpClausula	As Numeric
+	Local nLinhas		As Numeric
+
+	// atribui valor as variaveis
+	aAux  	:= {}
+	lLadoB 	:= .F.
+
+	For nClausula := 2 To Len(aClausulas)
+
+		aImpClausula := aClausulas[nClausula][T_ITENS]
+
+		If lLadoB
+			ImpTLadoB( OrdExtenso(Val(aClausulas[nClausula][T_ORDEM])) + " - " + AllTrim(aClausulas[nClausula][T_DESCRICAO]), @oPDFPrint, @oGeraPDF )
+		else
+			ImpTLadoA( OrdExtenso(Val(aClausulas[nClausula][T_ORDEM])) + " - " + AllTrim(aClausulas[nClausula][T_DESCRICAO]), @oPDFPrint, @oGeraPDF )
+		EndIf
+
+		For nImpClausula := 1 To Len(aImpClausula)
+
+			nLinhas := 0
+
+			cContClausula := AllTrim(aImpClausula[nImpClausula][C_CLAUSU])
+
+			// trata variaveis
+			aAux := U_UTIL007V(@cContClausula)
+
+			// monto a clausula a ser impressa 
+			cImprimeClaus		:= aClausulas[nClausula][T_ORDEM] + "." + AllTrim(aImpClausula[nImpClausula][C_CODIGO]) + " - " + cContClausula
+
+			// pego a quantidade de linhas
+			nLinhas 		:= oGeraPDF:CountLines(cImprimeClaus)
+
+			// verifico se a quantidade de linhas equivale a quantida de caracteres da clausula (90 caracteres por linha)
+			If nLinhas <= INT(Len(cImprimeClaus)/90)
+				nLinhas := nLinhas + INT(Len(cImprimeClaus)/90)
+			EndIf
+
+			// verifico se preciso adicionar mais uma linha, caso a linha estiver
+			// proximo do fim e puder fazer a quebra no SayAlign justificado (PAD_JUSTIFY)
+			If (nLinhas * 90) - Len(cImprimeClaus) > 10 .And. (nLinhas * 90) - Len(cImprimeClaus) < 20
+				nLinhas := nLinhas + 1
+			EndIf
+
+			nLenClausula 	:= nLinhas * 50
+
+			If nLenClausula < 150
+				nLenClausula := 150
+			EndIf
+
+			If oGeraPDF:nLinha + nLenClausula > oGeraPDF:nLinRodPe .Or. lLadoB
+
+				If !lLadoB
+					oGeraPDF:nLinha := nLinhaClausula
+				EndIf
+
+				lLadoB := .T.
+
+				If oGeraPDF:nLinha + nLenClausula > oGeraPDF:nLinRodPe
+					oGeraPDF:NovaPagina(@oPDFPrint)
+					lLadoB := .F.
+					ImpLadoA( cImprimeClaus, @oPDFPrint, @oGeraPDF, nLenClausula, nLinhas, aAux )
+				Else
+					ImpLadoB( cImprimeClaus, @oPDFPrint, @oGeraPDF, nLenClausula, nLinhas, aAux )
+				EndIf
+
+			ElseIf !lLadoB .And. oGeraPDF:nLinRodPe - oGeraPDF:nLinha < 150
+				lLadoB := .T.
+				ImpLadoA( cImprimeClaus, @oPDFPrint, @oGeraPDF, nLenClausula, nLinhas, aAux )
+
+				ImpLadoB( cImprimeClaus, @oPDFPrint, @oGeraPDF, nLenClausula, nLinhas, aAux)
+			Else
+				lLadoB := .F.
+				ImpLadoA( cImprimeClaus, @oPDFPrint, @oGeraPDF, nLenClausula, nLinhas, aAux )
+			EndIf
+
+			nLenClausula := 0
+
+		Next nImpClausula
+
+		oGeraPDF:nLinha += 35
+
+	Next nClausula
+
+Return(Nil)
+
+Static Function ImpTLadoA( cClausula, oPDFPrint, oGeraPDF )
+
+	Local oBrush1				As Object
+
+	oBrush1 := TBrush():New( , COR_FUNDOTIT )
+
+	// monto o fillRect
+	oPDFPrint:Fillrect( {oGeraPDF:nLinha-15, oGeraPDF:nMargemL, oGeraPDF:nLinha+35, oGeraPDF:nCenterPg - 100 }, oBrush1 )
+	oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, cClausula, oGeraPDF:oFontNCab )
+
+	// salto a linha
+	oGeraPDF:nLinha += 50
+
+Return(Nil)
+
+Static Function ImpTLadoB( cClausula, oPDFPrint, oGeraPDF  )
+
+	Local oBrush1				As Object
+
+	oBrush1 := TBrush():New( , COR_FUNDOTIT )
+
+	// monto o fillRect
+	oPDFPrint:Fillrect( {oGeraPDF:nLinha-15, oGeraPDF:nCenterPg - 50, oGeraPDF:nLinha+35, oGeraPDF:nMargemR-195 }, oBrush1 )
+	oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg, cClausula, oGeraPDF:oFontNCab )
+
+	// salto a linha
+	oGeraPDF:nLinha += 50
+
+Return(Nil)
+
+Static Function ImpLadoA( cContClausula, oPDFPrint, oGeraPDF, nLenClausula, nLinhas, aDadosSub )
+
+	Local aAux 		As Array
+	Local nAux		As Numeric
+
+	Default nLinhas		:= 1
+	Default aDadosSub	:= {}
+
+	aAux := {}
+
+	If nLinhas == 1
+		nLinhas := 2
+	EndIf
+
+	If Len(aDadosSub) > 0
+		For nAux := 1 To Len(aDadosSub)
+			If AllTrim(aDadosSub[nAux][1]) == "{{CNV_EQUIPAMENTOS}}"
+				ImpEquipamentos( aDadosSub[nAux], @oPDFPrint, @oGeraPDF, nLenClausula, oGeraPDF:nMargemL + 50, oGeraPDF:nCenterPg - 110 )
+			EndIf
+		Next nAux
+	Else
+
+		// impressao da clausula
+		oPDFPrint:SayAlign( oGeraPDF:nLinha+17, oGeraPDF:nMargemL + 50, cContClausula, oGeraPDF:oFontConteudo, 1100, nLenClausula, , PAD_JUSTIFY )
+
+		// salto a linha
+		oGeraPDF:nLinha += nLinhas * 35
+
+	EndIf
+
+	oGeraPDF:nLinha += 15
+
+Return(Nil)
+
+Static Function ImpLadoB( cContClausula, oPDFPrint, oGeraPDF, nLenClausula, nLinhas, aDadosSub )
+
+	Local aAux 		As Array
+	Local nAux		As Numeric
+
+	Default nLinhas		:= 1
+	Default aDadosSub	:= {}
+
+	aAux := {}
+
+	If nLinhas == 1
+		nLinhas := 2
+	EndIf
+
+	If Len(aDadosSub) > 0
+		For nAux := 1 To Len(aDadosSub)
+			If AllTrim(aDadosSub[nAux][1]) == "{{CNV_EQUIPAMENTOS}}"
+				ImpEquipamentos( aDadosSub[nAux], @oPDFPrint, @oGeraPDF, nLenClausula, oGeraPDF:nCenterPg, oGeraPDF:nCenterPg - 110 )
+			EndIf
+		Next nAux
+	Else
+
+		// impressao da clausula
+		oPDFPrint:SayAlign( oGeraPDF:nLinha+17, oGeraPDF:nCenterPg, cContClausula, oGeraPDF:oFontConteudo, 1025, nLenClausula, , PAD_JUSTIFY )
+
+		// salto a linha
+		oGeraPDF:nLinha += nLinhas * 35
+
+	EndIf
+
+	oGeraPDF:nLinha += 15
+
+Return(Nil)
+
+Static Function GetClausulas()
+
+	Local aAuxClausula	As Array
+	Local aDadosClaus	As Array
+	Local aRetorno 		As Array
+	Local cQuery 		As Character
+	Local cClausuPai	As Character
+	Local cDescriPai	As Character
+	Local nX 			As Numeric
+	Local nTamPai 		As Numeric
+
+	aRetorno 		:= {}
+	aDadosClaus		:= {}
+	aAuxClausula	:= {}
+
+	cQuery := " SELECT
+	cQuery += " 	CLAUSULAS.UGB_PAI,"
+	cQuery += " 	CLAUSULAS.UGB_CODIGO,"
+	cQuery += " 	CLAUSULAS.UGB_DESC,"
+	cQuery += " 	CLAUSULAS.UGB_TIPO,"
+	cQuery += " 	CLAUSULAS.UGB_ORDIMP,"
+	cQuery += " 	ISNULL(CONVERT(VARCHAR(2047), CONVERT(VARBINARY(2047), CLAUSULAS.UGB_CLAUSU)),'') AS UGB_CLAUSU
+	cQuery += " FROM " + RetSQLName("UGB") + " CLAUSULAS"
+	cQuery += " WHERE CLAUSULAS.D_E_L_E_T_ = ' '"
+	cQuery += " AND CLAUSULAS.UGB_USO = '2'" // 2 - Contrato de Locação de Equipamentos Convalescente
+	cQuery += " AND CLAUSULAS.UGB_PAI <> ' '"
+	cQuery += " ORDER BY CLAUSULAS.UGB_PAI ASC, CLAUSULAS.UGB_CODIGO ASC, CLAUSULAS.UGB_ORDIMP ASC"
+
+	cQuery := ChangeQuery(cQuery)
+
+	MPSysOpenQuery(cQuery, "TRBUGB")
+
+	While TRBUGB->(!Eof())
+
+		Aadd(aAuxClausula, { TRBUGB->UGB_PAI, TRBUGB->UGB_CODIGO, TRBUGB->UGB_DESC, TRBUGB->UGB_TIPO, TRBUGB->UGB_ORDIMP, TRBUGB->UGB_CLAUSU })
+
+		TRBUGB->(DbSkip())
+	EndDo
+
+	For nX := 1 To Len(aAuxClausula)
+
+		if Empty(cClausuPai)
+			cClausuPai 	:= AllTrim(aAuxClausula[nX][P_PAI])
+			cDescriPai 	:= AllTrim(aAuxClausula[nX][P_DESC])
+		endif
+
+		nTamPai := Len(cClausuPai)
+
+		Aadd(aDadosClaus, { SubStr(AllTrim(aAuxClausula[nX][P_CODIGO]), nTamPai + 1), aAuxClausula[nX][P_DESC], aAuxClausula[nX][P_TIPO], aAuxClausula[nX][P_ORDIMP], aAuxClausula[nX][P_CLAUSU] })
+
+		//verifico se o proximo registro e outra regra, ou se esta na ultima linha da grid.
+		//Adiciono no array aContratos, pois na funcao ProcessaContratos vai processar por regra de reajuste.
+		if Len(aAuxClausula) == nX .Or. AllTrim(cClausuPai) <> AllTrim(aAuxClausula[nX + 1][P_PAI])
+
+			AADD(aRetorno, { AllTrim(cClausuPai), AllTrim(cDescriPai), aDadosClaus } )
+
+			aDadosClaus	:= {}
+			cClausuPai	:= ""
+			cDescriPai	:= ""
+
+		endif
+
+	Next nX
+
+Return(aRetorno)
+
+Static Function OrdExtenso(nClausula)
+
+	Local cRetorno	As Character
+
+	If nClausula == 1
+		cRetorno := "CLÁUSULA PRIMEIRA"
+	ElseIf nClausula == 2
+		cRetorno := "CLÁUSULA SEGUNDA"
+	ElseIf nClausula == 3
+		cRetorno := "CLÁUSULA TERCEIRA"
+	ElseIf nClausula == 4
+		cRetorno := "CLÁUSULA QUARTA"
+	ElseIf nClausula == 5
+		cRetorno := "CLÁUSULA QUINTA"
+	ElseIf nClausula == 6
+		cRetorno := "CLÁUSULA SEXTA"
+	ElseIf nClausula == 7
+		cRetorno := "CLÁUSULA SÉTIMA"
+	ElseIf nClausula == 8
+		cRetorno := "CLÁUSULA OITAVA"
+	ElseIf nClausula == 9
+		cRetorno := "CLÁUSULA NONA"
+	ElseIf nClausula == 10
+		cRetorno := "CLÁUSULA DÉCIMA"
+	ElseIf nClausula == 11
+		cRetorno := "CLÁUSULA DÉCIMA PRIMEIRA"
+	ElseIf nClausula == 12
+		cRetorno := "CLÁUSULA DÉCIMA SEGUNDA"
+	ElseIf nClausula == 13
+		cRetorno := "CLÁUSULA DÉCIMA TERCEIRA"
+	ElseIf nClausula == 14
+		cRetorno := "CLÁUSULA DÉCIMA QUARTA"
+	ElseIf nClausula == 15
+		cRetorno := "CLÁUSULA DÉCIMA QUINTA"
+	ElseIf nClausula == 16
+		cRetorno := "CLÁUSULA DÉCIMA SEXTA"
+	ElseIf nClausula == 17
+		cRetorno := "CLÁUSULA DÉCIMA SÉTIMA"
+	ElseIf nClausula == 18
+		cRetorno := "CLÁUSULA DÉCIMA OITAVA"
+	ElseIf nClausula == 19
+		cRetorno := "CLÁUSULA DÉCIMA NONA"
+	ElseIf nClausula == 20
+		cRetorno := "CLÁUSULA VIGÉSIMA"
+	ElseIf nClausula == 21
+		cRetorno := "CLÁUSULA VIGÉSIMA PRIMEIRA"
+	ElseIf nClausula == 22
+		cRetorno := "CLÁUSULA VIGÉSIMA SEGUNDA"
+	ElseIf nClausula == 23
+		cRetorno := "CLÁUSULA VIGÉSIMA TERCEIRA"
+	ElseIf nClausula == 24
+		cRetorno := "CLÁUSULA VIGÉSIMA QUARTA"
+	ElseIf nClausula == 25
+		cRetorno := "CLÁUSULA VIGÉSIMA QUINTA"
+	ElseIf nClausula == 26
+		cRetorno := "CLÁUSULA VIGÉSIMA SEXTA"
+	ElseIf nClausula == 27
+		cRetorno := "CLÁUSULA VIGÉSIMA SÉTIMA"
+	ElseIf nClausula == 28
+		cRetorno := "CLÁUSULA VIGÉSIMA OITAVA"
+	ElseIf nClausula == 29
+		cRetorno := "CLÁUSULA VIGÉSIMA NONA"
+	ElseIf nClausula == 30
+		cRetorno := "CLÁUSULA TRIGÉSIMA"
+	EndIf
+
+Return(cRetorno)
+
+Static Function ImpEquipamentos( aDadosEquip, oPDFPrint, oGeraPDF, nLenClausula, nColIni, nColFim )
+
+	Local aArea				As Array
+	Local aAreaUJI 			As Array
+	Local aTitulos			As Array
+	Local aEquipamentos		As Array
+	Local aColunas			As Array
+	Local nColuna			As Numeric
+	Local nLinha			As Numeric
+
+	Default aDadosEquip		:= {}
+
+	aArea 			:= GetArea()
+	aAreaUJI		:= UJI->(GetArea())
+	aTitulos 		:= { "Descrição", "Nº de Série", "Fabricante" }
+	aColunas		:= { nColIni, 500, 700 }
+	aEquipamentos	:= {}
+
+	// impressao da clausula
+	oPDFPrint:SayAlign( oGeraPDF:nLinha+17, nColIni, AllTrim(aDadosEquip[2]), oGeraPDF:oFontConteudo, nColFim, 150, , PAD_JUSTIFY )
+
+	oGeraPDF:nLinha+=75
+
+	UJI->(DBSetOrder(1))
+	If UJI->(MsSeek(xFilial("UJI")+UJH->UJH_CODIGO))
+		While UJI->(!Eof()) .And. xFilial("UJI")+UJI->UJI_CODIGO == UJH->UJH_FILIAL+UJH->UJH_CODIGO
+			AAdd(aEquipamentos, { UJI->UJI_DESC, UJI->UJI_CHAPA, ""})
+			UJI->(DbSkip())
+		EndDo
+	EndIf
+
+	If Len(aEquipamentos) > 0
+
+		//----------------------------------
+		// imprimir os titulos do relatorio
+		//----------------------------------
+
+		// cabecalho
+		For nColuna := 1 to Len( aColunas )
+			oPDFPrint:Say( oGeraPDF:nLinha+17, aColunas[nColuna], aTitulos[nColuna], oGeraPDF:oFontNCab )
+		Next nColuna
+
+		oGeraPDF:nLinha+=35
+
+		// faco a impressao dos dados
+		for nLinha := 1 to Len(aEquipamentos)
+
+			// percorro as colunas para impressao
+			For nColuna := 1 To Len( aColunas )
+				oPDFPrint:Say( oGeraPDF:nLinha+17, aColunas[nColuna], aEquipamentos[nLinha,nColuna], oGeraPDF:oFontItens )
+			Next nColuna
+
+			oGeraPDF:nLinha+=35
+
+		next nLinha
+
+	EndIf
+
+	// impressao da clausula
+	oPDFPrint:SayAlign( oGeraPDF:nLinha+17, nColIni, AllTrim(aDadosEquip[3]), oGeraPDF:oFontConteudo, nColFim, 150, , PAD_JUSTIFY )
+
+	oGeraPDF:nLinha+=75
+
+	RestArea(aAreaUJI)
+	RestArea(aArea)
+
+Return(Nil)
+
+Static Function RetDataRetirada()
+
+	Local aArea 	As Array
+	Local aAreaUJI	As Array
+	Local cRetorno 	As Character
+
+	aArea	 := GetArea()
+	aAreaUJI := UJI->(GetArea())
+	cRetorno := ""
+
+	UJI->(DBSetOrder(1))
+	If UJI->(MsSeek(xFilial("UJI")+UJH->UJH_CODIGO))
+		cRetorno := DtoC(UJI->UJI_DATAIN)
+	EndIf
+
+	RestArea(aAreaUJI)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+Static Function RetDataDevolucao()
+
+	Local aArea 	As Array
+	Local aAreaUJI	As Array
+	Local cRetorno 	As Character
+
+	aArea	 := GetArea()
+	aAreaUJI := UJI->(GetArea())
+	cRetorno := ""
+
+	UJI->(DBSetOrder(1))
+	If UJI->(MsSeek(xFilial("UJI")+UJH->UJH_CODIGO))
+		cRetorno := DtoC(DaySum(UJI->UJI_DATAIN, 60)) //DtoC(UJI->UJI_DATAIN)
+	EndIf
+
+	RestArea(aAreaUJI)
+	RestArea(aArea)
+
+Return(cRetorno)
+
+Static Function RetDiasRetorno(nTipo)
+
+	Local cRetorno	As Character
+	Local nDias 	As Numeric
+
+	nDias := SuperGetMv("MV_XCARPRI",,60)
+
+	If nTipo == 1
+		cRetorno := cValToChar(nDias)
+	ElseIf nTipo == 2
+		cRetorno := AllTrim(Extenso(nDias, .T.))
+	EndIf
+
+Return(cRetorno)
+
+Static Function RetValorEquip(nTipo)
+
+	Local cRetorno	As Character
+	Local nValor	As Numeric
+
+	nValor := PrecoEquip()
+
+	If nTipo == 1
+		cRetorno := AllTrim(TransForm(nValor, "@E 999,999.99"))
+	ElseIf nTipo == 2
+		cRetorno := AllTrim(Extenso(nValor))
+	EndIf
+
+Return(cRetorno)
+
+Static Function RetDiaVenc(nTipo)
+
+	Local cRetorno	As Character
+	Local nDias 	As Numeric
+
+	nDias := SuperGetMv("MV_XCARPRI",,60)
+
+	If nTipo == 1
+		cRetorno := cValToChar(Day(DaySum(dDatabase, nDias)))
+	ElseIf nTipo == 2
+		cRetorno := AllTrim(Extenso(Day(DaySum(dDatabase, nDias)), .T.))
+	EndIf
+
+Return(cRetorno)
+
+Static Function PrecoEquip()
+
+	Local aArea		As Array
+	Local aAreaUJI	As Array
+	Local nRetorno 	As Numeric
+
+	aArea 		:= GetArea()
+	aAreaUJI 	:= UJI->(GetArea())
+	nRetorno 	:= 0
+
+	UJI->(DBSetOrder(1))
+	If UJI->(MsSeek(xFilial("UJI")+UJH->UJH_CODIGO))
+		While UJI->(!Eof()) .And. xFilial("UJI")+UJI->UJI_CODIGO == UJH->UJH_FILIAL+UJH->UJH_CODIGO
+			nRetorno += ValorBem(UJI->UJI_CHAPA, UJH->UJH_TABPRC)
+			UJI->(DbSkip())
+		EndDo
+	EndIf
+
+	RestArea(aAreaUJI)
+	RestArea(aArea)
+
+Return(nRetorno)
+
+Static Function ValorBem(cChapa, cTabPreco)
+
+	Local nVlrEquipa   := 0
+
+	SN1->(DbSetOrder(2))
+	SB1->(DbSetOrder(1))
+
+	//Posiciono no Ativo para pegar o codigo do produto vinculado
+	If SN1->(DbSeek(xFilial("SN1") + cChapa ))
+
+		//Posiciono no produto
+		If SB1->(DbSeek(xFilial("SB1")+SN1->N1_PRODUTO))
+			nVlrEquipa := U_RetPrecoVenda(cTabPreco,SB1->B1_COD)
+		endif
+	endif
+
+Return(nVlrEquipa)

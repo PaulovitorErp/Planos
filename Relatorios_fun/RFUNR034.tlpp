@@ -1,0 +1,576 @@
+#include "totvs.ch"
+#include "fwprintsetup.ch"
+#include "fileio.ch"
+#include "rptdef.ch"
+
+/*/{Protheus.doc} RFUNR034
+Relatório de Inadimplencia Analitico
+por Cidade, Qtd de Parcelas em Atraso e Ultimo pagamento
+@type function
+@version 1.0
+@author Raphael Martins
+@since 08/03/2024
+/*/
+User Function RFUNR034()
+
+	Local cRelatorio			:= "Relatorio de Inadimplencia Analitico"
+	Local cPerg         		:= "RFUNR034"
+	Local cCSSGroup				:= ""
+	Local cBotaoCSSCinza  		:= ""
+	Local cBotaoCSSAzul   		:= ""
+	Local cBotaoCSSVerde  		:= ""
+	Local cBotaoCSSLaranja  	:= ""
+	Local cBotaoCSSVermelho  	:= ""
+	Local oBtnSair      		:= Nil
+	Local oBtnPDF      			:= Nil
+	Local oBtnHTML     			:= Nil
+	Local oBtnPlanilha  		:= Nil
+	Local oBtnParametros		:= Nil
+	Local oGroupRel     		:= Nil
+	Local oSayRel       		:= Nil
+	Local oDlgRel       		:= Nil
+	Local oFontTitulo   		:= Nil
+	Local oCSSButtonVirtus				:= Nil
+
+	// chamo a classe de estilo CSS
+	oCSSButtonVirtus := CSSButtonVirtus():New()
+
+	// CSS do objeto group para colorir a borda
+	cCSSGroup 			:= oCSSButtonVirtus:CSSGroup()
+
+	// monto o CSS dos botoes
+	cBotaoCSSCinza  	:= oCSSButtonVirtus:CSSButtonGray()
+	cBotaoCSSAzul   	:= oCSSButtonVirtus:CSSButtonBlue()
+	cBotaoCSSVerde  	:= oCSSButtonVirtus:CSSButtonGreen()
+	cBotaoCSSLaranja  	:= oCSSButtonVirtus:CSSButtonOrange()
+	cBotaoCSSVermelho  	:= oCSSButtonVirtus:CSSButtonRed()
+
+	// crio o grupo de perguntas
+	AjustaSX1(cPerg)
+
+	While Pergunte(cPerg,.T.)
+
+		DEFINE MSDIALOG oDlgRel TITLE "Impressão de Relatório - " + cRelatorio FROM 000, 000  TO 200, 455 COLORS 0, 16777215 PIXEL
+
+		@ 003, 003 GROUP oGroupRel TO 095, 227 PROMPT "Impressão de Relatório - " + cRelatorio OF oDlgRel COLOR 0, 16777215 PIXEL
+		oGroupRel:oFont := oFontTitulo
+		oGroupRel:SetCss(cCSSGroup)
+
+		@ 023, 014 SAY oSayRel PROMPT "Este relatório tem como intuito a impressão da Inadimplencia Analitica" SIZE 205, 025 OF oDlgRel COLORS 0, 16777215 PIXEL
+
+		// botoes da rotina
+		@ 065, 010 BUTTON oBtnParametros    PROMPT "Parametros"     SIZE 040, 015 OF oDlgRel PIXEL ACTION(Pergunte(cPerg,.T.))
+		oBtnParametros:SetCss(cBotaoCSSCinza)
+
+		@ 065, 055 BUTTON oBtnHTML      	PROMPT "HTML"  		 	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(cRelatorio, 1))
+		oBtnHTML:SetCss(cBotaoCSSAzul)
+
+		@ 065, 100 BUTTON oBtnPDF     	 	PROMPT "PDF"        	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(cRelatorio, 2))
+		oBtnPDF:SetCss(cBotaoCSSLaranja)
+
+		@ 065, 145 BUTTON oBtnPlanilha      PROMPT "Planilha"     	SIZE 040, 015 OF oDlgRel PIXEL ACTION(ValidParam(cRelatorio, 3))
+		oBtnPlanilha:SetCss(cBotaoCSSVerde)
+
+		@ 065, 190 BUTTON oBtnSair          PROMPT "Sair"           SIZE 030, 015 OF oDlgRel PIXEL ACTION(oDlgRel:End())
+		oBtnSair:SetCss(cBotaoCSSVermelho)
+
+		ACTIVATE MSDIALOG oDlgRel CENTERED
+
+	EndDo
+
+Return(Nil)
+
+/*/{Protheus.doc} ValidParam
+Funcao para validar a impressao
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/12/2022
+@param nTipoImpressao, numeric, tipo de impressao
+@return logical, retorno logico para impressao
+/*/
+Static Function ValidParam(cRelatorio, nTipoImpressao)
+
+	Local aTitulo   := {}
+	Local lRetorno 	:= .T.
+
+	Default cRelatorio  := ""
+	Default nTipoImpressao	:= 0
+
+	aTitulo := {"Contrato", "Cliente", "Data Ativacao","Municipio", "Fone", "Celular", "Dia Venc", "Qtd Parcelas", "Vlr Parcelas","Ult. Pag"}
+
+	// caso estiver tudo certo com os parametros do relatorio
+	if lRetorno
+
+		oProcess := MsNewProcess():New( { | lEnd | ProccesaRelatorio( @oProcess, @lEnd, nTipoImpressao, cRelatorio, aTitulo) }, cRelatorio, "Aguarde, processando os dados do relatorio...", .F. )
+		oProcess:Activate()
+
+	else
+		MsgAlert("Não existem dados para a impressão do relatório!")
+	endIf
+
+
+Return(lRetorno)
+
+/*/{Protheus.doc} ProccesaRelatorio
+Rotina de processamento para a impressao do relatorio
+@type function
+@version 1.0
+@author g.sampaio
+@since 25/05/2021
+@param oProcess, object, objeto da barra de processamento
+@param lEnd, logical, variavel logica para indicar se finaliza ou não a impressão
+@param cRelatorio, character, nome do relatorio
+@param nTipoImpressao, numeric, tipo de impressao 1=Planilha;2=PDF
+@param aTitulo, array, titulos do relatorio
+/*/
+Static Function ProccesaRelatorio( oProcess, lEnd, nTipoImpressao, cRelatorio, aTitulo )
+
+	Local aDados			As Array
+	Local aInformacao		As Array
+	Local aTotalizadores	As Array
+
+	Default cRelatorio		:= ""
+	Default aTitulo			:= {}
+
+	// atribui valor inicial as variaveis
+	aDados 			:= {}
+	aInformacao		:= {}
+	aTotalizadores	:= {}
+
+	// funcao para gerar os dados
+	aInformacao := GeraDados(nTipoImpressao, @aTotalizadores)
+
+	// verifico se tem dados para serem impressos
+	if Len(aInformacao) > 0
+
+		// atualizo o objeto de processamento
+		oProcess:IncRegua1('Consultando dados para o impressão...')
+
+		// faco tratamento dos dados
+		aDados := U_UTrataDados(aTitulo, aInformacao)
+
+		// verifico se tenho dados para a impressao
+		if Len(aDados) > 0
+
+			if nTipoImpressao == 1 // HTML
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em HTML...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraHTML( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+			elseIf nTipoImpressao == 2 // PDF
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em PDF...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraPDF( @oProcess, @lEnd, cRelatorio, aTitulo, aDados, aTotalizadores )
+
+			elseIf nTipoImpressao == 3 // Planilha
+
+				// atualizo o objeto de processamento
+				oProcess:IncRegua1('Impressão em Planilha...')
+
+				// atualizo o objeto de processamentp
+				oProcess:SetRegua2(Len(aDados))
+
+				GeraPlanilha( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+			endIf
+
+		endIf
+
+	Else
+		MsgAlert("Não existem dados para geração do relatório!")
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraPDF
+Funcao para a impressao em PDF
+@type function
+@version 1.0
+@author g.sampaio
+@since 04/12/2022
+@param oProcess, object, param_description
+@param lEnd, logical, param_description
+@param cRelatorio, character, param_description
+@param aDados, array, param_description
+@return variant, return_description
+/*/
+Static Function GeraPDF( oProcess, lEnd, cRelatorio, aTitulo, aDados, aTotalizadores )
+
+	Local aColunas			    As Array
+	Local nMVTamanhoFonte		As Numeric
+	Local oGeraPDF				As Object
+	Local oPDFPrint				As Object
+
+	Default aDados			:= {}
+	Default cRelatorio		:= ""
+	Default aTotalizadores	:= {}
+
+	// atribuo valor as variaveis
+	oGeraPDF		    := Nil
+	oPDFPrint 		    := Nil
+	nMVTamanhoFonte	    := SuperGetMV("MV_XFONTV1",,1)
+	aColunas	        := {}
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Iniciando objeto de impressão...')
+
+	// inicio a classe de geracao de planilha
+	oGeraPDF := VirtusRelPDF():New(@oPDFPrint, cRelatorio, 1, nMVTamanhoFonte)
+
+	aColunas  := { oGeraPDF:nMargemL, 500, 1000, 1200, 1400, 1600, 1800, 2000,2200,2400 }
+    
+	//------------------------
+	// impresso do cabecalho
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Impressão do cabeçalho...')
+
+	oGeraPDF:ImpCabecalho(@oPDFPrint, cRelatorio)
+
+	// salto a linha
+	oGeraPDF:nLinha += 100
+
+	//--------------------------------
+	// faco a impressao do relatorio
+	//-------------------------------
+
+	if Len(aDados) > 0
+
+		// faco a impressao do conteudo do relatorio
+		oGeraPDF:ImpRelatorio( @oProcess, @lEnd, @oPDFPrint, cRelatorio, aTitulo, aColunas, aDados)
+
+		// salto a linha
+		oGeraPDF:nLinha += 50
+
+	endIf
+
+
+	//-----------------------------
+	// impressao dos totalizadores
+	//-----------------------------
+
+	If Len(aTotalizadores)
+
+		oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, aTotalizadores[1, 1], oGeraPDF:oFontNCab )
+		oPDFPrint:Say( oGeraPDF:nLinha+17, 300, aTotalizadores[1, 2], oGeraPDF:oFontNCab )
+
+        oGeraPDF:nLinha += 50
+
+        oPDFPrint:Say( oGeraPDF:nLinha+17, oGeraPDF:nMargemL, aTotalizadores[2, 1], oGeraPDF:oFontNCab )
+		oPDFPrint:Say( oGeraPDF:nLinha+17, 300, aTotalizadores[2, 2], oGeraPDF:oFontNCab )
+
+	EndIf
+
+	//------------------------
+	// impresso do rodape
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Impressão do rodape...')
+
+	// faco a impressao do rodape
+	oGeraPDF:ImpRodape(@oPDFPrint)
+
+	//------------------------
+	// gera o relatorio
+	//------------------------
+
+	// atualizo o objeto de processamento
+	oProcess:IncRegua2('Gerando o PDF do relatorio...')
+
+	// faco a impressao do relatorio
+	oGeraPDF:Imprimir(@oPDFPrint)
+
+Return( Nil )
+
+/*/{Protheus.doc} GeraDados
+funcao para a geracao de dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 28/06/2021
+@param oTempTipo, object, objeto do tipo de vendedores
+@param oTempDetalhes, object, objeto do tipo de detalhes
+@return array, array de dados do retorno
+/*/
+Static Function GeraDados(nTipoImpressao, aTotalizadores)
+
+	Local aArea                 := GetArea()
+	Local aAux 					:= {}
+	Local aDadosTit             := {}
+    Local cQuery                := ""
+	Local cCidade               := ""
+    Local cFormaPg              := ""
+    Local cRotas                := ""
+    Local cCelular              := ""
+    Local cFone                 := ""
+    Local nQtdVencIni           := 0
+    Local nQtdVencFim           := 0
+    Local nQtdParcelas          := 0
+    Local nVlrParcelas          := 0
+    Local dAtivacaoIni          := CTOD("")
+    Local dAtivacaoFinal        := CTOD("")
+
+	Default nTipoImpressao	:= 0
+	Default aTotalizadores	:= 0
+
+	// verifico se o array de parametros tem informacoes
+	// preenche os parametros para validacao
+	cCidade  	        := MV_PAR01
+	cFormaPg 	        := MV_PAR02
+	cRotas              := MV_PAR03
+	nQtdVencIni         := MV_PAR04
+    nQtdVencFim         := MV_PAR05
+    dAtivacaoIni        := MV_PAR06
+    dAtivacaoFinal      := MV_PAR07
+
+    cQuery := " SELECT 
+    cQuery += " CONTRATO.UF2_CODIGO AS CONTRATO,
+    cQuery += " CLIENTES.A1_COD AS CLIENTE,
+    cQuery += " CLIENTES.A1_LOJA AS LOJA, 
+    cQuery += " CLIENTES.A1_NOME AS NOME,
+    cQuery += " CLIENTES.A1_MUN AS MUNICIPIO,
+    cQuery += " CLIENTES.A1_DDD AS DDD,
+    cQuery += " CLIENTES.A1_TEL AS FONE,
+    cQuery += " CLIENTES.A1_XDDDCEL AS DDDCEL,
+    cQuery += " CLIENTES.A1_XCEL AS CELULAR,
+    cQuery += " CONTRATO.UF2_DTATIV DATA_ATIVACAO, "
+    cQuery += " SUBSTRING(CONTRATO.UF2_PRIMVE, 7, 2) AS DIA_VENC,
+    cQuery += " COUNT(*) AS QTD_PARCELAS,
+    cQuery += " SUM(E1_VALOR) AS VLR_PARCELAS,
+    cQuery += " (SELECT MAX(E1_BAIXA) AS BAIXA 
+    cQuery += " FROM " + RetSQLName("SE1") + " AS BAIXA 
+    cQuery += "     WHERE 
+    cQuery += "        BAIXA.D_E_L_E_T_ = ' ' 
+    cQuery += "        AND BAIXA.E1_FILIAL = CONTRATO.UF2_FILIAL
+    cQuery += "        AND BAIXA.E1_XCTRFUN = CONTRATO.UF2_CODIGO
+    cQuery += " GROUP BY BAIXA.E1_XCTRFUN
+    cQuery += " ) AS ULTIMO_PAGAMENTO
+    cQuery += " FROM 
+    cQuery += RetSQLName("SA1") + " AS CLIENTES "
+    cQuery += " INNER JOIN " + RetSQLName("UF2") + " AS CONTRATO
+    cQuery += " ON CLIENTES.D_E_L_E_T_ = ' '
+    cQuery += " AND CONTRATO.D_E_L_E_T_ = ' ' 
+    cQuery += " AND CLIENTES.A1_FILIAL = '" + xFilial("SA1") + "' 
+    cQuery += " AND CONTRATO.UF2_FILIAL = '" + xFilial("UF2") + "'
+    cQuery += " AND CLIENTES.A1_COD = CONTRATO.UF2_CLIENT
+    cQuery += " AND CLIENTES.A1_LOJA = CONTRATO.UF2_LOJA
+    cQuery += " INNER JOIN " + RetSQLName("SE1") + " AS TITULOS
+    cQuery += " ON TITULOS.D_E_L_E_T_ = ' ' 
+    cQuery += " AND TITULOS.E1_FILIAL = '" + xFilial("SE1") + "'
+    cQuery += " AND TITULOS.E1_XCTRFUN = CONTRATO.UF2_CODIGO
+    
+    if !Empty(cRotas)
+
+        cQuery += " LEFT JOIN "																					
+        cQuery += + RetSQLName("ZFC") + " BAIRROS "																
+        cQuery += " ON "																							
+        cQuery += " BAIRROS.D_E_L_E_T_ = ' ' "																	
+        cQuery += " AND BAIRROS.ZFC_FILIAL = '" + xFilial("ZFC") + "' "	
+        cQuery += " AND CLIENTES.A1_XCODBAI = BAIRROS.ZFC_CODBAI "												
+
+        cQuery += " LEFT JOIN "																					
+        cQuery += + RetSQLName("U35") + " ITENS_ROTA "															
+        cQuery += " ON "																					
+        cQuery += " ITENS_ROTA.D_E_L_E_T_ = ' ' "															
+        cQuery += " AND ITENS_ROTA.U35_FILIAL = '" + xFilial("U35") + "'"  										
+        cQuery += " AND BAIRROS.ZFC_CODBAI = ITENS_ROTA.U35_CODBAI "										
+
+        cQuery += " LEFT JOIN "																					
+        cQuery += + RetSQLName("U34") + " ROTA "																	
+        cQuery += " ON "																							
+        cQuery += " ROTA.D_E_L_E_T_ = ' ' "																		
+        cQuery += " AND ITENS_ROTA.U35_FILIAL = ROTA.U34_FILIAL " 		 										
+        cQuery += " AND ITENS_ROTA.U35_CODIGO = ROTA.U34_CODIGO "													
+
+
+    endif
+
+    cQuery += " WHERE
+    cQuery += " TITULOS.E1_SALDO > 0
+    cQuery += " AND TITULOS.E1_VENCREA < '" + DTOS(dDatabase) + "'
+
+    if !Empty(cFormaPg)
+        cQuery += " AND CONTRATO.UF2_FORPG = '" + Alltrim(cFormaPg) + "'
+    endif
+
+    if !Empty(dAtivacaoIni) .And. !Empty(dAtivacaoFinal) 
+        cQuery += " AND CONTRATO.UF2_DTATIV BETWEEN '" + DTOS(dAtivacaoIni) + "' AND '" + DTOS(dAtivacaoFinal) + "'
+    endif
+
+
+    if !Empty(cCidade)
+        cQuery += " AND CLIENTES.A1_COD_MUN = '" + cCidade + "' 
+    endif
+
+    //valido se as rotas foram preenchidas
+	if !Empty(cRotas)
+		cQuery += " AND ITENS_ROTA.U35_CODIGO IN " + FormatIn( AllTrim(cRotas),";")  
+	endif
+
+    cQuery += " GROUP BY 
+    cQuery += " CONTRATO.UF2_CODIGO, CLIENTES.A1_COD, CLIENTES.A1_LOJA, CLIENTES.A1_NOME,
+    cQuery += " CLIENTES.A1_MUN, CLIENTES.A1_DDD, CLIENTES.A1_TEL, CLIENTES.A1_XDDDCEL, CONTRATO.UF2_DTATIV, 
+    cQuery += " CLIENTES.A1_XCEL, SUBSTRING(CONTRATO.UF2_PRIMVE, 7, 2), CONTRATO.UF2_FILIAL
+    cQuery += " HAVING COUNT(*) BETWEEN " + cValToChar(nQtdVencIni) + " AND " + cValToChar(nQtdVencFim) + " "
+    cQuery += " ORDER BY QTD_PARCELAS, DATA_ATIVACAO "
+
+
+    // trato a query
+    cQuery := ChangeQuery(cQuery)
+
+    MPSysOpenQuery( cQuery, 'TMPTIT' )
+
+    While TMPTIT->(!Eof())
+
+        if !Empty(TMPTIT->DDD)
+            cFone := " (" + Alltrim(TMPTIT->DDD) + ") "
+        endif
+        
+        cFone += TMPTIT->FONE
+
+        if !Empty(TMPTIT->DDDCEL)
+            cCelular := " (" + Alltrim(TMPTIT->DDDCEL) + ") "
+        endif
+        
+        cCelular += TMPTIT->CELULAR
+
+
+        aAux := {}
+        aAdd( aAux, TMPTIT->CONTRATO )
+        aAdd( aAux, Alltrim(TMPTIT->NOME) )
+        aAdd( aAux, STOD(TMPTIT->DATA_ATIVACAO) ) 
+        aAdd( aAux, Alltrim(TMPTIT->MUNICIPIO) )
+        aAdd( aAux, cFone )
+        aAdd( aAux, cCelular )
+        aAdd( aAux, Alltrim(TMPTIT->DIA_VENC) )
+        aAdd( aAux, TransForm(TMPTIT->QTD_PARCELAS, "@E 999999"))
+        aAdd( aAux, Transform(TMPTIT->VLR_PARCELAS,"@E 9,999,999,999,999.99"))
+        aAdd( aAux, STOD(TMPTIT->ULTIMO_PAGAMENTO) )
+
+        aAdd(aDadosTit, aAux)
+
+        nQtdParcelas += TMPTIT->QTD_PARCELAS
+        nVlrParcelas += TMPTIT->VLR_PARCELAS
+
+        cFone       := ""
+        cCelular    := ""
+
+        TMPTIT->(DBSkip())
+    endDo
+
+    If nTipoImpressao == 2 // impressao em pdf
+        
+        aAdd(aTotalizadores, {"Qtd Parcelas:", AllTrim(TransForm(nQtdParcelas,"@E 999999"))})
+        aAdd(aTotalizadores, {"R$ Parcelas:", AllTrim(TransForm(nVlrParcelas,"@E 9,999,999,999,999.99"))})
+
+    EndIf
+
+    If Select("TMPTIT") > 0
+        TMPTIT->( DbCloseArea() )
+    EndIf
+
+	RestArea(aArea)
+
+Return(aDadosTit)
+
+/*/{Protheus.doc} AjustaSX1
+Função que cria as perguntas na SX1.	
+@type function
+@version 1.0  
+@author Wellington Gonçalves
+@since 24/02/2016
+@param cPerg, character, Grupo de Perguntas
+/*/
+Static Function AjustaSX1(cPerg)
+
+	Local aRegs		:= {}
+
+	Default cPerg	:= ""
+
+	// verifico se o nome do grupo de pergunta foi passado
+	if !Empty(cPerg)
+
+            
+		// parametros SX1
+		aAdd(aRegs,{cPerg,'01','Cidade'             ,'','','mv_ch1','C', 06 , 0, 0, 'G','','mv_par01','','','','','','CC2'})
+		aAdd(aRegs,{cPerg,'02','Forma de Pagamento' ,'','','mv_ch2','C', 06 , 0, 0, 'G','','mv_par02','','','','','','24'})
+		aAdd(aRegs,{cPerg,'03','Rota'               ,'','','mv_ch3','C', 08 , 0, 0, 'G','','mv_par03','','','','','','U34MAR'})
+		aAdd(aRegs,{cPerg,'04','Qtd Inicial de Parcelas' ,'','','mv_ch4','N', 08 , 0, 0, 'G','','mv_par04','','','','','',''})
+		aAdd(aRegs,{cPerg,'05','Qtd Maximo de Parcelas' ,'','','mv_ch5','N', 08	, 0, 0, 'G','','mv_par05','','','','','',''})
+		aAdd(aRegs,{cPerg,'06','Data Ativacao Inicial'             ,'','','mv_ch1','D', 08 , 0, 0, 'G','','mv_par01','','','','','','CC2'})
+		aAdd(aRegs,{cPerg,'07','Data Ativacao Final' ,'','','mv_ch2','D', 08 , 0, 0, 'G','','mv_par02','','','','','','24'})
+
+		// cria os dados da SX1
+		U_CriaSX1( aRegs )
+
+	endIf
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraHTML
+Funcao para gerar a Planilha em Excell a partir dos dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraHTML( oProcess, lEnd, cRelatorio, aTitulo, aDados)
+
+	Local oVirtusRelHTML		As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+
+	// atribuo valor as variaveis
+	oVirtusRelHTML	:= Nil
+
+	// inicio a classe de geracao de planilha
+	oVirtusRelHTML := VirtusRelHTML():New()
+
+	// faco a impressao da planilha
+	oVirtusRelHTML:Imprimir( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+Return(Nil)
+
+/*/{Protheus.doc} GeraPlanilha
+Funcao para gerar a Planilha em Excell a partir dos dados
+@type function
+@version 1.0
+@author g.sampaio
+@since 17/12/2020
+@param aDados, array, Array de Dados do relatorio
+/*/
+Static Function GeraPlanilha( oProcess, lEnd, cRelatorio, aTitulo, aDados)
+
+	Local oVirtusRelPlanilha		As Object
+
+	Default cRelatorio	:= ""
+	Default aTitulo		:= {}
+	Default aDados		:= {}
+
+	// atribuo valor as variaveis
+	oVirtusRelPlanilha	:= Nil
+
+	// inicio a classe de geracao de planilha
+	oVirtusRelPlanilha := VirtusRelPlanilha():New()
+
+	// faco a impressao da planilha
+	oVirtusRelPlanilha:Imprimir( @oProcess, @lEnd, cRelatorio, aTitulo, aDados )
+
+Return(Nil)
