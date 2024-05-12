@@ -1,0 +1,103 @@
+#include 'totvs.ch'
+#include 'topconn.ch'
+
+/*/{Protheus.doc} PUTIL017
+Ponto de entrada no cadastro de 'Rotina de Termos'
+@type function
+@version 1.0
+@author g.sampaio
+@since 23/11/2020
+/*/
+User Function PUTIL017()
+
+	Local aParam 			as Array
+	Local cIdPonto 			as Character
+	Local cIdModel 			as Character
+	Local cAuxComoGera		as Character
+	Local cComoGera			as Character
+	Local lContinua			as Logical
+	Local xRet  			as Logical
+	Local nContador			as Numeric
+	Local oObj 				as Object
+	Local oModelUJN 		as Object
+
+	// atribuo o valor das variaveis
+	aParam 			:= PARAMIXB
+	cIdPonto 		:= ""
+	cIdModel 		:= ""
+	cAuxComoGera	:= ""
+	cComoGera		:= ""
+	lContinua		:= .T.	
+    nContador		:= 0
+	oObj 			:= Nil
+	oModelUJN 		:= Nil
+    xRet    		:= .T.
+	
+
+	// caso os parametros estejam preenchidos
+	if aParam <> NIL
+
+		oObj 		:= aParam[1]					// modelo de dados principal
+		cIdPonto 	:= aParam[2]					// id do ponto de entrada do MVC
+		cIdModel 	:= aParam[3]					// id do modelo de dados
+		oModelUJN 	:= oObj:GetModel("UJNMASTER")	// modelo de dados de formas de pgamento
+
+		If cIdPonto == 'MODELPOS' .And. oObj:GetOperation() == 5 //Confirmação da Exclusão
+
+			// verifico se a regra esta vinculada a algum plano
+			If PossuiTermo(oModelUJN:GetValue("UJN_CODIGO"))
+
+				// mensagem para o usuario
+				Help( ,, 'Help - MODELPOS',, 'Nao e possivel excluir a Rotina de Termos, pois existem termos cadastrados para está rotina.', 1, 0 )
+				xRet := .F.
+
+			Endif
+
+		Endif
+
+	endIf
+
+Return(xRet)
+
+/*/{Protheus.doc} PossuiTermo
+funcoao para verificar o uso da Rotina de Termos
+no cadastro de termos.
+@type function
+@version 
+@author g.sampaio
+@since 23/11/2020
+@param cCodRotTermo, Characteracter, codigo da rotina
+@return logical, retorno 
+/*/
+Static Function PossuiTermo(cCodRotTermo)
+
+	Local cQuery    as Character
+	Local lRetorno  as Logical
+
+    Default cCodRotTermo    := ""
+
+    // declaracao de variaveis
+	lRetorno    := .F.  // retorno default .F.(False)
+	cQuery      := ""   
+
+	if Select("TRBROT") > 0
+		TRBROT->(DbCloseArea())
+	endIf
+
+    // query na UJJ para verificar se existe a rotina em algum termo
+    cQuery := " SELECT UJJ.UJJ_CODIGO FROM " + RetSqlName("UJJ") + " UJJ "
+    cQuery += " WHERE UJJ.D_E_L_E_T_ = ' ' "
+    cQuery += " AND UJJ.UJJ_FILIAL = '" + xFilial("UJJ") + "' "
+    cQuery += " AND UJJ.UJJ_ROTINA = '" + cCodRotTermo + "' "
+    
+    TcQuery cQuery New Alias "TRBROT"
+
+    if TRBROT->(!Eof())
+        lRetorno    := .T. // retorno que possuem termos com o codigo da rotina        
+    endIf
+
+	if Select("TRBROT") > 0
+		TRBROT->(DbCloseArea())
+	endIf
+
+Return(lRetorno)
