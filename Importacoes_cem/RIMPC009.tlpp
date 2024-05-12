@@ -1,0 +1,253 @@
+#include "totvs.ch"
+
+#define CRLF Chr(13) + Chr(10)
+
+/*/{Protheus.doc} RIMPC009
+Programa para importacao de historico de transferencia
+de cessionario de contratos de cemiterio
+@type function
+@version 1.0
+@author g.sampaio
+@since 05/04/2022
+@param aHistorico, array, dados de historico para importacao
+@param nHdlLog, numeric, variavel de historico=
+/*/
+User Function RIMPC009(aHistorico, nHdlLog)
+
+	Local aArea             	As Array
+	Local aAreaU00          	As Array
+	Local aAreaSA1          	As Array
+	Local aAreaU19          	As Array
+	Local aLinhaHst         	As Array
+	Local cCGCAnterior      	As Character
+	Local cCodCliAnt        	As Character
+	Local cLojCliAnt        	As Character
+	Local cMotTransf        	As Character
+	Local cCodClienteAnterior	As Character
+	Local cLojaAnterior			As Character
+	Local cNomeAnterior			As Character
+	Local cQuery 				As Character
+	Local dDtTransf         	As Date
+	Local lContinua         	As Logical
+	Local lRetorno				As Logical
+	Local nX                	As Numeric
+	Local nPosCodAnt        	As Numeric
+	Local nPosCGCAnt        	As Numeric
+	Local nPosCliant        	As Numeric
+	Local nPosDtTransf      	As Numeric
+	Local nPosMotTransf     	As Numeric
+
+	Default aHistorico  := {}
+	Default nHdlLog     := 0
+
+	// inicio o valor das variaveis
+	aArea           	:= GetArea()
+	aAreaU00        	:= U00->(GetArea())
+	aAreaSA1        	:= SA1->(GetArea())
+	aAreaU19        	:= U19->(GetArea())
+	aLinhaHst       	:= {}
+	cCGCAnterior    	:= ""
+	cCodCliAnt      	:= ""
+	cLojCliAnt      	:= ""
+	cMotTransf      	:= ""
+	cCodClienteAnterior	:= ""
+	cLojaAnterior		:= ""
+	cNomeAnterior		:= ""
+	cQuery				:= ""
+	dDtTransf       	:= SToD("")
+	lContinua       	:= .T.
+	lRetorno			:= .F.
+	nX              	:= 0
+	nPosCodAnt      	:= 0
+	nPosCGCAnt      	:= 0
+	nPosCliant      	:= 0
+	nPosDtTransf    	:= 0
+	nPosMotTransf   	:= 0
+
+	For nX := 1 To Len(aHistorico)
+
+		// zera as variaveis
+		aLinhaHst       := {}
+		nPosCodAnt      := 0
+		nPosCGCAnt      := 0
+		nPosCliant      := 0
+		nPosDtTransf    := 0
+		nPosMotTransf   := 0
+
+		// linha de contrato
+		aLinhaHst := aClone(aHistorico[nX])
+
+		// posicao dos campos principais do historico
+		nPosCodAnt      := AScan(aLinhaHst,{|x| AllTrim(x[1]) == "COD_ANT"})
+		nPosCGCAnt      := AScan(aLinhaHst,{|x| AllTrim(x[1]) == "CGC_CLIANT"})
+		nPosCliant      := AScan(aLinhaHst,{|x| AllTrim(x[1]) == "CLI_ANT"})
+		nPosDtTransf    := AScan(aLinhaHst,{|x| AllTrim(x[1]) == "U19_DATA"})
+		nPosMotTransf   := AScan(aLinhaHst,{|x| AllTrim(x[1]) == "U19_MOTIVO"})
+
+		//importo apenas contratos com codigo anterior preenchido
+		if nPosCodAnt > 0
+
+			// zera as variaveis
+			cCGCAnterior    := ""
+			cCodCliAnt      := ""
+			cMotTransf      := ""
+			dDtTransf       := SToD("")
+			lContinua       := .T.
+			lRetorno		:= .F.
+
+			// CPF do cliente anterior
+			if nPosCGCAnt > 0
+				cCGCAnterior := AllTrim(aLinhaHst[nPosCGCAnt,2])
+			else
+				lContinua := .F.
+				fWrite(nHdlLog , "Contrato sem CPF/CNPJ do cliente anterior preenchido, o campo obrigatório para a importação!" )
+				fWrite(nHdlLog , CRLF )
+			endIf
+
+			// Codigo do cliente anterior
+			if nPosCliant > 0 .And. (!lContinua .Or. empty(cCGCAnterior))
+				lContinua := .T.
+				fWrite(nHdlLog , "Codigo do cliente anterior preenchido, será possível prosseguir com a importação!" )
+				fWrite(nHdlLog , CRLF )
+				cCodCliAnt := aLinhaHst[nPosCliant,2]
+			elseif empty(cCGCAnterior)
+				lContinua := .F.
+				fWrite(nHdlLog , "Codigo do Cliente anterior não preenchido, campo obrigatório para a importação!" )
+				fWrite(nHdlLog , CRLF )
+			endIf
+
+			// motivo de transferencia
+			if nPosMotTransf > 0 .And. lContinua
+				cMotTransf := aLinhaHst[nPosMotTransf,2]
+			else
+				fWrite(nHdlLog , "Motivo de transferencia não preenchido, campo obrigatório para a importação!" )
+				fWrite(nHdlLog , CRLF )
+			endIf
+
+			// data de transferencia
+			if nPosDtTransf > 0 .And. lContinua
+
+				dDtTransf := aLinhaHst[nPosDtTransf,2]
+
+			else
+
+				dDtTransf := dDatabase
+
+				fWrite(nHdlLog , "Campo U19_DATA não informado, utilizando a database " + DToC(dDatabase) + "!" )
+				fWrite(nHdlLog , CRLF )
+			endIf
+
+		else
+			lContinua := .F.
+			fWrite(nHdlLog , "Codigo do contrato anterior não preenchido, o campo obrigatório para a importação!" )
+			fWrite(nHdlLog , CRLF )
+
+		endIf
+
+		if lContinua
+
+			U00->(DbOrderNickName("U00CODANT")) //-- U00_FILIAL+U00_CODANT
+			if U00->(MsSeek(xFilial("U00")+aLinhaHst[nPosCodAnt,2]))
+
+				if !Empty(cCGCAnterior)
+
+					SA1->(DbSetOrder(3))
+					if SA1->(MsSeek(xFilial("SA1")+cCGCAnterior))
+						cCodClienteAnterior := SA1->A1_COD
+						cLojaAnterior		:= SA1->A1_LOJA
+						cNomeAnterior		:= SA1->A1_NOME
+					else
+						lContinua := .F.
+						fWrite(nHdlLog , "Cliente não encontrado para o CGC <" + cCGCAnterior + ">!" )
+						fWrite(nHdlLog , CRLF )
+					endIf
+
+				else
+
+					if !Empty(cCodCliAnt) .And. SA1->(FieldPos("A1_XCODANT")) > 0
+
+						cQuery := " SELECT SA1.A1_COD, SA1.A1_LOJA, SA1.A1_NOME FROM "
+						cQuery += " " + RetSQLName("SA1") + " SA1 "
+						cQuery += " WHERE SA1.D_E_L_E_T_ = ' ' "
+						cQuery += " AND SA1.A1_XCODANT = '" + cCodCliAnt + "' "
+
+						// executo a query e crio o alias temporario
+						MPSysOpenQuery( cQuery, 'TMPCLI' )
+
+						if TMPCLI->(!Eof())
+							cCodClienteAnterior := TMPCLI->A1_COD
+							cLojaAnterior		:= TMPCLI->A1_LOJA
+							cNomeAnterior		:= TMPCLI->A1_NOME
+						endIf
+					else
+						lContinua := .F.
+						if nHdlLog > 0
+							fWrite(nHdlLog , "Cliente não encontrado para o Codigo Anterior <" + cCodCliAnt + "> ou o campo A1_XCODANT não existe no dicionario!" )
+							fWrite(nHdlLog , CRLF )
+						endIf
+					endIf
+
+				endIf
+
+				// verifico se esta tudo certo ate aqui
+				If lContinua
+
+					BEGIN TRANSACTION
+
+						//Gera Log
+						if U19->(RecLock("U19",.T.))
+							U19->U19_FILIAL	:= xFilial("U19")
+							U19->U19_CODIGO := GetSX8Num("U19","U19_CODIGO")
+							U19->U19_CONTRA	:= U00->U00_CODIGO
+							U19->U19_DATA	:= dDtTransf
+							U19->U19_USER	:= cUserName
+
+							// dados do cliente anterior
+							U19->U19_CLIANT	:= cCodClienteAnterior
+							U19->U19_LOJANT	:= cLojaAnterior
+							U19->U19_NOMANT	:= cNomeAnterior
+
+							// dadoso do cliente atual
+							U19->U19_CLIATU	:= U00->U00_CLIENT
+							U19->U19_LOJATU	:= U00->U00_LOJA
+							U19->U19_NOMATU	:= U00->U00_NOMCLI
+							U19->U19_MOTIVO	:= cMotTransf
+							U19->(MsUnlock())
+
+							U19->(ConfirmSX8())
+
+							//verifico se arquivo de log existe
+							if nHdlLog > 0
+
+								fWrite(nHdlLog , "Histórico de transferencia de cessionario gravado com sucesso, para o contrato <"+U00->U00_CODIGO+">!" )
+								fWrite(nHdlLog , CRLF )
+								fWrite(nHdlLog , "Codigo Hist.Transf: " + Alltrim(U19->U19_CODIGO) )
+								fWrite(nHdlLog , CRLF )
+
+								lRetorno := .T.
+
+							endif
+
+
+						else
+
+							U19->(DisarmTransaction())
+
+						Endif
+
+					END TRANSACTION
+
+				endIf
+
+			endIf
+
+		endIf
+
+	Next nX
+
+	RestArea(aAreaU19)
+	RestArea(aAreaSA1)
+	RestArea(aAreaU00)
+	RestArea(aArea)
+
+Return(lRetorno)
