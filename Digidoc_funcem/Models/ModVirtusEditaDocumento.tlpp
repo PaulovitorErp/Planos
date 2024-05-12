@@ -1,0 +1,38 @@
+#include "totvs.ch"
+
+User Function ModVirtusEditaDocumento()
+Return(Nil)
+
+	Class ModVirtusEditaDocumento
+
+		Public Data titulo        	As Character
+		Public Data observacoes     As Character
+		Public Data ocr             As Character
+		Public Data categoria_id    As Numeric
+
+		Public Method New() Constructor
+		Public Method toJsonObject()
+
+	EndClass
+
+Method New() Class ModVirtusEditaDocumento
+
+	Self:titulo        	:= ""
+	Self:observacoes    := ""
+	Self:ocr            := ""
+	Self:categoria_id   := 0
+
+Return(Self)
+
+Method toJsonObject() Class ModVirtusEditaDocumento
+
+	Local jJsonRet     As Json
+
+	jJsonRet := JsonObject():New()
+
+	jJsonRet["categoria_id"]    := Self:categoria_id
+	jJsonRet["titulo"]         	:= Self:titulo
+	jJsonRet["observacoes"]     := Self:observacoes
+	jJsonRet["ocr"]             := Self:ocr
+
+Return(jJsonRet)

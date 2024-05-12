@@ -1,0 +1,737 @@
+#include "totvs.ch"
+
+#DEFINE P_DESCRICAO		1
+#DEFINE P_ARQUIVO		2
+#DEFINE P_DIRETO		3
+#DEFINE P_COMPLET		4
+
+User Function VirtusAPIDigidoc()
+Return(Nil)
+
+	Class VirtusAPIDigidoc
+
+		Public Data aListaDocumentos	As Array
+		Public Data aDadosDocumneto		As Array
+		Public Data aDadosCategoria 	As Array
+		Public Data cURLDigidoc			As Character
+		Public Data cAccessToken		As Character
+		Public Data cTokenType			As Character
+		Public Data cStatusConnect		As Character
+		Public Data cIDToken			As Character
+		Public Data cCategoria			As Character
+		Public Data cContentType		As Character
+		Public Data cFileOpen			As Character
+		Public Data cIDDocumento		As Character
+		Public Data cPostParams			As Character
+		Public Data cResult				As Character
+		Public Data cCodigoAPI			As Character
+		Public Data cURLDoc				As Character
+		Public Data lConnect			As Logical
+		Public Data lErro 				As Logical
+		Public Data lAtualizado			As Logical
+		Public Data lExcluido			As Logical
+
+		Public Method New() Constructor
+		Public Method ValidaIntegracao()
+		Public Method TokenDigidoc()
+		Public Method EnviarDocumento()
+		Public Method AbreArquivo()
+		Public Method EditarDocumento()
+		Public Method ExcluirDocumento()
+		Public Method BuscarDocumento()
+		Public Method BuscarDocumentoContrato()
+		Public Method ListaCategoria()
+
+	EndClass
+
+Method New() Class VirtusAPIDigidoc
+
+	Self:aListaDocumentos	:= {}
+	Self:aDadosDocumneto	:= {}
+	Self:aDadosCategoria	:= {}
+	Self:cURLDigidoc 		:= SuperGetMV("MV_XDGDURL",,"")
+	Self:cAccessToken   	:= ""
+	Self:cTokenType     	:= ""
+	Self:cStatusConnect 	:= ""
+	Self:cIDToken       	:= ""
+	Self:cContentType   	:= ""
+	Self:cCategoria     	:= ""
+	Self:cFileOpen			:= ""
+	Self:cIDDocumento   	:= ""
+	Self:cPostParams    	:= ""
+	Self:cResult        	:= ""
+	Self:cCodigoAPI     	:= ""
+	Self:cURLDoc        	:= ""
+	Self:lErro		  		:= .F.
+	Self:lConnect       	:= .F.
+	Self:lAtualizado		:= .F.
+	Self:lExcluido			:= .F.
+
+	// pego as categorias disposiveis
+	Self:ListaCategoria()
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::ValidaIntegracao
+Metodo para validar a integracao com a Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@return logical, .T. se conseguiu a integracao, .F. se nao conseguiu
+/*/
+Method ValidaIntegracao() Class VirtusAPIDigidoc
+
+	Local lRetorno      As Logical
+
+	// valido se consigo o token
+	Self:TokenDigidoc()
+
+	// veriico se esta conectado e conseguiu o token
+	If Self:lConnect
+		lRetorno    := .T.
+	Else
+		lRetorno    := .F.
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::TokenDigidoc
+Metodo para Consultar o Token  da Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 2/23/2024
+/*/
+Method TokenDigidoc() Class VirtusAPIDigidoc
+
+	Local aHeadStr          As Array
+	Local cPathToken        As Character
+	Local cClientID         As Character
+	Local cResult           As Character
+	Local oRestToken        As Json
+	Local oResponse			As Json
+
+	// atribui valor as variaveis
+	cPathToken      := SuperGetMV("MV_XDGDAUT", .F., "")
+	cClientID       := SuperGetMV("MV_XDGDAID", .F., "")
+
+	aHeadStr := {}
+	//Aadd(aHeadStr,"Content-Type: application/x-www-form-urlencoded")
+	Aadd(aHeadStr,"Authorization: Basic " + AllTrim(cClientID))
+
+	oRestToken := FWRest():New(Self:cURLDigidoc)
+	oRestToken:SetPath(cPathToken)
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) OBTER TOKEN.", 0, 0, {})
+
+	If oRestToken:Get(aHeadStr)
+		cResult := oRestToken:GetResult()
+
+		// pego os dados do JSON do Token
+		oResponse := JsonObject():New()
+		oResponse:FromJson(cResult)
+
+		// pego os dados de acesso do Token
+		Self:cStatusConnect := oResponse["status"]
+		Self:cAccessToken   := oResponse["data"]
+		Self:cTokenType     := "Bearer"
+
+		// status da conexao
+		If AllTrim(Self:cStatusConnect) == "success"
+			Self:lConnect := .T.
+		EndIf
+	Else
+		cResult := oRestToken:GetLastError()
+	Endif
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(DEPOIS) OBTER TOKEN.", 0, 0, {})
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::EnviarDocumento
+Metodo para Enviar o Documento para a Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@param cContrato, character, codigo do contrato
+@param cObservacoes, character, observacoes do documento
+@param aArquivo, array, array com os dados do arquivo
+	Posicoes do Array
+		1 - Descricao do Arquivo
+		2 - Arquivo
+		3 - Diretorio do Arquivo
+		4 - Nome Completo do Arquivo
+@return logical, .T. se conseguiu enviar o documento, .F. se nao conseguiu
+/*/
+Method EnviarDocumento(cContrato, cObservacoes, aArquivo) Class VirtusAPIDigidoc
+
+	Local aHeadStr          	As Array
+	Local aData					As Array
+	Local cPathSalvarDocumento 	As Character
+	Local cHeadRet				As Character
+	Local cBoundary				As Character
+	Local lRetorno				As Logical
+	Local oRestSalVarDocumento 	As Object
+	Local oResponse				As Object
+
+	Default cContrato		:= ""
+	Default cObservacoes	:= ""
+	Default aArquivo		:= {}
+
+	// atribui valor as variaveis
+	lRetorno 				:= .F.
+	cPathSalvarDocumento	:= SuperGetMV("MV_XDGDSAL", .F., "/documentos")
+	cHeadRet				:= ""
+	cBoundary				:= "----WebKitFormBoundaryFbmu0bODj7UvfQEV"
+
+	// limpo as variaveis
+	Self:cIDDocumento	:= ""
+	Self:cPostParams	:= ""
+	Self:cResult		:= ""
+	Self:cCodigoAPI		:= ""
+	Self:cURLDoc		:= ""
+	Self:lErro			:= .F.
+
+	If Self:ValidaIntegracao()
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) ENVIAR DOCUMENTO DIGIDOC.", 0, 0, {})
+
+		aHeadStr := {}
+		AAdd( aHeadStr, "User-Agent: Mozilla/4.0 (compatible; Protheus " + GetBuild() + ")" )
+		Aadd( aHeadStr, "Content-Type: multipart/form-data; boundary=" + AllTrim(cBoundary))
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+		Aadd( aHeadStr, "charset: UTF-8")
+		Aadd( aHeadStr," Content-Disposition: inline; filename=\" + AllTrim(aArquivo[P_COMPLET]) + "\")
+
+		// abro o arquivo
+		Self:AbreArquivo(aArquivo[P_COMPLET])
+
+		//=====================================
+		// monto os parametros do POST
+		//=====================================
+		// envio o arquivo para o Digidoc
+		cPostParams := '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="arquivo"; filename="'+ AllTrim(aArquivo[P_COMPLET]) +'"'
+		cPostParams += CRLF
+		cPostParams += 'Content-Type: ' + Self:cContentType
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + Self:cFileOpen + ''
+		cPostParams += CRLF
+
+		// envio a categoria do arquivo para o Digidoc
+		cPostParams += '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="categoria_id"'
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + AllTrim(Self:cCategoria) + ''
+		cPostParams += CRLF
+
+		// envio a observacao do arquivo para o Digidoc
+		cPostParams += '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="observacoes"'
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + AllTrim(aArquivo[P_DESCRICAO]) + ''
+		cPostParams += CRLF
+
+		// envio o ocr do documento para o Digidoc
+		cPostParams += '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="ocr"'
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + AllTrim(cObservacoes) + ''
+		cPostParams += CRLF
+
+		// envio a filial do documento para o Digidoc
+		cPostParams += '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="filial"'
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + AllTrim(cFilAnt) + ''
+		cPostParams += CRLF
+
+		// envio o contrato do documento para o Digidoc
+		cPostParams += '--' + AllTrim(cBoundary)
+		cPostParams += CRLF
+		cPostParams += 'Content-Disposition: form-data; name="contrato"'
+		cPostParams += CRLF
+		cPostParams += CRLF
+		cPostParams += '' + AllTrim(cContrato) + ''
+		cPostParams += CRLF
+		cPostParams += '--' + AllTrim(cBoundary) + '--'
+
+		oRestSalVarDocumento := FWRest():New(Self:cURLDigidoc)
+		oRestSalVarDocumento:SetPath(cPathSalvarDocumento)
+		oRestSalVarDocumento:SetPostParams(cPostParams)
+
+		If oRestSalVarDocumento:Post(aHeadStr)
+			Self:cResult := oRestSalVarDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(Self:cResult)
+
+			// pego os dados de acesso do Token
+			cStatus := oResponse["status"]
+			aData   := oResponse["data"]
+
+			// status da conexao
+			If AllTrim(cStatus) == "success" .And. Len(aData) > 0
+				lRetorno 			:= .T.
+				Self:cIDDocumento 	:= cValToChar(aData[1]["id"])
+				Self:cCodigoAPI		:= cValToChar(aData[1]["codigo"])
+				Self:cURLDoc		:= aData[1]["arquivo_url"]
+			EndIf
+		Else
+			cMensagem		:= oRestSalVarDocumento:GetLastError()
+			Self:scResult 	:= oRestSalVarDocumento:GetResult()
+			Self:lErro		:= .T.
+		Endif
+
+		FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(DEPOIS) ENVIAR DOCUMENTO DIGIDOC.", 0, 0, {})
+
+	EndIf
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::AbreArquivo
+Metodo para Abrir o Arquivo
+Transforma o arquivo em base64
+@type method
+@version 1.0
+@author g.sampaio
+@since 10/03/2024
+@param cArquivo, character, arquivo a ser aberto
+/*/
+Method AbreArquivo(cArquivo) Class VirtusAPIDigidoc
+
+	Local cDrive		As Character
+	Local cDir			As Character
+	Local cNome			As Character
+	Local cExt			As Character
+	Local oFile 		As Object
+
+	Default cArquivo 	:= ""
+
+	// atribui valor as variaveis
+	Self:cContentType 	:= ""
+	Self:cFileOpen 		:= ""
+
+	// pego os dados do arquivo
+	SplitPath(cArquivo, @cDrive, @cDir, @cNome, @cExt)
+
+	// atribui o content type
+	If AllTrim(cExt) == ".pdf" // PDF
+		Self:cContentType := "application/pdf"
+	ElseIf AllTrim(cExt) == ".jpg" // JPG
+		Self:cContentType := "image/jpeg"
+	ElseIf AllTrim(cExt) == ".jpeg" // JPEG
+		Self:cContentType := "image/jpeg"
+	ElseIf AllTrim(cExt) == ".png" // PNG
+		Self:cContentType := "image/png"
+	ElseIf AllTrim(cExt) == ".gif" // GIF
+		Self:cContentType := "image/gif"
+	ElseIf AllTrim(cExt) == ".bmp" // BMP
+		Self:cContentType := "image/bmp"
+	ElseIf AllTrim(cExt) == ".tiff" // TIFF
+		Self:cContentType := "image/tiff"
+	ElseIf AllTrim(cExt) == ".tif" // TIFF
+		Self:cContentType := "image/tiff"
+	ElseIf AllTrim(cExt) == ".doc" // DOC
+		Self:cContentType := "application/msword"
+	ElseIf AllTrim(cExt) == ".docx" // DOCX
+		Self:cContentType := "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	ElseIf AllTrim(cExt) == ".xls" // XLS
+		Self:cContentType := "application/vnd.ms-excel"
+	ElseIf AllTrim(cExt) == ".xlsx" // XLSX
+		Self:cContentType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	ElseIf AllTrim(cExt) == ".ppt" // PPT
+		Self:cContentType := "application/vnd.ms-powerpoint"
+	ElseIf AllTrim(cExt) == ".pptx" // PPTX
+		Self:cContentType := "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	ElseIf AllTrim(cExt) == ".txt" // TXT
+		Self:cContentType := "text/plain"
+	ElseIf AllTrim(cExt) == ".rtf" // RTF
+		Self:cContentType := "application/rtf"
+	ElseIf AllTrim(cExt) == ".zip" // ZIP
+		Self:cContentType := "application/zip"
+	ElseIf AllTrim(cExt) == ".rar" // RAR
+		Self:cContentType := "application/x-rar-compressed"
+	ElseIf AllTrim(cExt) == ".7z" // 7Z
+		Self:cContentType := "application/x-7z-compressed"
+	ElseIf AllTrim(cExt) == ".tar" // TAR
+		Self:cContentType := "application/x-tar"
+	ElseIf AllTrim(cExt) == ".gz" // GZ
+		Self:cContentType := "application/gzip"
+	ElseIf AllTrim(cExt) == ".mp3" // MP3
+		Self:cContentType := "audio/mpeg"
+	ElseIf AllTrim(cExt) == ".mp4" // MP4
+		Self:cContentType := "video/mp4"
+	ElseIf AllTrim(cExt) == ".avi" // AVI
+		Self:cContentType := "video/x-msvideo"
+	ElseIf AllTrim(cExt) == ".wmv" // WMV
+		Self:cContentType := "video/x-ms-wmv"
+	ElseIf AllTrim(cExt) == ".flv" // FLV
+		Self:cContentType := "video/x-flv"
+	ElseIf AllTrim(cExt) == ".mov" // MOV
+		Self:cContentType := "video/quicktime"
+	ElseIf AllTrim(cExt) == ".mpeg" // MPEG
+		Self:cContentType := "video/mpeg"
+	ElseIf AllTrim(cExt) == ".mpg" // MPG
+		Self:cContentType := "video/mpeg"
+	ElseIf AllTrim(cExt) == ".ogg" // OGG
+		Self:cContentType := "audio/ogg"
+	ElseIf AllTrim(cExt) == ".webm" // WEBM
+		Self:cContentType := "video/webm"
+	ElseIf AllTrim(cExt) == ".webp" // WEBP
+		Self:cContentType := "image/webp"
+	ElseIf AllTrim(cExt) == ".svg" // SVG
+		Self:cContentType := "image/svg+xml"
+	ElseIf AllTrim(cExt) == ".pdf" // PDF
+		Self:cContentType := "application/pdf"
+	ElseIf AllTrim(cExt) == ".xml" // XML
+		Self:cContentType := "application/xml"
+	ElseIf AllTrim(cExt) == ".json" // JSON
+		Self:cContentType := "application/json"
+	ElseIf AllTrim(cExt) == ".csv" // CSV
+		Self:cContentType := "text/csv"
+	Else
+		Self:cContentType := "application/octet-stream"
+	EndIf
+
+	// abro o arquivo
+	oFile := FwFileReader():New(cArquivo) // CAMINHO ABAIXO DO ROOTPATH
+
+	// verifico se abriu o arquivo
+	If (oFile:Open())
+		Self:cFileOpen := oFile:FullRead() // EFETUA A LEITURA DO ARQUIVO
+	EndIf
+
+Return(Nil)
+
+Method BuscarDocumentoContrato(cContrato) Class VirtusAPIDigidoc
+
+	Local aHeadStr          	As Array
+	Local cPathBuscarDocumento 	As Character
+	Local lRetorno				As Logical
+	Local oRestBuscaDocumento 	As Object
+	Local oResponse				As Object
+
+	Default cContrato		:= ""
+
+	// atribui valor as variaveis
+	lRetorno 				:= .F.
+	cPathBuscarDocumento	:= SuperGetMV("MV_XDGDBDC", .F., "/documentos/contrato/")
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) BUSCAR DOCUMENTO POR CONTRATO.", 0, 0, {})
+
+	If Self:ValidaIntegracao()
+
+		aHeadStr := {}
+		Aadd( aHeadStr, "Content-Type:application/json")
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+
+		oRestBuscaDocumento := FWRest():New(Self:cURLDigidoc)
+		oRestBuscaDocumento:SetPath(AllTrim(cPathBuscarDocumento) + AllTrim(cContrato))
+
+		If oRestBuscaDocumento:Get(aHeadStr)
+			cResult := oRestBuscaDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+
+			cStatus					:= oResponse["status"]
+			Self:aListaDocumentos 	:= oResponse["data"]
+
+		Else
+			cMensagem	:= oRestBuscaDocumento:GetLastError()
+			cResult 	:= oRestBuscaDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+		EndIf
+
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(APOS) BUSCAR DOCUMENTO POR CONTRATO.", 0, 0, {})
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::BuscarDocumento
+Metodo para Buscar o Documento na Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@param nIDDocumento, numeric, id do documento
+/*/
+Method BuscarDocumento(nIDDocumento) Class VirtusAPIDigidoc
+
+	Local aHeadStr          	As Array
+	Local cPathDocumento 		As Character
+	Local lRetorno				As Logical
+	Local oRestBuscaDocumento 	As Object
+	Local oResponse				As Object
+
+	Default nIDDocumento		:= 0
+
+	// atribui valor as variaveis
+	lRetorno 		:= .F.
+	cPathDocumento	:= SuperGetMV("MV_XDGDADC", .F., "/documentos/")
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) BUSCAR DOCUMENTO POR CONTRATO.", 0, 0, {})
+
+	If Self:ValidaIntegracao()
+
+		Self:aDadosDocumneto := {}
+
+		aHeadStr := {}
+		Aadd( aHeadStr, "Content-Type:application/json")
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+
+		oRestBuscaDocumento := FWRest():New(Self:cURLDigidoc)
+		oRestBuscaDocumento:SetPath(AllTrim(cPathDocumento) + AllTrim(cValToChar(nIDDocumento)))
+
+		If oRestBuscaDocumento:Get(aHeadStr)
+			cResult := oRestBuscaDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+
+			cStatus					:= oResponse["status"]
+			Self:aDadosDocumneto 	:= oResponse["data"]
+
+		Else
+			cMensagem	:= oRestBuscaDocumento:GetLastError()
+			cResult 	:= oRestBuscaDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+		EndIf
+
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(APOS) BUSCAR DOCUMENTO POR CONTRATO.", 0, 0, {})
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::ListaCategoria
+Metodo para Listar as Categorias na Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+/*/
+Method ListaCategoria() Class VirtusAPIDigidoc
+
+	Local aHeadStr          	As Array
+	Local aAuxDados				As Array
+	Local cPathCategoria 		As Character
+	Local lRetorno				As Logical
+	Local nCategoria			As Numeric
+	Local oRestCategorias 		As Object
+	Local oResponse				As Object
+
+	Default cIDDocumento		:= ""
+
+	// atribui valor as variaveis
+	lRetorno 		:= .F.
+	cPathCategoria	:= SuperGetMV("MV_XDGDCAT", .F., "/categorias")
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) BUSCAR CATEGORIAS.", 0, 0, {})
+
+	If Self:ValidaIntegracao()
+
+		Self:aDadosCategoria := {}
+
+		aHeadStr := {}
+		Aadd( aHeadStr, "Content-Type:application/json")
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+
+		oRestCategorias := FWRest():New(Self:cURLDigidoc)
+		oRestCategorias:SetPath(AllTrim(cPathCategoria))
+
+		If oRestCategorias:Get(aHeadStr)
+			cResult := oRestCategorias:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+
+			cStatus		:= oResponse["status"]
+			aAuxDados	:= oResponse["data"]
+
+			If AllTrim(cStatus) == "success"
+				For nCategoria := 1 To Len(aAuxDados)
+					AAdd(Self:aDadosCategoria, {aAuxDados[nCategoria]["id"], aAuxDados[nCategoria]["nome"], aAuxDados[nCategoria]["active"]})
+				Next nCategoria
+			EndIf
+
+		Else
+			cMensagem	:= oRestCategorias:GetLastError()
+			cResult 	:= oRestCategorias:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+		EndIf
+
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(APOS) BUSCAR CATEGORIAS.", 0, 0, {})
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::EditarDocumento
+Metodo para Editar o Documento na Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@param nIDDigiDoc, numeric, id do documento
+@param nCategoria, numeric, id da categoria
+@param cTituloDoc, character, titulo do documento
+@param cObservDoc, character, observacoes do documento
+@param cObservacoesOCR, character, observacoes do OCR
+/*/
+Method EditarDocumento(nIDDigiDoc, nCategoria, cTituloDoc, cObservDoc, cObservacoesOCR) Class VirtusAPIDigidoc
+
+	Local aHeadStr          	As Array
+	Local aData					As Array
+	Local cPathDocumento 		As Character
+	Local lRetorno				As Logical
+	Local oRestEditarDocumento 	As Object
+	Local oResponse				As Object
+	Local oJsonEditaDoc			As Object
+	Local oModVirtusEditaDoc	As Object
+
+	Default nIDDigiDoc			:= 0
+	Default nCategoria			:= 0
+	Default cTituloDoc			:= ""
+	Default cObservDoc			:= ""
+	Default cObservacoesOCR		:= ""
+
+	// atribui valor as variaveis
+	lRetorno 		:= .F.
+	cPathDocumento	:= SuperGetMV("MV_XDGDEDT", .F., "/documentos/")
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) ATUALIZAR DOCUMENTO.", 0, 0, {})
+
+	If Self:ValidaIntegracao()
+
+		// monto o JSON
+		oModVirtusEditaDoc := ModVirtusEditaDocumento():New()
+		oModVirtusEditaDoc:titulo 		:= AllTrim(cTituloDoc)
+		oModVirtusEditaDoc:observacoes 	:= AllTrim(cObservDoc)
+		oModVirtusEditaDoc:ocr 			:= AllTrim(cObservacoesOCR)
+		oModVirtusEditaDoc:categoria_id := nCategoria
+		Self:lAtualizado := .F.
+
+		// converto o objeto para JSON
+		oJsonEditaDoc := oModVirtusEditaDoc:toJsonObject()
+
+		aHeadStr := {}
+		Aadd( aHeadStr, "Content-Type:application/json")
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+
+		oRestEditarDocumento := FWRest():New(Self:cURLDigidoc)
+		oRestEditarDocumento:SetPath(AllTrim(cPathDocumento) + cValToChar(nIDDigiDoc))
+
+		// envio a atualizacao do documento para o Digidoc
+		If oRestEditarDocumento:Put(aHeadStr, oJsonEditaDoc:toJson())
+			cResult := oRestEditarDocumento:GetResult()
+
+			// pego os dados do JSON do Token
+			oResponse := JsonObject():New()
+			oResponse:FromJson(cResult)
+
+			cStatus		:= oResponse["status"]
+			aData		:= oResponse["data"]
+
+			// atualizo a variavel de controle
+			Self:lAtualizado := .T.
+			lRetorno		 := .T.
+
+		Else
+			cMensagem	:= oRestEditarDocumento:GetLastError()
+			cResult 	:= oRestEditarDocumento:GetResult()
+		EndIf
+
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(APOS) ATUALIZAR DOCUMENTO.", 0, 0, {})
+
+Return(lRetorno)
+
+/*/{Protheus.doc} VirtusAPIDigidoc::ExcluirDocumento
+Metodo para Excluir o Documento na Digidoc
+@type method
+@version 1.0
+@author g.sampaio
+@since 24/03/2024
+@param nIDDigiDoc, numeric, id do documento
+/*/
+Method ExcluirDocumento(nIDDigiDoc) Class VirtusAPIDigidoc
+
+	Local aHeadStr          		As Array
+	Local cPathDocumento 			As Character
+	Local lRetorno					As Logical
+	Local oRestExcluirDocumento 	As Object
+	Local oResponse					As Object
+
+	Default	nIDDigiDoc	:= 0
+
+	// atribui valor as variaveis
+	lRetorno 		:= .F.
+	cPathDocumento	:= SuperGetMV("MV_XDGDDEL", .F., "/documentos/")
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(ANTES) EXCLUIR DOCUMENTO.", 0, 0, {})
+
+	If Self:ValidaIntegracao()
+
+		Self:lExcluido := .F.
+
+		aHeadStr := {}
+		Aadd( aHeadStr, "Content-Type:application/json")
+		Aadd( aHeadStr, "Authorization: " + AllTrim(Self:cTokenType) + " " + AllTrim(Self:cAccessToken))
+
+		oRestExcluirDocumento := FWRest():New(Self:cURLDigidoc)
+		oRestExcluirDocumento:SetPath(AllTrim(cPathDocumento) + cValToChar(nIDDigiDoc))
+
+		oRestExcluirDocumento:Delete(aHeadStr)
+		cResult := oRestExcluirDocumento:GetResult()
+
+		// pego os dados do JSON do Token
+		oResponse := JsonObject():New()
+		oResponse:FromJson(cResult)
+
+		cStatus		:= oResponse["status"]
+		aData		:= oResponse["data"]
+
+		If AllTrim(cStatus) == "success"
+
+			// atualizo a variavel de controle
+			lRetorno := .T.
+			Self:lExcluido := .T.
+
+		Else
+			cMensagem	:= oRestExcluirDocumento:GetLastError()
+		EndIf
+
+	EndIf
+
+	FwLogMsg("INFO", /*cTransactionId*/, "REST", FunName(), "", "01", "(APOS) EXCLUIR DOCUMENTO.", 0, 0, {})
+
+Return(lRetorno)
