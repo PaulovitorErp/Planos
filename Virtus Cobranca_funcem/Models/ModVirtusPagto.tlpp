@@ -1,0 +1,181 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} ModVirtusPagto
+Classe ModVirtusPagto
+@type function
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+/*/
+User Function ModVirtusPagto
+Return
+
+Class ModVirtusPagto
+
+    Public Data cnpj as character
+    Public Data entidade as character
+    Public Data _id as character
+    Public Data id_app as character
+    Public Data contrato as character
+    Public Data cgc_cliente as character
+    Public Data mensagem_contrato as character
+    Public Data quantidade_parcelas as numeric
+    Public Data dt_reagendado as character
+    Public Data forma_pagamento as character
+    Public Data cobrador as character
+    Public Data operador as character
+    Public Data status as character
+    Public Data dt_agenda as character
+    Public Data dt_cobranca as character
+    Public Data total as numeric
+    Public Data payment_profile as character
+    Public Data mot_reprovado as character
+    Public Data origem as character
+    Public Data mot_reagendamento as character
+    Public Data date_to as character
+    Public Data lat as numeric
+    Public Data lng as numeric
+    Public Data add_recorrencia as character
+    Public Data add_reagendado as character
+    Public Data createdAt as character
+    Public Data baixas as array
+    Public Data recorrencia as object
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+    Public Method fromJson(cJson)
+
+EndClass
+
+/*/{Protheus.doc} ModVirtusPagto::New
+Nova Instancia da Classe
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@return object, self
+/*/
+Method New() Class ModVirtusPagto
+
+    ::cnpj := ""
+    ::entidade := ""
+    ::_id := ""
+    ::id_app := ""
+    ::contrato := ""
+    ::cgc_cliente := ""
+    ::mensagem_contrato := ""
+    ::quantidade_parcelas := 0
+    ::dt_reagendado := ""
+    ::forma_pagamento := ""
+    ::cobrador := ""
+    ::operador := ""
+    ::status := ""
+    ::dt_agenda := ""
+    ::dt_cobranca := ""
+    ::total := 0
+    ::payment_profile := ""
+    ::mot_reprovado := ""
+    ::origem := ""
+    ::mot_reagendamento := ""
+    ::date_to := ""
+    ::lat := 0
+    ::lng := 0
+    ::add_recorrencia := ""
+    ::add_reagendado := ""
+    ::createdAt := ""
+    ::baixas := {}
+    ::recorrencia := nil
+
+Return Self
+
+/*/{Protheus.doc} ModVirtusPagto::toJsonObject
+Converte de objeto para json
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@return object, oJson
+/*/
+Method toJsonObject() Class ModVirtusPagto
+
+    Local oJson := JsonObject():New()
+
+    oJson["cnpj"] := ::cnpj
+    oJson["entidade"] := ::entidade
+    oJson["_id"] := ::_id
+    oJson["id_app"] := ::id_app
+    oJson["contrato"] := ::contrato
+    oJson["cgc_cliente"] := ::cgc_cliente
+    oJson["mensagem_contrato"] := ::mensagem_contrato
+    oJson["quantidade_parcelas"] := ::quantidade_parcelas
+    oJson["dt_reagendado"] := ::dt_reagendado
+    oJson["forma_pagamento"] := ::forma_pagamento
+    oJson["cobrador"] := ::cobrador
+    oJson["operador"] := ::operador
+    oJson["status"] := ::status
+    oJson["dt_agenda"] := ::dt_agenda
+    oJson["dt_cobranca"] := ::dt_cobranca
+    oJson["total"] := ::total
+    oJson["payment_profile"] := ::payment_profile
+    oJson["mot_reprovado"] := ::mot_reprovado
+    oJson["origem"] := ::origem
+    oJson["mot_reagendamento"] := ::mot_reagendamento
+    oJson["date_to"] := ::date_to
+    oJson["lat"] := ::lat
+    oJson["lng"] := ::lng
+    oJson["add_recorrencia"] := ::add_recorrencia
+    oJson["add_reagendado"] := ::add_reagendado
+    oJson["createdAt"] := ::createdAt
+    oJson["baixas"] := ::baixas
+    oJson["recorrencia"] := ::recorrencia
+
+Return oJson
+
+/*/{Protheus.doc} ModVirtusPagto::fromJson
+Converte de json para objeto
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@return logical, lRet
+/*/
+Method fromJson(cJson) Class ModVirtusPagto
+
+    Local oJson := JsonObject():New()
+    Local xRet := Nil
+    Local lRet := .F.
+
+    xRet := oJson:fromJson(cJson)
+    lRet := ValType(xRet) == "U"
+
+    if lRet
+        ::cnpj := oJson["cnpj"]
+        ::_id := oJson["_id"]
+        ::id_app := oJson["id_app"]
+        ::contrato := oJson["contrato"]
+        ::cgc_cliente := oJson["cgc_cliente"]
+        ::mensagem_contrato := oJson["mensagem_contrato"]
+        ::quantidade_parcelas := oJson["quantidade_parcelas"]
+        ::dt_reagendado := oJson["dt_reagendado"]
+        ::forma_pagamento := oJson["forma_pagamento"]
+        ::cobrador := oJson["cobrador"]
+        ::operador := oJson["operador"]
+        ::status := oJson["status"]
+        ::dt_agenda := oJson["dt_agenda"]
+        ::dt_cobranca := oJson["dt_cobranca"]
+        ::total := oJson["total"]
+        ::payment_profile := oJson["payment_profile"]
+        ::mot_reprovado := oJson["mot_reprovado"]
+        ::origem := oJson["origem"]
+        ::mot_reagendamento := oJson["mot_reagendamento"]
+        ::date_to := oJson["date_to"]
+        ::lat := oJson["lat"]
+        ::lng := oJson["lng"]
+        ::add_recorrencia := oJson["add_recorrencia"]
+        ::add_reagendado := oJson["add_reagendado"]
+        ::createdAt := oJson["createdAt"]
+        ::baixas := oJson["baixas"]
+        ::recorrencia := oJson["recorrencia"]
+    endif
+
+Return lRet

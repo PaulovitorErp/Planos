@@ -1,0 +1,103 @@
+#INCLUDE 'PROTHEUS.CH'
+
+/*/{Protheus.doc} ModVirtusCobranca
+Classe ModVirtusCobranca
+@type function
+@version 1.0
+@author nata.queiroz
+@since 25/02/2021
+/*/
+User Function ModVirtusCobranca
+Return
+
+Class ModVirtusCobranca
+
+    Public Data cnpj as character
+    Public Data contrato as character
+    Public Data plano as character
+    Public Data status_contrato as character
+    Public Data dt_ativacao as date
+    Public Data forma_de_pagamento as character
+    Public Data cgc_cliente as character
+    Public Data nome as character
+    Public Data cep as character
+    Public Data estado as character
+    Public Data municipio as character
+    Public Data bairro as character
+    Public Data endereco as character
+    Public Data complemento as character
+    Public Data pto_referencia as character
+    Public Data ddd as character
+    Public Data telefone as character
+    Public Data ddd_celular as character
+    Public Data celular as character
+    Public Data email as character
+    Public Data titulos_abertos as numeric
+    Public Data titulos_vencidos as numeric
+    Public Data valor_aberto as numeric
+    Public Data titulos as array
+
+    Public Method New() Constructor
+    Public Method toJsonObject()
+
+EndClass
+
+Method New() Class ModVirtusCobranca
+
+    ::cnpj := ""
+    ::contrato := ""
+    ::plano := ""
+    ::status_contrato := ""
+    ::dt_ativacao := STOD(SPACE(8))
+    ::forma_de_pagamento := ""
+    ::cgc_cliente := ""
+    ::nome := ""
+    ::cep := ""
+    ::estado := ""
+    ::municipio := ""
+    ::bairro := ""
+    ::endereco := ""
+    ::complemento := ""
+    ::pto_referencia := ""
+    ::ddd := ""
+    ::telefone := ""
+    ::ddd_celular := ""
+    ::celular := ""
+    ::email := ""
+    ::titulos_abertos := 0
+    ::titulos_vencidos := 0
+    ::valor_aberto := 0
+    ::titulos := {}
+
+Return Self
+
+Method toJsonObject() Class ModVirtusCobranca
+
+    Local oJson := JsonObject():New()
+
+    oJson["cnpj"] := ::cnpj
+    oJson["contrato"] := ::contrato
+    oJson["plano"] := ::plano
+    oJson["status_contrato"] := ::status_contrato
+    oJson["dt_ativacao"] := ::dt_ativacao
+    oJson["forma_de_pagamento"] := ::forma_de_pagamento
+    oJson["cgc_cliente"] := ::cgc_cliente
+    oJson["nome"] := ::nome
+    oJson["cep"] := ::cep
+    oJson["estado"] := ::estado
+    oJson["municipio"] := ::municipio
+    oJson["bairro"] := ::bairro
+    oJson["endereco"] := ::endereco
+    oJson["complemento"] := ::complemento
+    oJson["pto_referencia"] := ::pto_referencia
+    oJson["ddd"] := ::ddd
+    oJson["telefone"] := ::telefone
+    oJson["ddd_celular"] := ::ddd_celular
+    oJson["celular"] := ::celular
+    oJson["email"] := ::email
+    oJson["titulos_abertos"] := ::titulos_abertos
+    oJson["titulos_vencidos"] := ::titulos_vencidos
+    oJson["valor_aberto"] := ::valor_aberto
+    oJson["titulos"] := ::titulos
+
+Return oJson

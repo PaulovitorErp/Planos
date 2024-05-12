@@ -1,0 +1,674 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+
+/*/{Protheus.doc} RUTILE55
+JOB de Carga de Cobranca 
+@type function
+@version 1.0
+@author raphael.garcia
+@since 25/02/2022
+/*/
+User Function RUTILE55(xParam1, xParam2)
+
+	Local cMessage	:= ""
+	Local nStart	:= Seconds()
+	Local aArea		:= GetArea()
+	Local lContinua	:= .T.
+	Local lRet      := .T.
+	Local aParam    := {}
+
+	If valtype(xParam1) == "A"
+		aParam := aClone(xParam1)
+	ElseIf valtype(xParam1) == "C" .AND. valtype(xParam2) == "C"
+		aParam := {xParam1, xParam2}
+	ElseIf IsBlind()
+		FwLogMsg("INFO", /*cTransactionId*/, "JOB", FunName(), "", "01", "PARAMETROS DE EMPRESA E FILIAL INVALIDOS", 0, 0, {})
+		lContinua := .F.
+	Else //execucao via interface
+		aParam := {cEmpAnt, cFilAnt}
+	EndIf
+
+	If lContinua
+
+		//Valido se a execução é via Job
+		If IsBlind() //Type("cEmpAnt")== "U"
+
+			cMessage := "[RUTILE55][INICIO DO PROCESSAMENTO DE ENVIO COBRANCAS]"
+			FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+			cMessage := "[RUTILE55][EMPRESA: " + Alltrim(aParam[01]) + " FILIAL: " + Alltrim(aParam[02]);
+				+ "DATA: " + DTOC( Date() ) + " HORA: " + Time() + "]"
+			FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+
+			RESET ENVIRONMENT
+			PREPARE ENVIRONMENT EMPRESA aParam[01] FILIAL aParam[02] TABLES "UF2"
+
+		Endif
+
+		//-- Bloqueia rotina para apenas uma execução por vez
+		//-- Criação de semáforo no servidor de licenças
+		//-- LockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> lCreated
+		If !LockByName("RUTILE55", .F., .T.)
+			If IsBlind()
+				cMessage := "[RUTILE55]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde..."
+				FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+			Else
+				MsgAlert("[RUTILE55]["+ cFilAnt +"] Existe um JOB ativo no momento. Aguarde...")
+			EndIf
+
+			lRet := .F.
+
+		EndIf
+
+		//-- Comando para o TopConnect alterar mensagem do Monitor --//
+		//FWMonitorMsg("RUTILE55: JOB ENVIO COBRANCAS => " + cEmpAnt + "-" + cFilAnt)
+
+		if lRet
+			FWMsgRun(,{|oSay| EnvioCobrancas() },'Aguarde...','Realizando Envio de Cobrancas...')
+		endif
+
+		//-- Libera rotina para nova execução
+		//-- Excluir semáforo
+		//-- UnLockByName( cName, lEmpresa, lFilial, [ lMayIUseDisk ] ) --> Nil
+		UnLockByName("RUTILE55", .F., .T.)
+
+	EndIf
+
+	RestArea(aArea)
+
+Return(Nil)
+
+/*/{Protheus.doc} RUTILE55
+JOB de Carga de Cobranca executado
+pelo Schedule
+@type function
+@version 1.0
+@author raphael.garcia
+@since 25/02/2021
+/*/
+User Function RUTIL55J(aParam)
+
+	Default aParam := {}
+
+	if Len(aParam) > 0
+
+		U_RUTILE55(aParam[1], aParam[2])
+
+	endif
+
+Return(Nil)
+
+/*/{Protheus.doc} EnvioCobrancas
+Funcao para consulta e envio de cobrancas
+@type function
+@version 1.0 
+@author raphaelgarcia
+@since 2/7/2022
+/*/
+Static Function EnvioCobrancas()
+
+	Local lFuneraria	    := SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	    := SuperGetMV("MV_XCEMI",,.F.)
+	Local lConsJrMult	    := SuperGetMV("MV_XJURMRV",,.T.)
+	Local lMstEndCob	    := SuperGetMV("MV_XENDCOB",,.T.)
+	Local nParamQuebra      := SuperGetMV("MV_XQBCOB",,50)
+	Local nParamMeses       := SuperGetMV("MV_XMESCOB",,6)
+	Local nStart	        := Seconds()
+	Local cQuery            := ""
+	Local cChave            := ""
+	Local cContratoNovo     := ""
+	Local cContratoAtual    := ""
+	Local cMessage	        := ""
+	Local nContratos        := 0
+	Local nSaldoAtual       := 0
+	Local dDataAgenda       := CTOD("")
+	Local oContratos        := JsonObject():New()
+	Local oModVirtusCob     := NIL
+	Local oVirtusFin        := NIL
+	Local aDadosFil         := FWArrFilAtu()
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////////
+	// MV_XQBCOB - QUANTIDADE DE CONTRATOS POR CARGA DE COBRANCA
+	// MV_XMESCOB - INTERVALO DE MESES DE VENCIMENTO DOS TITULOS DOS CONTRATOS A SEREM CONSULTADOS
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	If lFuneraria
+		cQuery := QueryPlano(nParamMeses)
+	ElseIf lCemiterio
+		cQuery := QueryCemiterio(nParamMeses)
+	EndIf
+
+	// executo a query e crio o alias temporario
+	MPSysOpenQuery( cQuery, "QCTT" )
+
+	If QCTT->( !EOF() )
+
+		// crio o objeto da classe de funcoes financeiras do Virtus ERP
+		oVirtusFin := VirtusFin():New()
+		oContratos["cobrancas"]  := {}
+
+		While QCTT->( !EOF() )
+
+			//posiciono no registro para calcular o valor do titulo considerando juros e multa
+			cChave := xFilial("SE1") + QCTT->PREFIXO + QCTT->TITULO + QCTT->PARCELA + QCTT->TIPO
+
+			SE1->(DbSetOrder(1)) //E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+			If SE1->( MsSeek(cChave) )
+
+				// Considero data de agendamento para definir o valor do titulo que sera enviado para o Virtus
+				If !Empty(QCTT->DT_AGENDA)
+					dDataAgenda := STOD(QCTT->DT_AGENDA)
+				Else
+					dDataAgenda	:= dDataBase
+				EndIf
+
+				// Retona saldo atual do titulo, considerando juros e multa de acordo com a data de agendamento
+				If lConsJrMult
+					nSaldoAtual := oVirtusFin:RetSaldoTitulo(dDataAgenda)
+				Else
+					nSaldoAtual := QCTT->SALDO
+				EndIf
+
+				// verifico se o titulo para a cobranca tem saldo
+				If nSaldoAtual > 0
+
+					cContratoNovo := AllTrim(QCTT->CONTRATO)
+
+					If cContratoNovo <> cContratoAtual
+
+						nContratos++
+
+						if oModVirtusCob <> NIL
+							AADD(oContratos["cobrancas"], oModVirtusCob:toJsonObject())
+						endif
+
+						FreeObj(oModVirtusCob)
+						oModVirtusCob := ModVirtusCobranca():New()
+
+						oModVirtusCob:cnpj := AllTrim(aDadosFil[18])
+						oModVirtusCob:contrato := AllTrim(QCTT->CONTRATO)
+						oModVirtusCob:plano := AllTrim(QCTT->PLANO)
+						oModVirtusCob:status_contrato := AllTrim(QCTT->STATUS)
+						oModVirtusCob:dt_ativacao := AllTrim(QCTT->ATIVACAO)
+						oModVirtusCob:forma_de_pagamento := AllTrim(QCTT->FORMAPAG)
+						oModVirtusCob:cgc_cliente := Alltrim(QCTT->CGC)
+						oModVirtusCob:nome := Alltrim(U_SpecialNoChar(QCTT->NOME))
+
+						// Verifico se o endereco de cobranca esta preenchido
+						If lMstEndCob .And. !Empty( Alltrim(QCTT->ENDERECO_COB) )
+							oModVirtusCob:cep := Alltrim(QCTT->CEP_COB)
+							oModVirtusCob:estado := Alltrim(QCTT->ESTADO_COB)
+							oModVirtusCob:municipio := Alltrim(U_SpecialNoChar(QCTT->MUNICIPIO_COB))
+							oModVirtusCob:bairro := Alltrim(U_SpecialNoChar(QCTT->BAIRRO_COB))
+							oModVirtusCob:endereco := Alltrim(U_SpecialNoChar(QCTT->ENDERECO_COB))
+							oModVirtusCob:complemento := Alltrim(U_SpecialNoChar(QCTT->COMPL_COB))
+							oModVirtusCob:pto_referencia := Alltrim(U_SpecialNoChar(QCTT->REF_COBRANCA))
+						Else
+							oModVirtusCob:cep := Alltrim(QCTT->CEP)
+							oModVirtusCob:estado := Alltrim(QCTT->ESTADO)
+							oModVirtusCob:municipio := Alltrim(U_SpecialNoChar(QCTT->MUNICIPIO))
+							oModVirtusCob:bairro := Alltrim(U_SpecialNoChar(QCTT->BAIRRO))
+							oModVirtusCob:endereco := Alltrim(U_SpecialNoChar(QCTT->ENDERECO))
+							oModVirtusCob:complemento := Alltrim(U_SpecialNoChar(QCTT->COMPLEMENTO))
+							oModVirtusCob:pto_referencia := Alltrim(U_SpecialNoChar(QCTT->REFERENCIA))
+						EndIf
+
+						oModVirtusCob:ddd := AllTrim(QCTT->DDD)
+						oModVirtusCob:telefone := AllTrim(QCTT->TELEFONE)
+						oModVirtusCob:ddd_celular := AllTrim(QCTT->DDD_CEL)
+						oModVirtusCob:celular := AllTrim(QCTT->CELULAR)
+						oModVirtusCob:email := AllTrim(QCTT->EMAIL)
+
+						//*===============================================================================*
+						///////////// PONTO DE ENTRADA PARA TRATAMENTO ESPECIFICOS DO CLIENTE /////////////
+						//////// NO MODELO DE DADOS ENVIADO PARA O CONTRATO NO VIRTUS COBRANCA ////////////
+						///////////////// ANTES DAS INFORMACOES FINANCEIRAS DO CLIENTE ////////////////////
+						//*===============================================================================*
+						If Existblock("PUTL33CLI")
+							Conout( "[EnvioCobrancas - RUTILE55 - JOB de Carga de Cobranca] Existe o ponto de entrada PUTL33CLI!" )
+							oModVirtusCob := ExecBlock( "PUTL33CLI", .F. ,.F., { oModVirtusCob } )
+						EndIf
+
+						If STOD(QCTT->VENCIMENTO) < dDataBase
+							oModVirtusCob:titulos_vencidos++
+						EndIf
+						oModVirtusCob:titulos_abertos++
+						oModVirtusCob:valor_aberto += nSaldoAtual
+
+						AADD(oModVirtusCob:titulos, {;
+							"contrato": AllTrim(QCTT->CONTRATO),;
+							"plano": AllTrim(QCTT->PLANO),;
+							"chave": AllTrim(cChave),;
+							"dt_agenda": AllTrim(QCTT->DT_AGENDA),;
+							"hora_agenda": AllTrim(QCTT->HR_AGENDA),;
+							"vencto": Alltrim(QCTT->VENCIMENTO),;
+							"valor_titulo": nSaldoAtual,;
+							"forma_de_pagamento": AllTrim(QCTT->TITFORPG),;
+							"codigo_barras": AllTrim(QCTT->COD_BARRA),;
+							"linha_digitavel": AllTrim(QCTT->LIN_DIGITAL),;
+							"nosso_numero": AllTrim(QCTT->NOSSO_NUM);
+							})
+
+					Else
+
+						If STOD(QCTT->VENCIMENTO) < dDataBase
+							oModVirtusCob:titulos_vencidos++
+						EndIf
+						oModVirtusCob:titulos_abertos++
+						oModVirtusCob:valor_aberto += nSaldoAtual
+
+						AADD(oModVirtusCob:titulos, {;
+							"contrato": AllTrim(QCTT->CONTRATO),;
+							"plano": AllTrim(QCTT->PLANO),;
+							"chave": AllTrim(cChave),;
+							"dt_agenda": AllTrim(QCTT->DT_AGENDA),;
+							"hora_agenda": AllTrim(QCTT->HR_AGENDA),;
+							"vencto": Alltrim(QCTT->VENCIMENTO),;
+							"valor_titulo": nSaldoAtual,;
+							"forma_de_pagamento": AllTrim(QCTT->TITFORPG),;
+							"codigo_barras": AllTrim(QCTT->COD_BARRA),;
+							"linha_digitavel": AllTrim(QCTT->LIN_DIGITAL),;
+							"nosso_numero": AllTrim(QCTT->NOSSO_NUM);
+							})
+
+					EndIf
+
+					cContratoAtual := AllTrim(QCTT->CONTRATO)
+
+				EndIf
+
+			EndIf
+
+			QCTT->( DbSkip() )
+
+			if QCTT->(Eof()) .Or. (cContratoNovo <> AllTrim(QCTT->CONTRATO) .And. nContratos - 1 >= nParamQuebra)
+
+				if QCTT->(Eof())
+					AADD(oContratos["cobrancas"], oModVirtusCob:toJsonObject())
+				endif
+
+				PostCobranca(oContratos)
+
+				FreeObj(oContratos)
+
+				oContratos := JsonObject():New()
+				oContratos["cobrancas"]  := {}
+				nContratos := 1
+
+			endif
+
+		EndDo
+
+	Else
+		FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+	EndIf
+
+	If Select("QCTT") > 0
+		QCTT->(DbCloseArea())
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} QueryPlano
+Funcao para consultar Contratos de Planos Assistenciais
+@type function
+@version 1.0
+@author raphaelgarcia
+@since 2/7/2022
+@param nParamMeses, numeric, meses para consultar
+@return character, Query para de titulos de planos assistenciais
+/*/
+Static Function QueryPlano(nParamMeses)
+
+	Local cQuery := ""
+	Local dDataInicial  := MonthSub(dDataBase,nParamMeses)
+	Local dDataFinal    := MonthSum(dDataBase,nParamMeses)
+	Local cXForPgts     := FPRecorr()
+	Local lVencrea		:= SuperGetMV("MV_XVENCRE",,.F.)
+
+	cQuery := " SELECT "
+	cQuery += " UF2_CODIGO                AS CONTRATO, "
+	cQuery += " UF2_PLANO                 AS PLANO, "
+	cQuery += " UF2_DTATIV                AS ATIVACAO, "
+	cQuery += " UF2_STATUS                AS STATUS, "
+	cQuery += " A1_CGC                    AS CGC, "
+	cQuery += " A1_NOME                   AS NOME, "
+	cQuery += " A1_END                    AS ENDERECO, "
+	cQuery += " A1_COMPLEM                AS COMPLEMENTO, "
+	cQuery += " A1_BAIRRO                 AS BAIRRO, "
+	cQuery += " A1_CEP                    AS CEP, "
+	cQuery += " A1_EST                    AS ESTADO, "
+	cQuery += " A1_MUN                    AS MUNICIPIO, "
+	cQuery += " A1_XREFERE                AS REFERENCIA, "
+	cQuery += " A1_ENDCOB                 AS ENDERECO_COB, "
+	cQuery += " A1_XCOMPCO                AS COMPL_COB, "
+	cQuery += " A1_BAIRROC                AS BAIRRO_COB, "
+	cQuery += " A1_CEPC                   AS CEP_COB, "
+	cQuery += " A1_ESTC                   AS ESTADO_COB, "
+	cQuery += " A1_MUNC                   AS MUNICIPIO_COB, "
+	cQuery += " A1_XREFCOB                AS REF_COBRANCA, "
+	cQuery += " A1_DDD                    AS DDD, "
+	cQuery += " A1_TEL                    AS TELEFONE, "
+	cQuery += " A1_XDDDCEL                AS DDD_CEL, "
+	cQuery += " A1_XCEL                   AS CELULAR, "
+	cQuery += " A1_EMAIL                  AS EMAIL, "
+	cQuery += "	A1_XCODBAI                AS CODBAIRRO, "
+	cQuery += " E1_PREFIXO                AS PREFIXO, "
+	cQuery += " E1_NUM                    AS TITULO, "
+	cQuery += " E1_PARCELA                AS PARCELA, "
+	cQuery += " E1_TIPO                   AS TIPO, "
+
+	if !lVencrea
+		cQuery += " E1_VENCTO                 AS VENCIMENTO, "
+	else
+		cQuery += " E1_VENCREA                AS VENCIMENTO, "
+	endif
+
+	cQuery += " E1_SALDO                  AS SALDO, "
+	cQuery += " E1_VALJUR                 AS JUROS, "
+	cQuery += " E1_CLIENTE                AS CLIENTE, "
+	cQuery += " E1_LOJA                   AS LOJA, "
+	cQuery += " UF2_FORPG                 AS FORMAPAG, "
+	cQuery += " E1_XFORPG                 AS TITFORPG, "
+	cQuery += " E1_XDTCOB                 AS DT_AGENDA, "
+	cQuery += " E1_XHRCOB                 AS HR_AGENDA, "
+	cQuery += " E1_CODBAR                 AS COD_BARRA, "
+	cQuery += " E1_CODDIG                 AS LIN_DIGITAL, "
+	cQuery += " E1_NUMBCO                 AS NOSSO_NUM "
+	cQuery += " FROM "
+	cQuery += RetSQLName("UF2") + " UF2 (NOLOCK) "
+	cQuery += " INNER JOIN  "
+	cQuery += RetSQLName("SA1") + " A1 (NOLOCK) "
+	cQuery += " ON A1_FILIAL = '" + xFilial("SA1") + "'  "
+	cQuery += " AND A1_COD = UF2_CLIENT "
+	cQuery += " AND A1_LOJA = UF2_LOJA "
+	cQuery += " AND A1.D_E_L_E_T_ = ' ' "
+	cQuery += " INNER JOIN "
+	cQuery += RetSQLName("SE1") + " E1 (NOLOCK) "
+	cQuery += " ON E1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQuery += " AND E1_SALDO > 0 "
+	cQuery += " AND E1_TIPO NOT IN ( 'NCC', 'RA', 'TX', 'IS','IR', 'CS', 'CF', 'PI', 'AB' ) "
+
+// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQuery += "		AND UF2.UF2_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQuery += " AND E1_VENCTO BETWEEN '" + DTOS(dDataInicial) + "' AND '" + DTOS(dDataFinal) + "'   "
+	cQuery += " AND E1_XCTRFUN = UF2.UF2_CODIGO  "
+	cQuery += " WHERE  "
+	cQuery += " UF2.D_E_L_E_T_ = ' '  "
+	cQuery += " AND UF2_MSFIL = '" + cFilAnt + "'   "
+	cQuery += " AND UF2_STATUS IN ( 'A', 'S' )  "
+	cQuery += " AND A1.A1_CGC  <> ' ' "
+
+// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQuery += " AND UF2.UF2_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQuery += " GROUP  BY UF2_CODIGO, "
+	cQuery += " UF2_PLANO, "
+	cQuery += " UF2_STATUS, "
+	cQuery += " UF2_DTATIV, "
+	cQuery += " A1_CGC, "
+	cQuery += " A1_NOME, "
+	cQuery += " A1_END, "
+	cQuery += " A1_COMPLEM, "
+	cQuery += " A1_BAIRRO, "
+	cQuery += " A1_CEP, "
+	cQuery += " A1_EST, "
+	cQuery += " A1_MUN, "
+	cQuery += " A1_ENDCOB, "
+	cQuery += " A1_XCOMPCO, "
+	cQuery += " A1_BAIRROC, "
+	cQuery += " A1_CEPC, "
+	cQuery += " A1_ESTC, "
+	cQuery += " A1_MUNC, "
+	cQuery += " A1_XREFERE, "
+	cQuery += " A1_XREFCOB, "
+	cQuery += " A1_DDD, "
+	cQuery += " A1_TEL, "
+	cQuery += " A1_XDDDCEL, "
+	cQuery += " A1_XCEL, "
+	cQuery += " A1_EMAIL, "
+	cQuery += " A1_XCODBAI, "
+	cQuery += " E1_PREFIXO, "
+	cQuery += " E1_NUM, "
+	cQuery += " E1_PARCELA, "
+	cQuery += " E1_TIPO, "
+	if !lVencrea
+		cQuery += " E1_VENCTO, "
+	else
+		cQuery += " E1_VENCREA, "
+	endif
+	cQuery += " E1_SALDO, "
+	cQuery += " E1_VALJUR, "
+	cQuery += " E1_CLIENTE, "
+	cQuery += " E1_LOJA, "
+	cQuery += " UF2_FORPG, "
+	cQuery += " E1_XFORPG, "
+	cQuery += " E1_XDTCOB, "
+	cQuery += " E1_XHRCOB, "
+	cQuery += " E1_CODBAR, "
+	cQuery += " E1_CODDIG, "
+	cQuery += " E1_NUMBCO "
+	cQuery += " ORDER  BY CONTRATO, "
+	cQuery += " TITULO, "
+	cQuery += " PARCELA, "
+	cQuery += " TIPO "
+
+Return(cQuery)
+
+/*/{Protheus.doc} QueryPlano
+Funcao para consultar Contratos de Cemiterio
+@type function
+@version 1.0
+@author raphaelgarcia
+@since 2/7/2022
+@param nParamMeses, numeric, meses para consultar
+@return character, Query para de titulos de planos assistenciais
+/*/
+Static Function QueryCemiterio(nParamMeses)
+
+	Local cQuery := ""
+	Local dDataInicial  := MonthSub(dDataBase,nParamMeses)
+	Local dDataFinal    := MonthSum(dDataBase,nParamMeses)
+	Local cXForPgts     := FPRecorr()
+	Local lVencrea		:= SuperGetMV("MV_XVENCRE",,.F.)
+
+	cQuery := " SELECT "
+	cQuery += " U00_CODIGO                AS CONTRATO, "
+	cQuery += " U00_PLANO                 AS PLANO, "
+	cQuery += " U00_DTATIV                AS ATIVACAO, "
+	cQuery += " U00_STATUS                AS STATUS, "
+	cQuery += " A1_CGC                    AS CGC, "
+	cQuery += " A1_NOME                   AS NOME, "
+	cQuery += " A1_END                    AS ENDERECO, "
+	cQuery += " A1_COMPLEM                AS COMPLEMENTO, "
+	cQuery += " A1_BAIRRO                 AS BAIRRO, "
+	cQuery += " A1_CEP                    AS CEP, "
+	cQuery += " A1_EST                    AS ESTADO, "
+	cQuery += " A1_MUN                    AS MUNICIPIO, "
+	cQuery += " A1_XREFERE                AS REFERENCIA, "
+	cQuery += " A1_ENDCOB                 AS ENDERECO_COB, "
+	cQuery += " A1_XCOMPCO                AS COMPL_COB, "
+	cQuery += " A1_BAIRROC                AS BAIRRO_COB, "
+	cQuery += " A1_CEPC                   AS CEP_COB, "
+	cQuery += " A1_ESTC                   AS ESTADO_COB, "
+	cQuery += " A1_MUNC                   AS MUNICIPIO_COB, "
+	cQuery += " A1_XREFCOB                AS REF_COBRANCA, "
+	cQuery += " A1_DDD                    AS DDD, "
+	cQuery += " A1_TEL                    AS TELEFONE, "
+	cQuery += " A1_XDDDCEL                AS DDD_CEL, "
+	cQuery += " A1_XCEL                   AS CELULAR, "
+	cQuery += " A1_EMAIL                  AS EMAIL, "
+	cQuery += "	A1_XCODBAI                AS CODBAIRRO, "
+	cQuery += " E1_PREFIXO                AS PREFIXO, "
+	cQuery += " E1_NUM                    AS TITULO, "
+	cQuery += " E1_PARCELA                AS PARCELA, "
+	cQuery += " E1_TIPO                   AS TIPO, "
+	if !lVencrea
+		cQuery += " E1_VENCTO                 AS VENCIMENTO, "
+	else
+		cQuery += " E1_VENCREA                AS VENCIMENTO, "
+	endif
+	cQuery += " E1_SALDO                  AS SALDO, "
+	cQuery += " E1_VALJUR                 AS JUROS, "
+	cQuery += " E1_CLIENTE                AS CLIENTE, "
+	cQuery += " E1_LOJA                   AS LOJA, "
+	cQuery += " U00_FORPG                 AS FORMAPAG, "
+	cQuery += " E1_XFORPG                 AS TITFORPG, "
+	cQuery += " E1_XDTCOB                 AS DT_AGENDA, "
+	cQuery += " E1_XHRCOB                 AS HR_AGENDA, "
+	cQuery += " E1_CODBAR                 AS COD_BARRA, "
+	cQuery += " E1_CODDIG                 AS LIN_DIGITAL, "
+	cQuery += " E1_NUMBCO                 AS NOSSO_NUM "
+	cQuery += " FROM "
+	cQuery += RetSQLName("U00") + " U00 (NOLOCK) "
+	cQuery += " INNER JOIN  "
+	cQuery += RetSQLName("SA1") + " A1 (NOLOCK) "
+	cQuery += " ON A1_FILIAL = '" + xFilial("SA1") + "'  "
+	cQuery += " AND A1_COD = U00_CLIENT "
+	cQuery += " AND A1_LOJA = U00_LOJA "
+	cQuery += " AND A1.D_E_L_E_T_ = ' ' "
+	cQuery += " INNER JOIN "
+	cQuery += RetSQLName("SE1") + " E1 (NOLOCK) "
+	cQuery += " ON E1.D_E_L_E_T_ = ' ' "
+	cQuery += " AND E1_FILIAL = '" + xFilial("SE1") + "' "
+	cQuery += " AND E1_SALDO > 0 "
+	cQuery += " AND E1_TIPO NOT IN ( 'NCC', 'RA', 'TX', 'IS','IR', 'CS', 'CF', 'PI', 'AB' ) "
+
+// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQuery += "		AND U00.U00_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQuery += " AND E1_VENCTO BETWEEN '" + DTOS(dDataInicial) + "' AND '" + DTOS(dDataFinal) + "'   "
+	cQuery += " AND E1_XCONTRA = U00.U00_CODIGO  "
+	cQuery += " WHERE  "
+	cQuery += " U00.D_E_L_E_T_ = ' '  "
+	cQuery += " AND U00_MSFIL = '" + cFilAnt + "'   "
+	cQuery += " AND U00_STATUS IN ( 'A', 'S' )  "
+	cQuery += " AND A1.A1_CGC  <> ' ' "
+
+// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQuery += " AND U00.U00_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQuery += " GROUP  BY U00_CODIGO, "
+	cQuery += " U00_PLANO, "
+	cQuery += " U00_STATUS, "
+	cQuery += " U00_DTATIV, "
+	cQuery += " A1_CGC, "
+	cQuery += " A1_NOME, "
+	cQuery += " A1_END, "
+	cQuery += " A1_COMPLEM, "
+	cQuery += " A1_BAIRRO, "
+	cQuery += " A1_CEP, "
+	cQuery += " A1_EST, "
+	cQuery += " A1_MUN, "
+	cQuery += " A1_ENDCOB, "
+	cQuery += " A1_XCOMPCO, "
+	cQuery += " A1_BAIRROC, "
+	cQuery += " A1_CEPC, "
+	cQuery += " A1_ESTC, "
+	cQuery += " A1_MUNC, "
+	cQuery += " A1_XREFERE, "
+	cQuery += " A1_XREFCOB, "
+	cQuery += " A1_DDD, "
+	cQuery += " A1_TEL, "
+	cQuery += " A1_XDDDCEL, "
+	cQuery += " A1_XCEL, "
+	cQuery += " A1_EMAIL, "
+	cQuery += " A1_XCODBAI, "
+	cQuery += " E1_PREFIXO, "
+	cQuery += " E1_NUM, "
+	cQuery += " E1_PARCELA, "
+	cQuery += " E1_TIPO, "
+	if !lVencrea
+		cQuery += " E1_VENCTO, "
+	else
+		cQuery += " E1_VENCREA, "
+	endif
+	cQuery += " E1_SALDO, "
+	cQuery += " E1_VALJUR, "
+	cQuery += " E1_CLIENTE, "
+	cQuery += " E1_LOJA, "
+	cQuery += " U00_FORPG, "
+	cQuery += " E1_XFORPG, "
+	cQuery += " E1_XDTCOB, "
+	cQuery += " E1_XHRCOB, "
+	cQuery += " E1_CODBAR, "
+	cQuery += " E1_CODDIG, "
+	cQuery += " E1_NUMBCO "
+	cQuery += " ORDER  BY CONTRATO, "
+	cQuery += " TITULO, "
+	cQuery += " PARCELA, "
+	cQuery += " TIPO "
+
+Return(cQuery)
+
+/*/{Protheus.doc} FPRecorr
+Retorna formas de pagto cadastrados na recorrencia
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/12/2020
+@return character, cXForPgts
+/*/
+Static Function FPRecorr()
+	Local aArea := GetArea()
+	Local aAreaU60 := U60->( GetArea() )
+	Local cXForPgts := ""
+
+	U60->( DbSetOrder(1) )
+	If U60->( MsSeek( xFilial("U60") ) )
+		While U60->(!EOF()) .And. U60->U60_FILIAL == xFilial("U60")
+
+			// verifico se tem conteudo, e adiciono o separador ';'
+			if !Empty(cXForPgts)
+				cXForPgts += ";"
+			endIf
+
+			cXForPgts += AllTrim(U60->U60_FORPG)
+
+			U60->( DbSkip() )
+		EndDo
+	EndIf
+
+	RestArea(aAreaU60)
+	RestArea(aArea)
+
+Return(cXForPgts)
+
+/*/{Protheus.doc} PostCobranca
+Envia cobrancas para Virtus
+@type function
+@version 1.0
+@author Raphael Martins
+@since 07/02/2022
+@param oContratos,object,objeto do contratos para sincronizacao
+/*/
+Static Function PostCobranca(oContratos)
+
+	Local cHost         := SuperGetMV("MV_XURLCOB", .F., "https://api-cobranca.plataformavirtus.com.br")
+	Local cPath         := "/integration/charges/erp/save"
+	Local aHeadStr      := {}
+	Local oRestClient   := Nil
+	Local nStart	    := Seconds()
+
+	AADD(aHeadStr,"Content-Type:application/json")
+
+	oRestClient := FWRest():New(cHost)
+	oRestClient:SetPath(cPath)
+	oRestClient:SetPostParams( oContratos:toJSON()  )
+	oRestClient:Post(aHeadStr)
+
+	cMessage := oRestClient:GetResult()
+
+	FwLogMsg("INFO", , "JOB", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+
+Return(Nil)

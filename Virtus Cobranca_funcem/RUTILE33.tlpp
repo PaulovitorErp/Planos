@@ -1,0 +1,1791 @@
+#INCLUDE 'PROTHEUS.CH'
+#INCLUDE "TOPCONN.CH"
+#INCLUDE "TBICONN.CH"
+
+/*/{Protheus.doc} RUTILE33
+Classe VirtusCobranca2
+@type function
+@version 1.0
+@author nata.queiroz
+@since 25/02/2021
+/*/
+User Function RUTILE33
+Return
+
+	Class VirtusCobranca2
+
+		Public Data aCobrancas as array
+
+		Public Method New() Constructor
+		Public Method consultarCobrancas()
+		Private Method sqlQueryFuneraria()
+		Private Method sqlQueryCemiterio()
+		Public Method totalCobrancas()
+		Private Method sqlCountFuneraria()
+		Private Method sqlCountCemiterio()
+		Public Method gravarPagamento()
+		Public Method processarCobrancas()
+		Private Method buscarCobrancasNaoProcessadas()
+		Private Method baixarPagamento()
+		Private Method alterarParaRecorrencia()
+		Private Method gravarStatusProcesso()
+		Private Method enviarStatusProcesso()
+
+	EndClass
+
+/*/{Protheus.doc} VirtusCobranca2::New
+Nova Instancia da Classe
+@type method
+@version 1.0
+@author nata.queiroz
+@since 25/02/2021
+@return object, self
+/*/
+Method New() Class VirtusCobranca2
+
+	Self:aCobrancas := {}
+
+Return(Self)
+
+/*/{Protheus.doc} VirtusCobranca2::consultarCobrancas
+Consulta cobrancas dos contratos funeraria e cemiterio
+@type method
+@version 1.0
+@author nata.queiroz
+@since 01/03/2021
+@param cCnpjEmp, character, cCnpjEmp
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCEP
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@param nSkip, numeric, nSkip
+@param nLimit, numeric, nLimit
+@param oResponse, object, oResponse
+/*/
+	Method consultarCobrancas(cCnpjEmp, cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim, nSkip, nLimit, oResponse) Class VirtusCobranca2
+
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	Local lConsJrMult	:= SuperGetMV("MV_XJURMRV",,.T.)
+	Local lMstEndCob	:= SuperGetMV("MV_XENDCOB",,.T.) // .T. - Mostra End. Cobranca | .F. - Mostra End. Principal
+	Local cQCTT	 		:= ""
+	Local dDataAgenda	:= dDataBase
+	Local oModVirtusCob := Nil
+	Local cContratoAtual:= ""
+	Local cContratoNovo := ""
+
+	If Select("QCTT") > 0
+		QCTT->(DbCloseArea())
+	EndIf
+
+	If lFuneraria
+		cQCTT := ::sqlQueryFuneraria(cBairros, cCEP, cCgcCliente, cStatus, dDataAtIni, dDataAtFim, nSkip, nLimit)
+	ElseIf lCemiterio
+		cQCTT := ::sqlQueryCemiterio(cBairros, cCEP, cCgcCliente, cStatus, dDataAtIni, dDataAtFim, nSkip, nLimit)
+	EndIf
+
+	Conout("")
+	Conout("")
+	Conout("[ApiVirtusCob2 - RUTILW08 - ConsultarCobrancas] Query: " + cQCTT )
+
+	cQCTT := ChangeQuery(cQCTT)
+
+	// executo a query e crio o alias temporario
+	FwExecCachedQuery():OpenQuery( cQCTT, "QCTT", /*aSetField*/, /*cDriver*/, "300", "120")
+
+	If QCTT->( !EOF() )
+
+		oResponse["status"]     := 200
+		oResponse["contratos"]  := {}
+
+		While QCTT->( !EOF() )
+
+			//posiciono no registro para calcular o valor do titulo considerando juros e multa
+			cChave := xFilial("SE1") + QCTT->PREFIXO + QCTT->TITULO + QCTT->PARCELA + QCTT->TIPO
+
+			SE1->(DbSetOrder(1)) //E1_FILIAL + E1_PREFIXO + E1_NUM + E1_PARCELA + E1_TIPO
+			If SE1->( MsSeek(cChave) )
+
+				// Considero data de agendamento para definir o valor do titulo que sera enviado para o Virtus
+				If !Empty(QCTT->DT_AGENDA)
+					dDataAgenda := STOD(QCTT->DT_AGENDA)
+				Else
+					dDataAgenda	:= dDataBase
+				EndIf
+
+				// Retona saldo atual do titulo, considerando juros e multa de acordo com a data de agendamento
+				If lConsJrMult
+					nSaldoAtual := RetSaldoTitulo(dDataAgenda)
+				Else
+					nSaldoAtual := QCTT->SALDO
+				EndIf
+
+				// verifico se o titulo para a cobranca tem saldo
+				If nSaldoAtual > 0
+
+					cContratoNovo := AllTrim(QCTT->CONTRATO)
+
+					If cContratoNovo <> cContratoAtual
+
+						If oModVirtusCob <> Nil
+							AADD(oResponse["contratos"], oModVirtusCob:toJsonObject())
+						EndIf
+
+						FreeObj(oModVirtusCob)
+						oModVirtusCob := ModVirtusCobranca():New()
+
+						oModVirtusCob:cnpj := AllTrim(cCnpjEmp)
+						oModVirtusCob:contrato := AllTrim(QCTT->CONTRATO)
+						oModVirtusCob:plano := AllTrim(QCTT->PLANO)
+						oModVirtusCob:status_contrato := AllTrim(QCTT->STATUS)
+						oModVirtusCob:dt_ativacao := AllTrim(QCTT->ATIVACAO)
+						oModVirtusCob:forma_de_pagamento := AllTrim(QCTT->FORMAPAG)
+						oModVirtusCob:cgc_cliente := Alltrim(QCTT->CGC)
+						oModVirtusCob:nome := Alltrim(QCTT->NOME)
+
+						// Verifico se o endereco de cobranca esta preenchido
+						If lMstEndCob .And. !Empty( Alltrim(QCTT->ENDERECO_COB) )
+
+							Conout(" >>> ")
+							Conout("[ApiVirtusCob2 - RUTILW08 - consultarCobrancas] Endereco de cobranca: " + Alltrim(QCTT->ENDERECO_COB) )
+							Conout(" >>> ")
+
+							oModVirtusCob:cep := Alltrim(QCTT->CEP_COB)
+							oModVirtusCob:estado := Alltrim(QCTT->ESTADO_COB)
+							oModVirtusCob:municipio := Alltrim(QCTT->MUNICIPIO_COB)
+							oModVirtusCob:bairro := Alltrim(QCTT->BAIRRO_COB)
+							oModVirtusCob:endereco := Alltrim(QCTT->ENDERECO_COB)
+							oModVirtusCob:complemento := Alltrim(QCTT->COB_COMP)
+							oModVirtusCob:pto_referencia := Alltrim(QCTT->REF_COBRANCA)
+						Else
+
+							Conout(" >>> ")
+							Conout("[ApiVirtusCob2 - RUTILW08 - consultarCobrancas] Endereco de principal: " + Alltrim(QCTT->ENDERECO) )
+							Conout(" >>> ")
+
+							oModVirtusCob:cep := Alltrim(QCTT->CEP)
+							oModVirtusCob:estado := Alltrim(QCTT->ESTADO)
+							oModVirtusCob:municipio := Alltrim(QCTT->MUNICIPIO)
+							oModVirtusCob:bairro := Alltrim(QCTT->BAIRRO)
+							oModVirtusCob:endereco := Alltrim(QCTT->ENDERECO)
+							oModVirtusCob:complemento := Alltrim(QCTT->COMPLEMENTO)
+							oModVirtusCob:pto_referencia := Alltrim(QCTT->REFERENCIA)
+						EndIf
+
+						oModVirtusCob:ddd := AllTrim(QCTT->DDD)
+						oModVirtusCob:telefone := AllTrim(QCTT->TELEFONE)
+						oModVirtusCob:ddd_celular := AllTrim(QCTT->DDD_CEL)
+						oModVirtusCob:celular := AllTrim(QCTT->CELULAR)
+						oModVirtusCob:email := AllTrim(QCTT->EMAIL)
+
+						//*===============================================================================*
+						///////////// PONTO DE ENTRADA PARA TRATAMENTO ESPECIFICOS DO CLIENTE /////////////
+						//////// NO MODELO DE DADOS ENVIADO PARA O CONTRATO NO VIRTUS COBRANCA ////////////
+						///////////////// ANTES DAS INFORMACOES FINANCEIRAS DO CLIENTE ////////////////////
+						//*===============================================================================*
+						if Existblock("PUTL33CLI")
+							Conout("[ApiVirtusCob2 - RUTILW08 - ConsultarCobrancas] Existe o ponto de entrada PUTL33CLI!" )
+							oModVirtusCob := ExecBlock( "PUTL33CLI", .F. ,.F., { oModVirtusCob } )
+						endIf
+
+						If STOD(QCTT->VENCIMENTO) < dDataBase
+							oModVirtusCob:titulos_vencidos++
+						EndIf
+						oModVirtusCob:titulos_abertos++
+						oModVirtusCob:valor_aberto += nSaldoAtual
+
+						AADD(oModVirtusCob:titulos, {;
+							"contrato": AllTrim(QCTT->CONTRATO),;
+							"plano": AllTrim(QCTT->PLANO),;
+							"chave": AllTrim(cChave),;
+							"dt_agenda": AllTrim(QCTT->DT_AGENDA),;
+							"hora_agenda": AllTrim(QCTT->HR_AGENDA),;
+							"vencto": Alltrim(QCTT->VENCIMENTO),;
+							"valor_titulo": nSaldoAtual,;
+							"forma_de_pagamento": AllTrim(QCTT->TITFORPG),;
+							"codigo_barras": AllTrim(QCTT->COD_BARRA),;
+							"linha_digitavel": AllTrim(QCTT->LIN_DIGITAL),;
+							"nosso_numero": AllTrim(QCTT->NOSSO_NUM);
+							})
+
+					Else
+
+						If STOD(QCTT->VENCIMENTO) < dDataBase
+							oModVirtusCob:titulos_vencidos++
+						EndIf
+						oModVirtusCob:titulos_abertos++
+						oModVirtusCob:valor_aberto += nSaldoAtual
+
+						AADD(oModVirtusCob:titulos, {;
+							"contrato": AllTrim(QCTT->CONTRATO),;
+							"plano": AllTrim(QCTT->PLANO),;
+							"chave": AllTrim(cChave),;
+							"dt_agenda": AllTrim(QCTT->DT_AGENDA),;
+							"hora_agenda": AllTrim(QCTT->HR_AGENDA),;
+							"vencto": Alltrim(QCTT->VENCIMENTO),;
+							"valor_titulo": nSaldoAtual,;
+							"forma_de_pagamento": AllTrim(QCTT->TITFORPG),;
+							"codigo_barras": AllTrim(QCTT->COD_BARRA),;
+							"linha_digitavel": AllTrim(QCTT->LIN_DIGITAL),;
+							"nosso_numero": AllTrim(QCTT->NOSSO_NUM);
+							})
+
+					EndIf
+
+					cContratoAtual := AllTrim(QCTT->CONTRATO)
+
+				EndIf
+
+			EndIf
+
+			QCTT->( DbSkip() )
+
+			If QCTT->( EOF() )
+				If oModVirtusCob <> Nil
+					AADD(oResponse["contratos"], oModVirtusCob:toJsonObject())
+				EndIf
+				FreeObj(oModVirtusCob)
+			EndIf
+		EndDo
+
+	Else
+
+		oResponse["status"] := 400
+		oResponse["msg"]	:= "Nao ha titulos para consulta especificada"
+
+	EndIf
+
+	If Select("QCTT") > 0
+		QCTT->(DbCloseArea())
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusCobranca2::sqlQueryFuneraria
+Monta query para cobrancas do modulo funeraria
+@type method
+@version 1.0
+@author nata.queiroz
+@since 01/03/2021
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCgcCliente
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@param nSkip, numeric, nSkip
+@param nLimit, numeric, nLimit
+@return character, cQCTT
+/*/
+	Method sqlQueryFuneraria(cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim, nSkip, nLimit) Class VirtusCobranca2
+
+	Local cQCTT		:= ""
+	Local cXForPgts	:= FPRecorr()
+	Local nRankIni	:= 1
+	Local nRankFim	:= 100
+
+	Default cBairros	:= ""
+	Default cCEP		:= ""
+	Default cCgcCliente	:= ""
+	Default cStatus		:= ""
+	Default dDataAtIni	:= STOD("")
+	Default dDataAtFim	:= STOD("")
+	Default nSkip		:= 0
+	Default nLimit		:= 100
+
+	nRankIni := (nSkip + 1)
+	nRankFim := (nSkip + nLimit)
+
+	cQCTT := "SELECT * FROM ( "
+	cQCTT += "	SELECT DENSE_RANK() OVER ( ORDER BY UF2_CODIGO ) AS NUMRANK, "
+	cQCTT += "		UF2.UF2_CODIGO AS CONTRATO, "
+	cQCTT += "		UF2.UF2_PLANO AS PLANO, "
+	cQCTT += "		UF2.UF2_DTATIV AS ATIVACAO, "
+	cQCTT += "		UF2.UF2_STATUS AS STATUS, "
+	cQCTT += "		A1.A1_CGC AS CGC, "
+	cQCTT += "		A1.A1_NOME AS NOME, "
+	cQCTT += "		A1.A1_END AS ENDERECO, "
+	cQCTT += "		A1.A1_COMPLEM AS COMPLEMENTO, "
+	cQCTT += "		A1.A1_BAIRRO AS BAIRRO, "
+	cQCTT += "		A1.A1_CEP AS CEP , "
+	cQCTT += "		A1.A1_EST AS ESTADO, "
+	cQCTT += "		A1.A1_MUN AS MUNICIPIO, "
+	cQCTT += "		A1.A1_XREFERE AS REFERENCIA, "
+	cQCTT += "		A1.A1_ENDCOB AS ENDERECO_COB, "
+	cQCTT += "		A1.A1_XCOMPCO AS COB_COMP, "
+	cQCTT += "		A1.A1_BAIRROC AS BAIRRO_COB, "
+	cQCTT += "		A1.A1_CEPC AS CEP_COB, "
+	cQCTT += "		A1.A1_ESTC AS ESTADO_COB, "
+	cQCTT += "		A1.A1_MUNC AS MUNICIPIO_COB, "
+	cQCTT += "		A1.A1_XREFCOB AS REF_COBRANCA, "
+	cQCTT += "		A1.A1_DDD AS DDD, "
+	cQCTT += "		A1.A1_TEL AS TELEFONE, "
+	cQCTT += "		A1.A1_XDDDCEL AS DDD_CEL, "
+	cQCTT += "		A1.A1_XCEL AS CELULAR, "
+	cQCTT += "		A1.A1_EMAIL AS EMAIL, "
+	cQCTT += "		A1.A1_XCODBAI AS CODBAIRRO, "
+	cQCTT += "		E1.E1_PREFIXO AS PREFIXO, "
+	cQCTT += "		E1.E1_NUM AS TITULO, "
+	cQCTT += "		E1.E1_PARCELA AS PARCELA, "
+	cQCTT += "		E1.E1_TIPO AS TIPO, "
+	cQCTT += "		E1.E1_VENCTO AS VENCIMENTO, "
+	cQCTT += "		E1.E1_SALDO AS SALDO, "
+	cQCTT += "		E1.E1_VALJUR AS JUROS, "
+	cQCTT += "		E1.E1_CLIENTE AS CLIENTE, "
+	cQCTT += "		E1.E1_LOJA AS LOJA, "
+	cQCTT += "		UF2.UF2_FORPG AS FORMAPAG, "
+	cQCTT += "		E1.E1_XFORPG AS TITFORPG, "
+	cQCTT += "		E1.E1_XDTCOB AS DT_AGENDA, "
+	cQCTT += "		E1.E1_XHRCOB AS HR_AGENDA, "
+	cQCTT += " 		E1.E1_CODBAR AS COD_BARRA, "
+	cQCTT += " 		E1.E1_CODDIG AS LIN_DIGITAL, "
+	cQCTT += " 		E1.E1_NUMBCO AS NOSSO_NUM "
+	cQCTT += "	FROM "+ RetSQLName("SE1") +" (NOLOCK) E1 "
+
+	cQCTT += "	INNER JOIN "+ RetSQLName("UF2") +" (NOLOCK) UF2 ON UF2.D_E_L_E_T_ = ' '"
+	cQCTT += "		AND UF2.UF2_MSFIL = '"+ xFilial("SE1") + "' "
+	cQCTT += " 		AND UF2.UF2_CODIGO = E1.E1_XCTRFUN "
+	cQCTT += " 		AND UF2.UF2_CLIENT = E1.E1_CLIENTE
+	cQCTT += " 		AND UF2.UF2_LOJA = E1.E1_LOJA
+
+	//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+	if !Empty(cStatus)
+		cQCTT += "		AND UF2.UF2_STATUS IN ('" + StrTran(cStatus,",","','" ) + "')"
+	else
+		cQCTT += "		AND UF2.UF2_STATUS NOT IN ('P','C')"
+	endIf
+
+	// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQCTT += "		AND UF2.UF2_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQCTT += "	INNER JOIN "+ RetSQLName("SA1") +" (NOLOCK) A1 ON A1.D_E_L_E_T_ = ' '"
+	cQCTT += "		AND A1.A1_FILIAL = '"+ xFilial("SA1") + "' "
+	cQCTT += "		AND A1.A1_COD = UF2.UF2_CLIENT  "
+	cQCTT += "		AND A1.A1_LOJA = UF2.UF2_LOJA "
+
+	//Filtro por bairros
+	If !Empty(cBairros)
+		cQCTT += "	AND ( A1.A1_BAIRRO LIKE ('%" + StrTran(Alltrim(cBairros),","," %' OR A1.A1_BAIRRO LIKE '%" ) + "%')) "
+	EndIf
+
+	//Filtro por Cep
+	If !Empty(cCEP)
+		cQCTT += "	AND A1.A1_CEP IN ('" + StrTran(cCEP,",","','" ) + "') "
+	EndIf
+
+	//Filtra por cliente
+	If !Empty(cCgcCliente)
+		cQCTT += "	AND  A1.A1_CGC ='"+ Alltrim(cCgcCliente) + "' "
+	EndIf
+
+	cQCTT += "	WHERE E1.D_E_L_E_T_ = ' ' "
+	cQCTT += "		AND E1.E1_FILIAL = '"+ xFilial("SE1") + "' "
+	cQCTT += "		AND E1.E1_TIPO NOT IN ('NCC', 'RA', 'TX', 'IS', 'IR', 'CS', 'CF', 'PI', 'AB') "
+
+	if !Empty(cXForPgts)
+		cQCTT += "		AND E1.E1_XFORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQCTT += "		AND E1.E1_VENCTO >= '" + DTOS(dDataAtIni) + "' "
+	cQCTT += "		AND E1.E1_VENCTO <= '" + DTOS(dDataAtFim) +"' "
+	cQCTT += "		AND E1.E1_SALDO > 0 "
+
+	cQCTT += "	GROUP BY UF2.UF2_CODIGO, UF2.UF2_PLANO, UF2.UF2_STATUS, UF2.UF2_DTATIV, A1.A1_CGC, A1.A1_NOME, A1.A1_END, A1.A1_COMPLEM, A1.A1_BAIRRO, A1.A1_CEP, A1.A1_EST, A1.A1_MUN, "
+	cQCTT += "		A1.A1_ENDCOB, A1.A1_XCOMPCO, A1.A1_BAIRROC, A1.A1_CEPC, A1.A1_ESTC, A1.A1_MUNC, A1.A1_XREFERE, A1.A1_XREFCOB, A1.A1_DDD, A1.A1_TEL, A1.A1_XDDDCEL, A1.A1_XCEL, "
+	cQCTT += "		A1.A1_EMAIL, A1.A1_XCODBAI, E1.E1_PREFIXO, E1.E1_NUM, E1.E1_PARCELA, E1.E1_TIPO, E1.E1_VENCTO, E1.E1_SALDO, E1.E1_VALJUR, E1.E1_CLIENTE, E1.E1_LOJA, UF2.UF2_FORPG, E1.E1_XFORPG, "
+	cQCTT += "		E1.E1_XDTCOB, E1.E1_XHRCOB, E1.E1_CODBAR, E1.E1_CODDIG, E1.E1_NUMBCO) CONTRATOS "
+	cQCTT += " WHERE NUMRANK >= "+ cValToChar(nRankIni) +" AND NUMRANK <= " + cValToChar(nRankFim)
+	cQCTT += " ORDER BY CONTRATO,TITULO,PARCELA,TIPO "
+
+Return(cQCTT)
+
+/*/{Protheus.doc} VirtusCobranca2::sqlQueryCemiterio
+Monta query para cobrancas do modulo cemiterio
+@type method
+@version 1.0
+@author nata.queiroz
+@since 01/03/2021
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCgcCliente
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@param nSkip, numeric, nSkip
+@param nLimit, numeric, nLimit
+@return character, cQCTT
+/*/
+	Method sqlQueryCemiterio(cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim, nSkip, nLimit) Class VirtusCobranca2
+
+	Local cQCTT		:= ""
+	Local cXForPgts := FPRecorr()
+	Local nRankIni	:= 1
+	Local nRankFim	:= 100
+
+	Default cBairros	:= ""
+	Default cCEP		:= ""
+	Default cCgcCliente	:= ""
+	Default cStatus		:= ""
+	Default dDataAtIni	:= STOD("")
+	Default dDataAtFim	:= STOD("")
+	Default nSkip		:= 0
+	Default nLimit		:= 100
+
+	nRankIni := (nSkip + 1)
+	nRankFim := (nSkip + nLimit)
+
+	cQCTT := "SELECT * FROM ( "
+	cQCTT += "	SELECT DENSE_RANK() OVER (ORDER BY U00.U00_CODIGO ) AS NUMRANK, "
+	cQCTT += "		U00.U00_CODIGO AS CONTRATO, "
+	cQCTT += "		U00.U00_PLANO AS PLANO, "
+	cQCTT += "		U00.U00_DTATIV AS ATIVACAO, "
+	cQCTT += "		U00.U00_STATUS AS STATUS, "
+	cQCTT += "		A1.A1_CGC AS CGC, "
+	cQCTT += "		A1.A1_NOME AS NOME, "
+	cQCTT += "		A1.A1_END AS ENDERECO, "
+	cQCTT += "		A1.A1_COMPLEM AS COMPLEMENTO, "
+	cQCTT += "		A1.A1_BAIRRO AS BAIRRO, "
+	cQCTT += "		A1.A1_CEP AS CEP , "
+	cQCTT += "		A1.A1_EST AS ESTADO, "
+	cQCTT += "		A1.A1_MUN AS MUNICIPIO, "
+	cQCTT += "		A1.A1_XREFERE AS REFERENCIA, "
+	cQCTT += "		A1.A1_ENDCOB AS ENDERECO_COB, "
+	cQCTT += "		A1.A1_XCOMPCO AS COB_COMP, "
+	cQCTT += "		A1.A1_BAIRROC AS BAIRRO_COB, "
+	cQCTT += "		A1.A1_CEPC AS CEP_COB, "
+	cQCTT += "		A1.A1_ESTC AS ESTADO_COB, "
+	cQCTT += "		A1.A1_MUNC AS MUNICIPIO_COB, "
+	cQCTT += "		A1.A1_XREFCOB AS REF_COBRANCA, "
+	cQCTT += "		A1.A1_DDD AS DDD, "
+	cQCTT += "		A1.A1_TEL AS TELEFONE, "
+	cQCTT += "		A1.A1_XDDDCEL AS DDD_CEL, "
+	cQCTT += "		A1.A1_XCEL AS CELULAR, "
+	cQCTT += "		A1.A1_EMAIL AS EMAIL, "
+	cQCTT += "		A1.A1_XCODBAI AS CODBAIRRO, "
+	cQCTT += "		E1.E1_PREFIXO AS PREFIXO, "
+	cQCTT += "		E1.E1_NUM AS TITULO, "
+	cQCTT += "		E1.E1_PARCELA AS PARCELA, "
+	cQCTT += "		E1.E1_TIPO AS TIPO, "
+	cQCTT += "		E1.E1_VENCTO AS VENCIMENTO, "
+	cQCTT += "		E1.E1_SALDO AS SALDO, "
+	cQCTT += "		E1.E1_VALJUR AS JUROS, "
+	cQCTT += "		E1.E1_CLIENTE AS CLIENTE, "
+	cQCTT += "		E1.E1_LOJA AS LOJA, "
+	cQCTT += "		U00.U00_FORPG AS FORMAPAG, "
+	cQCTT += "		E1.E1_XFORPG AS TITFORPG, "
+	cQCTT += "		E1.E1_XDTCOB AS DT_AGENDA, "
+	cQCTT += "		E1.E1_XHRCOB AS HR_AGENDA, "
+	cQCTT += " 		E1.E1_CODBAR AS COD_BARRA, "
+	cQCTT += " 		E1.E1_CODDIG AS LIN_DIGITAL, "
+	cQCTT += " 		E1.E1_NUMBCO AS NOSSO_NUM "
+	cQCTT += " FROM "+ RetSQLName("SE1") +" (NOLOCK) E1 "
+	cQCTT += "	INNER JOIN	"+ RetSQLName("U00") +" (NOLOCK) U00 ON U00.D_E_L_E_T_ = ' ' "
+	cQCTT += "		AND U00.U00_FILIAL = '"+ xFilial("U00") + "' "
+	cQCTT += "		AND U00.U00_CODIGO = E1.E1_XCONTRA "
+
+	//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+	if !Empty(cStatus)
+		cQCTT += "		AND U00.U00_STATUS IN ('" + StrTran(cStatus,",","','" ) + "') "
+	else
+		cQCTT += "		AND U00.U00_STATUS NOT IN ('P','C')"
+	endIf
+
+	// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQCTT += "		AND U00.U00_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQCTT += "	INNER JOIN "+ RetSQLName("SA1") +" (NOLOCK) A1 ON A1.D_E_L_E_T_ = ' '"
+	cQCTT += "		AND A1.A1_FILIAL = '"+ xFilial("SA1") + "' "
+	cQCTT += "		AND A1.A1_COD = E1.E1_CLIENTE "
+	cQCTT += "		AND A1.A1_LOJA = E1.E1_LOJA "
+
+	//Filtro por bairros
+	If !Empty(cBairros)
+		cQCTT += "	AND ( A1.A1_BAIRRO LIKE ('%" + StrTran(Alltrim(cBairros),","," %' OR A1.A1_BAIRRO LIKE '%" ) + "%')) "
+	EndIf
+
+	//Filtro por Cep
+	If !Empty(cCEP)
+		cQCTT += "	AND A1.A1_CEP IN ('" + StrTran(cCEP,",","','" ) + "') "
+	EndIf
+
+	//Filtra por cliente
+	If !Empty(cCgcCliente)
+		cQCTT += "	AND  A1.A1_CGC ='"+ Alltrim(cCgcCliente) +  "' "
+	EndIf
+
+	cQCTT += "	WHERE "
+	cQCTT += "		E1.D_E_L_E_T_ = ' ' "
+	cQCTT += "		AND E1.E1_FILIAL = '"+ xFilial("SE1") + "' "
+	cQCTT += "		AND E1.E1_SALDO > 0 "
+	cQCTT += "		AND E1.E1_TIPO NOT IN ('NCC', 'RA', 'TX', 'IS', 'IR', 'CS', 'CF', 'PI', 'AB') "
+
+	if !Empty(cXForPgts)
+		cQCTT += "		AND E1.E1_XFORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	cQCTT += "		AND E1.E1_VENCTO BETWEEN '" + DTOS(dDataAtIni) + "' AND '" + DTOS(dDataAtFim) +"' "
+
+	cQCTT += "	GROUP BY U00.U00_CODIGO, U00.U00_PLANO, U00.U00_FORPG, U00.U00_STATUS, U00.U00_DTATIV, A1.A1_CGC, A1.A1_NOME, A1.A1_END, A1.A1_COMPLEM, A1.A1_BAIRRO, A1.A1_CEP, A1.A1_EST, A1.A1_MUN, "
+	cQCTT += "		A1.A1_ENDCOB, A1.A1_XCOMPCO, A1.A1_BAIRROC, A1.A1_CEPC, A1.A1_ESTC, A1.A1_MUNC, A1.A1_XREFERE, A1.A1_XREFCOB, A1.A1_DDD, A1.A1_TEL, A1.A1_XDDDCEL, A1.A1_XCEL, "
+	cQCTT += "		A1.A1_EMAIL, A1.A1_XCODBAI, E1.E1_PREFIXO, E1.E1_NUM, E1.E1_PARCELA, E1.E1_TIPO, E1.E1_VENCTO, E1.E1_SALDO, E1.E1_VALJUR, E1.E1_CLIENTE, E1.E1_LOJA, U00.U00_FORPG, E1.E1_XFORPG, "
+	cQCTT += "		E1.E1_XDTCOB, E1.E1_XHRCOB, E1.E1_CODBAR, E1.E1_CODDIG, E1.E1_NUMBCO ) CONTRATOS "
+	cQCTT += "WHERE NUMRANK BETWEEN "+ cValToChar(nRankIni) +" AND " + cValToChar(nRankFim)
+	cQCTT += "ORDER BY CONTRATO, TITULO, PARCELA, TIPO "
+
+Return(cQCTT)
+
+/*/{Protheus.doc} VirtusCobranca2::totalCobrancas
+Consulta total (COUNT) de cobrancas dos contratos funeraria e cemiterio
+@type method
+@version 1.0
+@author nata.queiroz
+@since 22/04/2021
+@param cCnpjEmp, character, cCnpjEmp
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCEP
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@param oResponse, object, oResponse
+/*/
+	Method totalCobrancas(cCnpjEmp, cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim, oResponse) Class VirtusCobranca2
+
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local lCemiterio	:= SuperGetMV("MV_XCEMI",,.F.)
+	Local cQCTT	 		:= ""
+
+	If Select("QCTT") > 0
+		QCTT->(DbCloseArea())
+	EndIf
+
+	If lFuneraria
+
+		Conout("")
+		Conout("[ApiVirtusCob2 - RUTILW08 - totalCobrancas] Pego a consulta de total de titulos para o modulo de planos!" )
+
+		cQCTT := ::sqlCountFuneraria(cBairros, cCEP, cCgcCliente, cStatus, dDataAtIni, dDataAtFim)
+	ElseIf lCemiterio
+
+		Conout("")
+		Conout("[ApiVirtusCob2 - RUTILW08 - totalCobrancas] Pego a consulta de total de titulos para o modulo de cemiterio!" )
+
+		cQCTT := ::sqlCountCemiterio(cBairros, cCEP, cCgcCliente, cStatus, dDataAtIni, dDataAtFim)
+	EndIf
+
+	Conout("")
+	Conout("")
+	Conout("[ApiVirtusCob2 - RUTILW08 - totalCobrancas] Query: " + cQCTT )
+
+	if !Empty(cQCTT)
+
+		// executo a query e crio o alias temporario
+		MPSysOpenQuery( cQCTT, 'QCTT' )
+
+		If QCTT->( !EOF() )
+
+			oResponse["status"] := 200
+			oResponse["total_cobrancas"] := QCTT->TOTAL_COBRANCAS
+
+		Else
+
+			oResponse["status"] := 400
+			oResponse["total_cobrancas"] := 0
+			oResponse["msg"] := "Nao ha titulos para consulta especificada"
+
+		EndIf
+
+	Else
+
+		oResponse["status"] := 400
+		oResponse["total_cobrancas"] := 0
+		oResponse["msg"] := "Houve erro na montagem da consulta"
+
+	endIf
+
+	If Select("QCTT") > 0
+		QCTT->(DbCloseArea())
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusCobranca2::sqlCountFuneraria
+Monta query COUNT para cobrancas do modulo funeraria
+@type method
+@version 1.0
+@author nata.queiroz
+@since 22/04/2021
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCgcCliente
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@return character, cQCTT
+/*/
+	Method sqlCountFuneraria(cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim) Class VirtusCobranca2
+
+	Local cQCTT		:= ""
+	Local cXForPgts	:= FPRecorr()
+
+	Default cBairros	:= ""
+	Default cCEP		:= ""
+	Default cCgcCliente	:= ""
+	Default cStatus		:= ""
+	Default dDataAtIni	:= STOD("")
+	Default dDataAtFim	:= STOD("")
+
+	//Consulta contratos e beneficiarios
+	cQCTT := " SELECT COUNT(DISTINCT CONTRATO) TOTAL_COBRANCAS FROM (
+	cQCTT += " 	SELECT"
+	cQCTT += "		UF2_CODIGO		AS CONTRATO, "
+	cQCTT += "		UF2_PLANO		AS PLANO, "
+	cQCTT += "		UF2_DTATIV		AS ATIVACAO, "
+	cQCTT += "		UF2_STATUS		AS STATUS, "
+
+	If UF2->(FieldPos("UF2_XCOBDO")) > 0
+		cQCTT += "		UF2_XCOBDO		AS COB_DOMICILIO, "
+	EndIf
+
+	cQCTT += "		A1_CGC			AS CGC, "
+	cQCTT += "		A1_NOME			AS NOME,"
+
+	// dados de endereco normal
+	cQCTT += "		A1_END			AS ENDERECO,"
+	cQCTT += "		A1_COMPLEM		AS COMPLEMENTO,"
+	cQCTT += "		A1_BAIRRO		AS BAIRRO,"
+	cQCTT += "		A1_CEP			AS CEP ,"
+	cQCTT += "		A1_EST			AS ESTADO,"
+	cQCTT += "		A1_MUN			AS MUNICIPIO,"
+	cQCTT += "		A1_XREFERE		AS REFERENCIA,"
+
+	// dados de dendereco de cobranca
+	cQCTT += "		A1_ENDCOB		AS ENDERECO_COB,"
+	cQCTT += "		A1_XCOMPCO		AS COB_COMP,"
+	cQCTT += "		A1_BAIRROC		AS BAIRRO_COB,"
+	cQCTT += "		A1_CEPC			AS CEP_COB,"
+	cQCTT += "		A1_ESTC			AS ESTADO_COB,"
+	cQCTT += "		A1_MUNC			AS MUNICIPIO_COB,"
+	cQCTT += "		A1_XREFCOB		AS REF_COBRANCA,"
+	cQCTT += "		A1_DDD			AS DDD,"
+	cQCTT += "		A1_TEL			AS TELEFONE,"
+	cQCTT += "		A1_XDDDCEL		AS DDD_CEL,"
+	cQCTT += "		A1_XCEL			AS CELULAR,"
+	cQCTT += "		A1_EMAIL		AS EMAIL,"
+	cQCTT += "		E1_PREFIXO		AS PREFIXO,"
+	cQCTT += "		E1_NUM			AS TITULO,"
+	cQCTT += "		E1_PARCELA		AS PARCELA,"
+	cQCTT += "		E1_TIPO			AS TIPO,"
+	cQCTT += "		E1_VENCTO		AS VENCIMENTO,"
+	cQCTT += "		E1_SALDO		AS SALDO,"
+	cQCTT += "		E1_VALJUR		AS JUROS,"
+	cQCTT += "		E1_CLIENTE		AS CLIENTE,"
+	cQCTT += "		E1_LOJA			AS LOJA, "
+	cQCTT += " 		UF2_FORPG		AS FORMAPAG,"
+	cQCTT += " 		E1_XFORPG		AS TITFORPG,"
+	cQCTT += " 		E1_XDTCOB		AS DT_AGENDA, "
+	cQCTT += " 		E1_XHRCOB		AS HR_AGENDA "
+	cQCTT += " 	FROM "
+	cQCTT += 	RetSQLName("UF2")   + " UF2 (NOLOCK)"
+	cQCTT += " 	INNER JOIN "
+	cQCTT +=	RetSQLName("SA1")  + " A1 (NOLOCK)"
+	cQCTT += " 	ON A1_FILIAL = '"+ xFilial("SA1") + "'"
+	cQCTT += " 	AND A1_COD = UF2_CLIENT"
+	cQCTT += " 	AND A1_LOJA= UF2_LOJA"
+	cQCTT += " 	AND A1.D_E_L_E_T_ = ' '"
+	cQCTT += " 	INNER JOIN ("
+	cQCTT += " 					SELECT"
+	cQCTT += " 						E1_PREFIXO,"
+	cQCTT += " 						E1_NUM,"
+	cQCTT += " 						E1_PARCELA,"
+	cQCTT += " 						E1_TIPO,"
+	cQCTT += " 						E1_VENCTO,"
+	cQCTT += " 						E1_SALDO,"
+	cQCTT += " 						E1_VALJUR,"
+	cQCTT += " 						E1_CLIENTE,"
+	cQCTT += " 						E1_LOJA,"
+	cQCTT += "						E1_XFORPG,"
+	cQCTT += "  					E1_XCTRFUN,"
+	cQCTT += "  					E1_XDTCOB, "
+	cQCTT += "  					E1_XHRCOB "
+	cQCTT += "  					FROM " + RetSQLName("SE1") + " E1 (NOLOCK)"
+	cQCTT += "  					WHERE E1.D_E_L_E_T_  =' '"
+	cQCTT += "  					AND E1_FILIAL  = '" + xFilial("SE1") + "' "
+	cQCTT += "  					AND E1_SALDO > 0 "
+	cQCTT += "  					AND E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB')"
+	cQCTT += "  					AND E1_VENCTO BETWEEN '" + DTOS(dDataAtIni) + "' AND '" + DTOS(dDataAtFim) +"' ) AS TITULOS"
+	cQCTT += " 	ON  TITULOS.E1_XCTRFUN = UF2.UF2_CODIGO"
+	cQCTT += " WHERE UF2.D_E_L_E_T_ = ' '"
+	cQCTT += " AND UF2_FILIAL = '"+ xFilial("UF2") + "'"
+
+	//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+	if !Empty(cStatus)
+		cQCTT += " 	AND UF2_STATUS IN ('" 	+ StrTran(cStatus,",","','" ) + "')"
+	else
+		cQCTT += "	AND UF2_STATUS NOT IN ('P','C')"
+	endIf
+
+	// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQCTT += "	AND UF2_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	//Filtro por bairros
+	If !Empty(cBairros)
+
+		cQCTT += " AND ( A1_BAIRRO LIKE ('%" + StrTran(Alltrim(cBairros),","," %' OR A1_BAIRRO LIKE '%" ) + "%'))"
+
+	EndIf
+
+	//Filtro por Cep
+	If !Empty(cCEP)
+
+		cQCTT += " 	AND A1_CEP IN ('" 	+ StrTran(cCEP,",","','" ) + "')"
+
+	EndIf
+
+	//Filtra por cliente
+	If !Empty(cCgcCliente)
+
+		cQCTT += " 	AND  A1_CGC ='"+ Alltrim(cCgcCliente) +  "'"
+
+	EndIf
+
+	cQCTT += "	 GROUP BY UF2_CODIGO,UF2_PLANO,UF2_STATUS,UF2_DTATIV,A1_CGC,A1_NOME,A1_END,"
+	cQCTT += "	 A1_COMPLEM,A1_BAIRRO,A1_CEP,A1_EST,A1_MUN, A1_ENDCOB, A1_XCOMPCO, A1_BAIRROC, A1_CEPC, A1_ESTC, A1_MUNC,A1_XREFERE,A1_XREFCOB,A1_DDD,A1_TEL,A1_XDDDCEL,A1_XCEL,A1_EMAIL,E1_PREFIXO,E1_NUM,"
+
+	If UF2->(FieldPos("UF2_XCOBDO")) > 0
+
+		cQCTT += " UF2_XCOBDO, "
+
+	EndIf
+
+	cQCTT += "	 E1_PARCELA,E1_TIPO,E1_VENCTO,E1_SALDO,E1_VALJUR,E1_CLIENTE,E1_LOJA,UF2_FORPG,E1_XFORPG, E1_XDTCOB, E1_XHRCOB "
+
+	cQCTT += " ) CONTRATOS"
+
+Return(cQCTT)
+
+/*/{Protheus.doc} VirtusCobranca2::sqlCountCemiterio
+Monta query COUNT para cobrancas do modulo cemiterio
+@type method
+@version 1.0
+@author nata.queiroz
+@since 22/04/2021
+@param cBairros, character, cBairros
+@param cCEP, character, cCEP
+@param cCgcCliente, character, cCgcCliente
+@param cStatus, character, cStatus
+@param dDataAtIni, date, dDataAtIni
+@param dDataAtFim, date, dDataAtFim
+@return character, cQCTT
+/*/
+	Method sqlCountCemiterio(cBairros, cCEP, cCgcCliente, cStatus,;
+		dDataAtIni, dDataAtFim) Class VirtusCobranca2
+
+	Local cQCTT		:= ""
+	Local cXForPgts := FPRecorr()
+
+	Default cBairros	:= ""
+	Default cCEP		:= ""
+	Default cCgcCliente	:= ""
+	Default cStatus		:= ""
+	Default dDataAtIni	:= STOD("")
+	Default dDataAtFim	:= STOD("")
+
+	DbSelectArea("U00")
+
+	//Consulta contratos e beneficiarios
+	cQCTT := " SELECT COUNT(DISTINCT CONTRATO) TOTAL_COBRANCAS FROM (
+	cQCTT += " 	SELECT"
+	cQCTT += "		U00_CODIGO		AS CONTRATO, "
+	cQCTT += "		U00_PLANO		AS PLANO, "
+	cQCTT += "		U00_DTATIV		AS ATIVACAO, "
+	cQCTT += "		U00_STATUS		AS STATUS, "
+
+	// verifico se o campo existe
+	if U00->(FieldPos("U00_XCOBDO")) > 0
+		cQCTT += "		''				AS COB_DOMICILIO, "
+	endif
+
+	cQCTT += "		A1_CGC			AS CGC, "
+	cQCTT += "		A1_NOME			AS NOME,"
+
+	// dados de endereco normal
+	cQCTT += "		A1_END			AS ENDERECO,"
+	cQCTT += "		A1_COMPLEM		AS COMPLEMENTO,"
+	cQCTT += "		A1_BAIRRO		AS BAIRRO,"
+	cQCTT += "		A1_CEP			AS CEP ,"
+	cQCTT += "		A1_EST			AS ESTADO,"
+	cQCTT += "		A1_MUN			AS MUNICIPIO,"
+	cQCTT += "		A1_XREFERE		AS REFERENCIA,"
+
+	// dados de dendereco de cobranca
+	cQCTT += "		A1_ENDCOB		AS ENDERECO_COB,"
+	cQCTT += "		A1_XCOMPCO		AS COB_COMP,"
+	cQCTT += "		A1_BAIRROC		AS BAIRRO_COB,"
+	cQCTT += "		A1_CEPC			AS CEP_COB,"
+	cQCTT += "		A1_ESTC			AS ESTADO_COB,"
+	cQCTT += "		A1_MUNC			AS MUNICIPIO_COB,"
+	cQCTT += "		A1_XREFCOB		AS REF_COBRANCA,"
+
+	cQCTT += "		A1_DDD			AS DDD,"
+	cQCTT += "		A1_TEL			AS TELEFONE,"
+	cQCTT += "		A1_XDDDCEL		AS DDD_CEL,"
+	cQCTT += "		A1_XCEL			AS CELULAR,"
+	cQCTT += "		A1_EMAIL		AS EMAIL,"
+	cQCTT += "		E1_PREFIXO		AS PREFIXO,"
+	cQCTT += "		E1_NUM			AS TITULO,"
+	cQCTT += "		E1_PARCELA		AS PARCELA,"
+	cQCTT += "		E1_TIPO			AS TIPO,"
+	cQCTT += "		E1_VENCTO		AS VENCIMENTO,"
+	cQCTT += "		E1_SALDO		AS SALDO,"
+	cQCTT += "		E1_VALJUR		AS JUROS,"
+	cQCTT += "		E1_CLIENTE		AS CLIENTE,"
+	cQCTT += "		E1_LOJA			AS LOJA, "
+	cQCTT += " 		U00_FORPG		AS FORMAPAG,"
+	cQCTT += " 		E1_XFORPG		AS TITFORPG,"
+	cQCTT += " 		E1_XDTCOB		AS DT_AGENDA, "
+	cQCTT += " 		E1_XHRCOB		AS HR_AGENDA "
+	cQCTT += " 	FROM "
+	cQCTT += 	RetSQLName("U00")   + " U00 (NOLOCK)"
+	cQCTT += " 	INNER JOIN "
+	cQCTT +=	RetSQLName("SA1")  + " A1 (NOLOCK)"
+	cQCTT += " 	ON A1_FILIAL = '"+ xFilial("SA1") + "'"
+	cQCTT += " 	AND A1_COD = U00_CLIENT"
+	cQCTT += " 	AND A1_LOJA= U00_LOJA"
+	cQCTT += " 	AND A1.D_E_L_E_T_ = ' '"
+	cQCTT += " 	INNER JOIN ("
+	cQCTT += " 					SELECT"
+	cQCTT += " 						E1_PREFIXO,"
+	cQCTT += " 						E1_NUM,"
+	cQCTT += " 						E1_PARCELA,"
+	cQCTT += " 						E1_TIPO,"
+	cQCTT += " 						E1_VENCTO,"
+	cQCTT += " 						E1_SALDO,"
+	cQCTT += " 						E1_VALJUR,"
+	cQCTT += " 						E1_CLIENTE,"
+	cQCTT += " 						E1_LOJA,"
+	cQCTT += "						E1_XFORPG,"
+	cQCTT += "  					E1_XCONTRA,"
+	cQCTT += "  					E1_XDTCOB, "
+	cQCTT += "  					E1_XHRCOB "
+	cQCTT += "  					FROM " + RetSQLName("SE1") + " E1 (NOLOCK)"
+	cQCTT += "  					WHERE E1.D_E_L_E_T_  =' '"
+	cQCTT += "  					AND E1_FILIAL  = '" + xFilial("SE1") + "' "
+	cQCTT += "  					AND E1_SALDO > 0 "
+	cQCTT += "  					AND E1_TIPO NOT IN ('NCC','RA','TX','IS','IR','CS','CF','PI','AB')"
+	cQCTT += "  					AND E1_VENCTO BETWEEN '" + DTOS(dDataAtIni) + "' AND '" + DTOS(dDataAtFim) +"' ) AS TITULOS"
+	cQCTT += " 	ON  TITULOS.E1_XCONTRA = U00.U00_CODIGO"
+	cQCTT += " WHERE U00.D_E_L_E_T_ = ' '"
+	cQCTT += " AND U00_FILIAL = '"+ xFilial("U00") + "'"
+
+	//Filtro Status do contrato A-ATIVO | S-SUSPENSO
+	if !Empty(cStatus)
+		cQCTT += " 	AND U00_STATUS IN ('" 	+ StrTran(cStatus,",","','" ) + "')"
+	else
+		cQCTT += "	AND U00_STATUS NOT IN ('P','C')"
+	endIf
+
+	// Filtro retira formas de pagtos da recorrencia
+	if !Empty(cXForPgts)
+		cQCTT += "	AND U00_FORPG NOT IN " + FormatIn( AllTrim(cXForPgts),";") + " "
+	endIf
+
+	//Filtro por bairros
+	If !Empty(cBairros)
+
+		cQCTT += " AND ( A1_BAIRRO LIKE ('%" + StrTran(Alltrim(cBairros),","," %' OR A1_BAIRRO LIKE '%" ) + "%'))"
+
+	EndIf
+
+	//Filtro por Cep
+	If !Empty(cCEP)
+
+		cQCTT += " 	AND A1_CEP IN ('" 	+ StrTran(cCEP,",","','" ) + "')"
+
+	EndIf
+
+	//Filtra por cliente
+	If !Empty(cCgcCliente)
+
+		cQCTT += " 	AND  A1_CGC ='"+ Alltrim(cCgcCliente) +  "'"
+
+	EndIf
+
+	cQCTT += "	 GROUP BY U00_CODIGO,U00_PLANO,U00_FORPG,U00_STATUS,U00_DTATIV,A1_CGC,A1_NOME,A1_END,"
+	cQCTT += "	 A1_COMPLEM,A1_BAIRRO,A1_CEP,A1_EST,A1_MUN,A1_ENDCOB, A1_XCOMPCO, A1_BAIRROC, A1_CEPC, A1_ESTC, A1_MUNC,A1_XREFERE,A1_XREFCOB,A1_DDD,A1_TEL,A1_XDDDCEL,A1_XCEL,A1_EMAIL,E1_PREFIXO,E1_NUM,"
+	cQCTT += "	 E1_PARCELA,E1_TIPO,E1_VENCTO,E1_SALDO,E1_VALJUR,E1_CLIENTE,E1_LOJA,U00_FORPG,E1_XFORPG, E1_XDTCOB, E1_XHRCOB "
+
+	cQCTT+= " ) CONTRATOS"
+
+Return cQCTT
+
+/*/{Protheus.doc} VirtusCobranca2::gravarPagamento
+Grava pagamentos em tabela intermediaria
+@type method
+@version 1.0
+@author nata.queiroz
+@since 06/04/2021
+@param cCodigoModulo, character, cCodigoModulo
+@param cIdCobranca, character, cIdCobranca
+@param cCobrancaJson, character, cCobrancaJson
+/*/
+Method gravarPagamento(cCodigoModulo, cTipo, cIdCobranca, cCobrancaJson) Class VirtusCobranca2
+
+	Local aArea := GetArea()
+	Local aAreaUZ0 := UZ0->(GetArea())
+	Local cCodigo := ""
+	Local oResponse := JsonObject():New()
+	Local lAdd := .F.
+
+	Default cCodigoModulo := ""
+	Default cTipo := ""
+	Default cIdCobranca := ""
+	Default cCobrancaJson := ""
+
+	cCodigo := GetSxeNum("UZ0","UZ0_CODIGO")
+
+	UZ0->(DbSetOrder(1)) // UZ0_FILIAL + UZ0_CODIGO
+	While UZ0->(MsSeek(xFilial("UZ0") + cCodigo))
+		UZ0->(ConfirmSX8())
+		cCodigo := GetSxeNum("UZ0","UZ0_CODIGO")
+	EndDo
+
+	//-- Verifica se a venda ja existe --//
+	UZ0->(DbSetOrder(2)) // UZ0_FILIAL + UZ0_IDCOBR
+	lAdd := UZ0->(MsSeek(xFilial("UZ0") + cIdCobranca))
+
+	If RecLock("UZ0", !lAdd)
+
+		If !lAdd
+			UZ0->UZ0_CODIGO	:= cCodigo
+			UZ0->UZ0_IDCOBR := cIdCobranca
+		EndIf
+		UZ0->UZ0_FILIAL := xFilial("UZ0")
+		UZ0->UZ0_MODULO	:= cCodigoModulo
+		UZ0->UZ0_DTINC	:= dDataBase
+		UZ0->UZ0_HRINC	:= SubStr(Time(),1,5)
+		UZ0->UZ0_DTPROC	:= STOD(Space(8))
+		UZ0->UZ0_HRPROC	:= ""
+		UZ0->UZ0_MSPROC	:= ""
+		UZ0->UZ0_ENT	:= cTipo
+		UZ0->UZ0_STATUS	:= "P" // P=Pendente; C=Concluido; E=Erro
+		UZ0->UZ0_MSREC	:= cCobrancaJson
+		UZ0->UZ0_MSFIL	:= cFilAnt
+		UZ0->(MsUnLock())
+
+		If !lAdd
+			UZ0->(ConfirmSX8())
+		Else
+			UZ0->(RollBackSX8())
+		EndIf
+
+		oResponse["ok"] := .T.
+
+	Else
+
+		oResponse["error"] := .T.
+
+	EndIf
+
+	RestArea(aAreaUZ0)
+	RestArea(aArea)
+
+Return oResponse
+
+/*/{Protheus.doc} VirtusCobranca2::processarCobrancas
+Processa cobrancas no ERP realizando baixas financeiras e adicionando contratos em recorrencia
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+/*/
+Method processarCobrancas() Class VirtusCobranca2
+
+	Local lContinua 	:= .F.
+	Local oJsonProcesso := JsonObject():New()
+	Local nX 			:= 0
+
+	//-------------------------------//
+	//-- Busca cobrancas pendentes --//
+	//-------------------------------//
+	lContinua := Self:buscarCobrancasNaoProcessadas()
+
+	// se tiver cobrancas pendentes continuo
+	If lContinua
+
+		//------------------------------------------------//
+		//-- Inicia processamento cobranca por cobranca --//
+		//------------------------------------------------//
+		For nX := 1 To Len( Self:aCobrancas )
+
+			If AllTrim( Self:aCobrancas[nX]:entidade ) == "1" // Pagamento
+				oJsonProcesso := Self:baixarPagamento( Self:aCobrancas[nX] )
+			ElseIf AllTrim( Self:aCobrancas[nX]:entidade ) == "2" // Recorrencia
+
+				//quando ocorre mudanca de forma de pagamento no aplicativo do cliente
+				//e realizado tambem a baixa do titulo
+				if Self:aCobrancas[nX]:origem == "appcustomer"
+					oJsonProcesso := Self:baixarPagamento( Self:aCobrancas[nX])
+				endif
+
+				//caso o titulo processado nao possui saldo, realize a tentativa de recorrencia
+				if oJsonProcesso["status"] == "processado" .Or. "saldo" $ oJsonProcesso["message"]
+					oJsonProcesso := NIL
+					oJsonProcesso := JsonObject():New()
+					oJsonProcesso := Self:alterarParaRecorrencia( Self:aCobrancas[nX] )
+				endif
+			EndIf
+
+			If !Empty( oJsonProcesso["_id"] )
+				Self:gravarStatusProcesso(oJsonProcesso)
+			EndIf
+
+		Next nX
+
+	EndIf
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusCobranca2::buscarCobrancasNaoProcessadas
+Busca Cobranças Não Processadas
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@return logical, lRet
+/*/
+Method buscarCobrancasNaoProcessadas() Class VirtusCobranca2
+
+	Local aArea 			:= GetArea()
+	Local aAreaUZ0			:= UZ0->(GetArea())
+	Local cQry 				:= ""
+	Local lRet 				:= .F.
+	Local oModVirtusPagto 	:= Nil
+
+	cQry := "SELECT TOP 50 "
+	cQry += "    UZ0_FILIAL FILIAL, "
+	cQry += "    UZ0_CODIGO CODIGO "
+	cQry += "FROM " + RetSqlName("UZ0")
+	cQry += "WHERE D_E_L_E_T_ <> '*' "
+	cQry += "    AND UZ0_FILIAL = '"+ xFilial("UZ0") +"' "
+	cQry += "    AND UZ0_MSFIL = '"+ cFilAnt +"' "
+	cQry += "    AND UZ0_STATUS IN ('P') "
+
+	cQry += "ORDER BY UZ0_CODIGO "
+	cQry := ChangeQuery(cQry)
+
+	If Select("UZ0COB") > 0
+		UZ0COB->( dbCloseArea() )
+	EndIf
+
+	MPSysOpenQuery(cQry, "UZ0COB")
+
+	If UZ0COB->(!Eof())
+
+		Self:aCobrancas := {}
+
+		While UZ0COB->( !EOF() )
+
+			UZ0->(DbSetOrder(1)) // UZ0_FILIAL + UZ0_CODIGO
+			If UZ0->(MsSeek(UZ0COB->FILIAL + UZ0COB->CODIGO))
+				oModVirtusPagto := ModVirtusPagto():New()
+
+				If oModVirtusPagto:fromJson(UZ0->UZ0_MSREC)
+
+					oModVirtusPagto:entidade := UZ0->UZ0_ENT
+					Aadd(Self:aCobrancas, oModVirtusPagto)
+
+				EndIf
+
+				oModVirtusPagto := Nil
+
+			EndIf
+
+			UZ0COB->( dbSkip() )
+		EndDo
+
+		If Len(Self:aCobrancas) > 0
+			lRet := .T.
+		EndIf
+
+	EndIf
+
+	FreeObj(oModVirtusPagto)
+
+	If Select("UZ0COB") > 0
+		UZ0COB->( dbCloseArea() )
+	EndIf
+
+	RestArea(aAreaUZ0)
+	RestArea(aArea)
+
+Return(lRet)
+
+/*/{Protheus.doc} VirtusCobranca2::baixarPagamento
+Baixa pagamento de cobranca
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@param oPagamento, object, oPagamento
+@return object, oJsonStatus
+/*/
+Method baixarPagamento(oPagamento) Class VirtusCobranca2
+
+	Local aArea			:= GetArea()
+	Local aAreaSE1		:= SE1->( GetArea() )
+	Local aAreaSA6		:= SA6->( GetArea() )
+	Local aAreaSA3		:= SA3->( GetArea() )
+	Local aAreaSE3		:= SE3->( GetArea() )
+	Local aFormaPg		:= {}
+	Local nI			:= 0
+	Local nValRec		:= 0
+	Local nValDesc		:= 0
+	Local nValJuros		:= 0
+	Local nValMulta		:= 0
+	Local nTotalRec		:= 0
+	Local nValorParcela	:= 0
+	Local nQtdParc		:= 1
+	Local cCaixa		:= ""
+	Local cAdmCredito	:= SuperGetMv("MV_XCODADQ",,"002")
+	Local cAdmDebito	:= SuperGetMv("MV_XFPCD",,"CD")
+	Local cAdmPIX		:= SuperGetMv("MV_XFPPIX",,"PIX")
+	Local cChavePIX		:= ""
+	Local cTpChavePIX	:= ""
+	Local cCodModulo	:= ""
+	Local cLoteBx		:= ""
+	Local cErro			:= ""
+	Local cOrigemPag	:= ""
+	Local cCxAppCliente	:= Alltrim(SuperGetMV("MV_XCXAPPC",.F.,""))
+	Local cCxPortal		:= Alltrim(SuperGetMV("MV_XCXPORC",.F.,""))
+	Local cCxCobranca	:= Alltrim(SuperGetMV("MV_XCXCOBR",.F.,""))
+	Local cCxCustom		:= Alltrim(SuperGetMV("MV_XCXCUST",.F.,""))
+	Local lProcessa		:= .T.
+	Local lRet			:= .F.
+	Local cCobrador		:= ""
+	Local cCodAdm		:= ""
+	Local cCodNsu		:= ""
+	Local cAutorizacao	:= ""
+	Local cFormaPgto	:= ""
+	Local cContrato		:= ""
+	Local cBandeira		:= Upper(Alltrim(SuperGetMv("MV_XBANDPA",,"master")))
+	Local lHVerao		:= GetMv("MV_HVERAO")
+	Local nHVerao		:= IIF(lHVerao, 1, 0)
+	Local oJsonProcesso	:= JsonObject():New()
+
+	oJsonProcesso["_id"] := oPagamento:_id
+
+	cFormaPgto	:= IIF( AllTrim(oPagamento:forma_pagamento) == "DI", "R$", AllTrim(oPagamento:forma_pagamento) )
+	nQtdParc	:= oPagamento:quantidade_parcelas
+	cOrigemPag	:= oPagamento:origem // origem do pagamento
+
+	//caso nao seja informado a quantidade, sera sempre gerado 1 parcela
+	If nQtdParc <= 0
+		nQtdParc := 1
+	EndIf
+
+	//Posiciono no vendedor/cobrador com CGC
+	SA3->( DbSetOrder(3) )
+
+	// defino o caixa conforme o a origem do pagamento
+	if AllTrim(cOrigemPag) == "appcustomer" .And. !Empty(cCxAppCliente)
+		cCaixa := cCxAppCliente
+		oJsonProcesso["origin"] := "appcustomer"
+	elseIf AllTrim(cOrigemPag) == "portal" .And. !Empty(cCxPortal)
+		cCaixa := cCxPortal
+		oJsonProcesso["origin"] := "portal"
+	elseIf AllTrim(cOrigemPag) == "cobranca" .And. !Empty(cCxCobranca)
+		cCaixa := cCxCobranca
+	elseIf !Empty(cCxCustom)
+		cCaixa := cCxCustom
+		oJsonProcesso["origin"] := "custom"
+	else
+		if SA3->( MsSeek( xFilial("SA3") + PADR( AllTrim(oPagamento:cobrador),TamSx3("A3_CGC")[1] ) ) )
+			cCaixa := SA3->A3_BCO1
+			cCobrador := SA3->A3_COD
+			oJsonProcesso["origin"] := "cobranca"
+		else
+			oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+			oJsonProcesso["status"] := "erro"
+			oJsonProcesso["message"] := "Cadastro do cobrador nao foi encontrado"
+		endIf
+	endIf
+
+	//Posiciona no banco
+	SA6->( DbSetOrder(1) )
+	If !Empty(cCaixa) .and. SA6->( MsSeek( xFilial("SA6") + cCaixa ) )
+
+		BEGIN TRANSACTION
+
+			For nI := 1 to Len(oPagamento:baixas)
+
+				//Posiciono no titulo
+				SE1->( DbSetOrder(1) )
+				If SE1->( MsSeek( oPagamento:baixas[nI]["chave"] ) )
+
+					//Verifico se é contrato de funeraria ou Cemiterio
+					If !Empty(SE1->E1_XCTRFUN)
+						cCodModulo:= "F"
+						cContrato := SE1->E1_XCTRFUN
+					ElseIf !Empty(SE1->E1_XCONTRA)
+						cCodModulo:= "C"
+						cContrato := SE1->E1_XCONTRA
+					EndIf
+
+					If SE1->E1_SALDO > 0
+
+						//Altero a data base do sistem para baixar o titulo
+						dDataBase := FwDateTimeToLocal(oPagamento:baixas[nI]["data_baixa"], nHVerao)[1]
+
+						//Atualiza Variaveis
+						nValRec	 	:= oPagamento:baixas[nI]["valor_titulo"]
+						nValJuros	:= oPagamento:baixas[nI]["valor_juros"]
+						nValDesc 	:= oPagamento:baixas[nI]["valor_desconto"]
+						nValMulta	:= oPagamento:baixas[nI]["valor_multa"]
+
+						//Valido se a forma de pagamento é cartao para pegar NSU, gateway e codigo de autorizacao
+						If cFormaPgto $ "CC|CD|PX"
+							cCodNsu := oPagamento:baixas[nI]["nsu"]
+
+							//Caso seja recebimento manual, utiliza a adquirente do parametro MV_XCODADQ
+							If oPagamento:baixas[nI]["gateway"] > 0
+								cCodAdm := oPagamento:baixas[nI]["gateway"]
+							ElseIf Alltrim(cFormaPgto) == "CC" //cartao de credito
+								cCodAdm := cAdmCredito
+							ElseIf 	Alltrim(cFormaPgto) == "CD" //cartao de debito
+								cCodAdm := cAdmDebito
+							ElseIf Alltrim(cFormaPgto) == "PX" //pix
+								cCodAdm 	:= cAdmPIX
+								cTpChavePIX	:= oPagamento:baixas[nI]["pixKeyType"]
+								cChavePIX	:= oPagamento:baixas[nI]["pixKey"]
+								cBandeira 	:= "PIX"
+							EndIf
+
+							cAutorizacao := oPagamento:baixas[nI]["aut"]
+
+							//Recebimento manual nao possui bandeira
+							If oPagamento:baixas[nI]["bandeira"] <> '' .and. cFormaPgto <> 'PX'
+								cBandeira := oPagamento:baixas[nI]["bandeira"]
+							EndIf
+
+						Else
+							cCodNsu := ""
+						EndIf
+
+						//Valor pra gerar contra adm finan
+						nTotalRec += (nValRec+nValJuros+nValMulta) - nValDesc
+
+						//Baixar titulos pelo loja
+						If !U_BxTitulosFin(oPagamento:baixas[nI]["chave"], cFormaPgto, dDataBase, nValRec, cCaixa,;
+								@cLoteBx, @cErro, @lProcessa, nValJuros, nValMulta, nValDesc)
+
+							lRet := .F.
+							oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+							oJsonProcesso["status"] := "erro"
+							oJsonProcesso["message"] := oPagamento:baixas[nI]["chave"] + ": " + cErro
+
+							DisarmTransaction()
+							BREAK
+							EXIT
+
+						Else
+
+							lRet := .T.
+							oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+							oJsonProcesso["status"] := "processado"
+
+							//Se titulo foi baixado com sucesso gravo o codigo do cobrado no titulo
+							If SE1->( Reclock("SE1", .F.) )
+								SE1->E1_XCOBMOB := cCobrador
+
+								// Gravar dados do recebimento via Pix
+								if cFormaPgto $ "PX"									
+									SE1->E1_XTPCPIX := cTpChavePIX
+									SE1->E1_XCHVPIX := cChavePIX
+								endif
+
+								SE1->(MsUnLock())
+							EndIf
+
+						EndIf
+
+					Else
+
+						oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+						oJsonProcesso["status"] := "erro"
+						oJsonProcesso["message"] := oPagamento:baixas[nI]["chave"] + ": " + "Titulo nao possui saldo"
+						EXIT
+
+					EndIf
+
+				Else
+
+					oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+					oJsonProcesso["status"] := "erro"
+					oJsonProcesso["message"] := oPagamento:baixas[nI]["chave"] + ": ";
+						+ "Titulo nao encontrado no contas a receber"
+					EXIT
+
+				EndIf
+
+			Next nI
+
+			//Se baixou titulos e forma de pagamento for cartao inclui titulo contra adm
+			If lRet .And. cFormaPgto $ "CH|CC|CD|PX"
+
+				nValorParcela := nTotalRec / nQtdParc
+
+				aFormaPg := {cFormaPgto,;	//Forma de Pagamento
+				cCodAdm,;					//Codigo da Gateway
+				"",;						//Numero Cheque (Nao utilizado)
+				"",;						//portador (Nao Utilizado)
+				"",;						//agencia (Nao utilizado)
+				"",;						//conta (Nao utilizado)
+				nValorParcela,;				//valor total recebido
+				nQtdParc,;					//quantidade de parcelas
+				"",;						//vencimento cheque (nao utilizado)
+				cBandeira,;					//bandeira utilizada
+				cCodNsu,;					//codigo NSU
+				cAutorizacao,;				//codigo de autorizacao
+				cTpChavePIX,;				//tipo de chave pix
+				cChavePIX}					//chave pix
+						
+				// Gera titulo contra a administradora
+				lRet := U_LjIncTitRec( aFormaPg, SA6->A6_COD, cLoteBx, dDataBase, , cContrato, nQtdParc, @cErro )
+
+				If !lRet
+
+					oJsonProcesso["datetime"] 	:= FWTimeStamp(5, Date(), Time())
+					oJsonProcesso["status"] 	:= "erro"
+					oJsonProcesso["message"] 	:= "Erro na geracao do titulo contra a administradora" + ": " + cErro
+
+					DisarmTransaction()
+					BREAK
+				EndIf
+
+			EndIf
+
+		END TRANSACTION
+
+	Else
+
+		oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+		oJsonProcesso["status"] := "erro"
+		oJsonProcesso["message"] := "Caixa vinculado para o cobrador nao foi encontrado"
+
+	EndIf
+
+	RestArea(aAreaSE3)
+	RestArea(aAreaSA3)
+	RestArea(aAreaSE1)
+	RestArea(aAreaSA6)
+	RestArea(aArea)
+
+Return(oJsonProcesso)
+
+/*/{Protheus.doc} VirtusCobranca2::alterarParaRecorrencia
+Altera contrato para recorrencia
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@param oPagamento, object, oPagamento
+@return object, oJsonProcesso
+/*/
+Method alterarParaRecorrencia(oPagamento) Class VirtusCobranca2
+
+	Local lRet			:= .T.
+	Local cOldForPg		:= ""
+	Local cCodCli		:= ""
+	Local cLoja			:= ""
+	Local lFuneraria	:= SuperGetMV("MV_XFUNE",,.F.)
+	Local cCodModulo	:= IIF(lFuneraria,"F","C")
+	Local cErro			:= ""
+	Local cCodBan		:= ""
+	Local aCartao		:= {}
+	Local cContrato		:= ""
+	Local cFormaPgto	:= ""
+	Local cIdPerfil		:= ""
+	Local oVindi		:= IntegraVindi():New()
+	Local oJsonProcesso	:= JsonObject():New()
+	Local cOrigem		:= "RUTILE33"
+	Local cOrigemDesc	:= "Alterar Para Recorrencia"
+
+	oJsonProcesso["_id"] := oPagamento:_id
+	oJsonProcesso["origem"] := oPagamento:origem
+
+	cContrato := oPagamento:contrato
+	cFormaPgto := oPagamento:forma_pagamento
+	cIdPerfil := cValToChar( oPagamento:recorrencia["idPerfilPgto"] )
+
+	If lFuneraria
+
+		//Posiciona no contrato
+		UF2->( DbSetOrder(1) ) //UF2_FILIAL + UF2_CODIGO
+		If UF2->( MsSeek(xFilial("UF2") + cContrato ) )
+
+			cOldForPg := UF2->UF2_FORPG
+			cCodCli := UF2->UF2_CLIENT
+			cLoja := UF2->UF2_LOJA
+
+		Else
+
+			lRet := .F.
+			oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+			oJsonProcesso["status"] := "erro"
+			oJsonProcesso["message"] := "Contrato ("+ cContrato +") informado nao foi localizado"
+
+		EndIf
+
+	Else
+
+		//Posiciona no contrato
+		U00->( DbSetOrder(1) ) //U00_FILIAL + U00_CODIGO
+		If U00->( MsSeek(xFilial("U00") + cContrato ) )
+
+			cOldForPg := U00->U00_FORPG
+			cCodCli := U00->U00_CLIENT
+			cLoja := U00->U00_LOJA
+
+		Else
+
+			lRet := .F.
+			oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+			oJsonProcesso["status"] := "erro"
+			oJsonProcesso["message"] := "Contrato ("+ cContrato +") informado nao foi localizado"
+
+		EndIf
+
+	EndIf
+
+	If lRet .And. (cOldForPg <> cFormaPgto)
+
+		// Verifica se forma de pagamento esta cadastrada na VINDI
+		U60->( DbSetOrder(2) ) // U60_FILIAL + U60_FORPG
+		If U60->( MsSeek(xFilial("U60") + cFormaPgto) )
+
+			//-- Verifica se existe contrato em recorrência ativo para cliente
+			lRet := U_RecNaoExist( cCodCli, cLoja)
+			If lRet
+
+				// Verifica se existem titulos vencidos no contrato
+				If VefTitulosVencidos(cContrato, cCodModulo)
+
+					BEGIN TRANSACTION
+
+						//Pega dados do perfil de pagamento para gravar no Protheus
+						aCartao := oVindi:ConsultaPerfil(cIdPerfil,@cErro,cContrato)
+
+						If Len(aCartao) > 0
+
+							cCodBan := RetCodBan(UPPER(aCartao[05]))
+
+							//Inclui cliente vindi e Perfil de pagamento
+							lRet := oVindi:IncManVind(aCartao[06],UF2->UF2_CODIGO,UF2->UF2_CLIENT,UF2->UF2_LOJA,;
+								cIdPerfil,cFormaPgto,aCartao[01],aCartao[04],aCartao[02],cCodBan,aCartao[07],;
+								cOrigem,cOrigemDesc)
+
+							If lRet
+
+								// atualiza a forma de pagamento do contrato
+								U_AtuCtr(cCodModulo, cContrato, cFormaPgto)
+
+								// função que atualiza a forma de pagamento dos títulos a receber
+								lRet := U_AtuTit( cCodModulo, cContrato, cOldForPg, cFormaPgto, @cErro)
+								If !lRet
+									oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+									oJsonProcesso["status"] := "erro"
+									oJsonProcesso["message"] := cErro
+
+									DisarmTransaction()
+									BREAK
+								Else
+									// função que altera a forma de pagamento dos títulos em aberto
+									// envia a inclusao das faturas para vindi com a nova forma de pagamento
+									U_IncFatVindi( cCodModulo, cContrato, cFormaPgto)
+
+									oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+									oJsonProcesso["status"] := "processado"
+								EndIf
+
+							Else
+
+								oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+								oJsonProcesso["status"] := "erro"
+								oJsonProcesso["message"] := "Ocorreu um erro na inclusao do Cliente ou Perfil de pagamento no Protheus"
+
+								DisarmTransaction()
+								BREAK
+
+							EndIf
+
+						Else
+
+							oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+							oJsonProcesso["status"] := "erro"
+							oJsonProcesso["message"] := "Perfil de pagamento ("+ cIdPerfil + ") nao foi encontrado na VINDI"
+
+						EndIf
+
+					END TRANSACTION
+
+				Else
+
+					oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+					oJsonProcesso["status"] := "erro"
+					oJsonProcesso["message"] := "Este contrato ("+ cContrato +") possui titulos vencidos. ";
+						+ "Necessario regularizar a situacao do contrato antes de prosseguir com alteracao para recorrencia."
+
+				EndIf
+
+			Else
+
+				oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+				oJsonProcesso["status"] := "erro"
+				oJsonProcesso["message"] := "Ja existe contrato em recorrencia para o cliente informado"
+
+			EndIf
+
+		Else
+
+			oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+			oJsonProcesso["status"] := "erro"
+			oJsonProcesso["message"] := "Forma de pagamento ("+ cFormaPgto +") nao cadastrada na VINDI"
+
+		EndIf
+
+	Else
+
+		oJsonProcesso["datetime"] := FWTimeStamp(5, Date(), Time())
+		oJsonProcesso["status"] := "processado"
+
+	EndIf
+
+Return oJsonProcesso
+
+/*/{Protheus.doc} VirtusCobranca2::gravarStatusProcesso
+Grava status do processo na tabela UZ0
+@type method
+@version 1.0
+@author nata.queiroz
+@since 09/04/2021
+@param oJsonProcesso, object, oJsonProcesso
+/*/
+Method gravarStatusProcesso(oJsonProcesso) Class VirtusCobranca2
+
+	Local aArea := GetArea()
+	Local aAreaUZ0 := UZ0->( GetArea() )
+
+	UZ0->(DbSetOrder(2)) // UZ0_FILIAL + UZ0_IDCOBR
+	If UZ0->( MsSeek(xFilial("UZ0") + oJsonProcesso["_id"]) )
+		RecLock("UZ0", .F.)
+		UZ0->UZ0_DTPROC := Date()
+		UZ0->UZ0_HRPROC := SubStr(Time(), 1, 5)
+		UZ0->UZ0_STATUS := IIF(oJsonProcesso["status"] == "processado", "C", "E")
+		UZ0->UZ0_MSPROC	:= IIF(ValType(oJsonProcesso["message"]) == "C", SubStr(oJsonProcesso["message"], 1, 100), "")
+		UZ0->(MsUnLock())
+
+		Self:enviarStatusProcesso( EncodeUTF8( oJsonProcesso:toJSON() ) )
+	EndIf
+
+	RestArea(aArea)
+	RestArea(aAreaUZ0)
+
+Return(Nil)
+
+/*/{Protheus.doc} VirtusCobranca2::enviarStatusProcesso
+Envia status de processamento para virtus
+@type method
+@version 1.0
+@author nata.queiroz
+@since 08/04/2021
+@param cJsonProcesso, character, cJsonProcesso
+/*/
+Method enviarStatusProcesso(cJsonProcesso) Class VirtusCobranca2
+
+	Local cHost := SuperGetMV("MV_XURLCOB", .F., "https://api-cobranca.plataformavirtus.com.br")
+	Local cPath := "/integration/payments/erp/update"
+	Local aHeadStr := {}
+	Local oRestClient := Nil
+	Local nStart := Seconds()
+	Local cMessage := ""
+
+	AADD(aHeadStr, "Content-Type:application/json")
+
+	oRestClient := FWRest():New(cHost)
+	oRestClient:SetPath(cPath)
+
+	If .Not. oRestClient:Put(aHeadStr, cJsonProcesso)
+		cMessage := "[RUTILE26 - enviarStatusProcesso]"
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+		cMessage := oRestClient:GetResult()
+		FwLogMsg("INFO", , "REST", FunName(), "", "01", cMessage, 0, (Seconds() - nStart), {})
+	EndIf
+
+Return
+
+/*/{Protheus.doc} RetSaldoTitulo
+Retorna Saldo Atual do Título
+@type function
+@version 1.0
+@author nata.queiroz
+@since 3/1/2021
+@param dDataAgenda, date, dDataAgenda
+@return numeric, nSaldoAtual
+/*/
+Static Function RetSaldoTitulo(dDataAgenda)
+
+	Local aArea			:= GetArea()
+	Local aAreaSE1		:= SE1->(GetArea())
+	Local nValor		:= 0
+	Local nJuros		:= 0
+	Local nMulta		:= 0
+	Local nSaldoAtual	:= 0
+
+	// Retorna o saldo do titulo naquela data
+	nValor := SaldoTit(SE1->E1_PREFIXO,SE1->E1_NUM,SE1->E1_PARCELA,SE1->E1_TIPO,SE1->E1_NATUREZ,"R",SE1->E1_CLIENTE,;
+		SE1->E1_MOEDA,,dDataAgenda,SE1->E1_LOJA,,,1)
+
+	// Retorna Juros
+	nJuros := LojxRJur(, , , ,  SE1->E1_SALDO,;
+		SE1->E1_ACRESC  , "SE1", , SE1->E1_MOEDA, dDataAgenda,SE1->E1_VENCREA, ,SE1->E1_JUROS)
+
+	// Retorna a Multa em caso de atraso
+	nMulta := LojxRMul( .F., , ,SE1->E1_SALDO, SE1->E1_ACRESC, SE1->E1_VENCREA, dDataAgenda , , SE1->E1_MULTA, ,;
+		SE1->E1_PREFIXO, SE1->E1_NUM, SE1->E1_PARCELA, SE1->E1_TIPO, SE1->E1_CLIENTE, SE1->E1_LOJA, "SE1",.T. )
+
+	// Saldo Atual do Titulo considerando Juros e Multa
+	nSaldoAtual := nValor + nJuros + nMulta
+
+	RestArea(aArea)
+	RestArea(aAreaSE1)
+
+Return(nSaldoAtual)
+
+/*/{Protheus.doc} FPRecorr
+Retorna formas de pagto cadastrados na recorrencia
+@type function
+@version 1.0
+@author nata.queiroz
+@since 23/12/2020
+@return character, cXForPgts
+/*/
+Static Function FPRecorr()
+	Local aArea := GetArea()
+	Local aAreaU60 := U60->( GetArea() )
+	Local cXForPgts := ""
+
+	U60->( DbSetOrder(1) )
+	If U60->( MsSeek( xFilial("U60") ) )
+		While U60->(!EOF()) .And. U60->U60_FILIAL == xFilial("U60")
+
+			// verifico se tem conteudo, e adiciono o separador ';'
+			if !Empty(cXForPgts)
+				cXForPgts += ";"
+			endIf
+
+			cXForPgts += AllTrim(U60->U60_FORPG)
+
+			U60->( DbSkip() )
+		EndDo
+	EndIf
+
+	RestArea(aAreaU60)
+	RestArea(aArea)
+
+Return cXForPgts
+
+/*/{Protheus.doc} RetCodBan
+Retorna codigo da bandeira do cartao
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/08/2019
+@param cBandeira, character, cBandeira
+@return character, cCodBan
+/*/
+Static Function RetCodBan(cBandeira)
+	Local cQryBan := ""
+	Local cCodBan := ""
+
+	cQryBan := " SELECT"
+	cQryBan	+= " 	U67_CODIGO"
+	cQryBan	+= " FROM " + RETSQLNAME("U67")
+	cQryBan	+= " WHERE D_E_L_E_T_= ' '"
+	cQryBan	+= " 	AND U67_FILIAL  = '"+ xFilial("U67") +"'"
+	cQryBan	+= "	AND U67_DESC LIKE '%" + Alltrim(cBandeira) + "%'"
+	cQryBan	:= ChangeQuery(cQryBan)
+
+	If Select("QU67") > 1
+		QU67->(DbCloseArea())
+	EndIf
+
+	TcQuery cQryBan New Alias "QU67"
+
+	cCodBan := QU67->U67_CODIGO
+
+	QU67->(DbCloseArea())
+
+Return cCodBan
+
+/*/{Protheus.doc} VefTitulosVencidos
+Verifica se existem titulos vencidos no contrato
+@type function
+@version 1.0
+@author nata.queiroz
+@since 12/04/2021
+@param cContrato, character, cContrato
+@param cCodModulo, character, cCodModulo
+@return logical, lRet
+/*/
+Static Function VefTitulosVencidos(cContrato, cCodModulo)
+	Local lRet := .T.
+	Local cQry := ""
+
+	cQry := " SELECT COUNT(*) QTDVENC"
+	cQry += " FROM " + RETSQLNAME("SE1") + " SE1"
+	cQry += " WHERE D_E_L_E_T_ = ' '"
+	cQry += " AND SE1.E1_SALDO > 0"
+	cQry += " AND SE1.E1_FILIAL = '" + xFilial("SE1") + "' "
+
+	If cCodModulo == "F" // Funerária
+
+		cQry += " AND SE1.E1_XCTRFUN = '" + cContrato + "' "
+	Else
+
+		cQry += " AND SE1.E1_XCONTRA = '" + cContrato + "' "
+	EndIf
+
+	cQry += " AND SE1.E1_VENCREA < '" + DTOS(dDataBase) + "'"
+	cQry += " AND SE1.E1_TIPO NOT IN ('AB-','FB-','FC-','FU-' "
+	cQry += " ,'PR','IR-','IN-','IS-','PI-','CF-','CS-','FE-' "
+	cQry += " ,'IV-','RA','NCC','NDC') "
+	cQry := ChangeQuery(cQry)
+
+	If Select("QSE1") > 1
+		QSE1->(DbCloseArea())
+	EndIf
+
+	TcQuery cQry New Alias "QSE1"
+
+	// Quantidade titulos vencidos
+	If QSE1->QTDVENC > 0
+		lRet := .F.
+	EndIf
+
+	QSE1->(DbCloseArea())
+
+Return lRet
